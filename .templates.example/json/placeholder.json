@@ -1,5 +1,6 @@
 {
   "generatedNameField": "{{name_string}}",
+  "generatedLastNameField": "{{name_string:once}}",
   "generatedAmountField": "{{amount_number}}",
   "generatedMoneyField": "{{money_object}}",
   "_loadtest_metadata_templates": {
