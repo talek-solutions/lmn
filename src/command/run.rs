@@ -10,6 +10,7 @@ use tokio::sync::Semaphore;
 pub struct RequestResult {
     pub duration: Duration,
     pub success: bool,
+    pub status_code: Option<u16>,
 }
 
 pub struct RunCommand {
@@ -110,13 +111,18 @@ async fn run_concurrent_requests(config: WorkerConfig) -> Vec<RequestResult> {
             let _permit = permit;
             let start = Instant::now();
             match client.get(&url).send().await {
-                Ok(resp) => RequestResult {
-                    duration: start.elapsed(),
-                    success: resp.status().is_success(),
-                },
+                Ok(resp) => {
+                    let status = resp.status();
+                    RequestResult {
+                        duration: start.elapsed(),
+                        success: status.is_success(),
+                        status_code: Some(status.as_u16()),
+                    }
+                }
                 Err(_) => RequestResult {
                     duration: start.elapsed(),
                     success: false,
+                    status_code: None,
                 },
             }
         }));

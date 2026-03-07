@@ -27,6 +27,22 @@ pub fn print_stats(results: &[RequestResult], elapsed: Duration) {
     };
 
     let val_width = lat_rows.iter().map(|(_, v)| v.len()).max().unwrap_or(0);
+
+    let code_counts: Vec<(String, usize)> = {
+        let mut map = std::collections::BTreeMap::new();
+        for r in results {
+            let key = match r.status_code {
+                Some(c) => c.to_string(),
+                None => "err".to_string(),
+            };
+            *map.entry(key).or_insert(0usize) += 1;
+        }
+        map.into_iter().collect()
+    };
+    let bar_max = code_counts.iter().map(|(_, n)| *n).max().unwrap_or(1);
+    let bar_width = 28usize;
+    let count_width = code_counts.iter().map(|(_, n)| n.to_string().len()).max().unwrap_or(1);
+
     let rule = "─".repeat(34);
 
     println!();
@@ -38,6 +54,13 @@ pub fn print_stats(results: &[RequestResult], elapsed: Duration) {
     println!(" Latency {rule}");
     for (label, val) in &lat_rows {
         println!("  {label:<4}  {val:>val_width$}");
+    }
+    println!();
+    println!(" Status codes {rule}");
+    for (code, count) in &code_counts {
+        let filled = (count * bar_width) / bar_max;
+        let bar = "█".repeat(filled);
+        println!("  {code:<5}  {count:>count_width$}  {bar}");
     }
     println!();
 }
