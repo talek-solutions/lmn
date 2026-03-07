@@ -1,4 +1,4 @@
-use crate::cli::command::RunArgs;
+use crate::cli::output::print_stats;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -7,12 +7,19 @@ use tokio::sync::Semaphore;
 
 pub mod cli;
 
-struct RequestResult {
-    duration: Duration,
-    success: bool,
+pub struct RequestResult {
+    pub duration: Duration,
+    pub success: bool,
 }
 
-pub fn process_run_command(run_args: RunArgs) {
+struct WorkerConfig {
+    host: Arc<String>,
+    count: usize,
+    concurrency: usize,
+    shutdown: Arc<AtomicBool>,
+}
+
+pub fn process_run_command(run_args: cli::command::RunArgs) {
     let host = Arc::new(run_args.host);
     let threads = run_args.threads as usize;
     let total = run_args.request_count as usize;
@@ -23,7 +30,6 @@ pub fn process_run_command(run_args: RunArgs) {
 
     let shutdown = Arc::new(AtomicBool::new(false));
 
-    // Dedicated thread: listens for Ctrl+C and sets the shutdown flag.
     let shutdown_signal = Arc::clone(&shutdown);
     thread::spawn(move || {
         tokio::runtime::Runtime::new()
@@ -36,19 +42,22 @@ pub fn process_run_command(run_args: RunArgs) {
     });
 
     let mut handles = Vec::new();
+    let started_at = Instant::now();
 
     for i in 0..threads {
-        let host = Arc::clone(&host);
-        let shutdown = Arc::clone(&shutdown);
-        let count = per_thread + if i < remainder { 1 } else { 0 };
-        let sem_slots = (concurrency / threads).max(1);
+        let config = WorkerConfig {
+            host: Arc::clone(&host),
+            count: per_thread + if i < remainder { 1 } else { 0 },
+            concurrency: (concurrency / threads).max(1),
+            shutdown: Arc::clone(&shutdown),
+        };
 
         let handle = thread::Builder::new()
             .name(format!("worker-{}", i))
             .spawn(move || {
                 tokio::runtime::Runtime::new()
                     .expect("failed to create tokio runtime")
-                    .block_on(run_concurrent_requests(&host, count, sem_slots, shutdown))
+                    .block_on(run_concurrent_requests(config))
             })
             .expect("failed to spawn thread");
 
@@ -61,10 +70,11 @@ pub fn process_run_command(run_args: RunArgs) {
         all_results.extend(results);
     }
 
-    print_stats(&all_results);
+    print_stats(&all_results, started_at.elapsed());
 }
 
-async fn run_concurrent_requests(host: &str, count: usize, concurrency: usize, shutdown: Arc<AtomicBool>) -> Vec<RequestResult> {
+async fn run_concurrent_requests(config: WorkerConfig) -> Vec<RequestResult> {
+    let WorkerConfig { host, count, concurrency, shutdown } = config;
     let client = reqwest::Client::new();
     let sem = Arc::new(Semaphore::new(concurrency));
     let mut tasks = Vec::with_capacity(count);
@@ -74,7 +84,7 @@ async fn run_concurrent_requests(host: &str, count: usize, concurrency: usize, s
             break;
         }
         let client = client.clone();
-        let url = host.to_string();
+        let url = host.as_str().to_string();
         let permit = sem.clone().acquire_owned().await.unwrap();
         tasks.push(tokio::spawn(async move {
             let _permit = permit;
@@ -99,40 +109,4 @@ async fn run_concurrent_requests(host: &str, count: usize, concurrency: usize, s
         }
     }
     results
-}
-
-fn print_stats(results: &[RequestResult]) {
-    let total = results.len();
-    let successes = results.iter().filter(|r| r.success).count();
-
-    let mut durations: Vec<Duration> = results.iter().map(|r| r.duration).collect();
-    durations.sort();
-
-    let sum: Duration = durations.iter().sum();
-    let avg = if total > 0 { sum / total as u32 } else { Duration::ZERO };
-    let min = durations.first().copied().unwrap_or(Duration::ZERO);
-    let max = durations.last().copied().unwrap_or(Duration::ZERO);
-    let p50 = percentile(&durations, 50);
-    let p95 = percentile(&durations, 95);
-    let p99 = percentile(&durations, 99);
-
-    println!("\n=== Load Test Results ===");
-    println!("Total:     {}", total);
-    println!("Successes: {}", successes);
-    println!("Failures:  {}", total - successes);
-    println!("\nLatency:");
-    println!("  min: {:?}", min);
-    println!("  avg: {:?}", avg);
-    println!("  p50: {:?}", p50);
-    println!("  p95: {:?}", p95);
-    println!("  p99: {:?}", p99);
-    println!("  max: {:?}", max);
-}
-
-fn percentile(sorted: &[Duration], p: usize) -> Duration {
-    if sorted.is_empty() {
-        return Duration::ZERO;
-    }
-    let idx = (sorted.len() * p / 100).min(sorted.len() - 1);
-    sorted[idx]
 }
