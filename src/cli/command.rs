@@ -1,5 +1,14 @@
 use clap::Parser;
 
+#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+pub enum HttpMethod {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+}
+
 #[derive(Parser)]
 #[command(name = "loadtest")]
 #[command(bin_name = "loadtest")]
@@ -38,6 +47,24 @@ pub struct RunArgs {
     #[arg(allow_negative_numbers = false)]
     #[arg(default_value="100")]
     pub concurrency: u32,
+
+    #[arg(short='M')]
+    #[arg(long)]
+    #[arg(help = "HTTP method to use")]
+    #[arg(default_value="get")]
+    pub method: HttpMethod,
+
+    #[arg(short='B')]
+    #[arg(long)]
+    #[arg(help = "Request body (JSON only)")]
+    #[arg(value_parser = parse_json)]
+    pub body: Option<String>,
+}
+
+fn parse_json(s: &str) -> Result<String, String> {
+    serde_json::from_str::<serde_json::Value>(s)
+        .map(|_| s.to_string())
+        .map_err(|e| format!("invalid JSON: {e}"))
 }
 
 pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
