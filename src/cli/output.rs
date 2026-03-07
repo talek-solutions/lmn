@@ -1,4 +1,4 @@
-use crate::RequestResult;
+use crate::command::run::RequestResult;
 use std::time::Duration;
 
 pub fn print_stats(results: &[RequestResult], elapsed: Duration) {
