@@ -1,0 +1,8 @@
+{
+  "fieldString": "some text value",
+  "fieldInteger": 27,
+  "objectField": {
+    "nestedField1": "test value",
+    "nestedField2": 26.5
+  }
+}
