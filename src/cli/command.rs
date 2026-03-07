@@ -13,24 +13,31 @@ pub enum LoadTestRunCli {
 #[command(name = "run")]
 #[command(long_about = "Run the test")]
 pub struct RunArgs {
-    #[arg(short='h')]
+    #[arg(short='H')]
     #[arg(long)]
     #[arg(help = "The host to run loadtest against")]
     pub host: String,
 
-    #[arg(short='r')]
+    #[arg(short='R')]
     #[arg(long)]
     #[arg(help = "The count of API requests to run")]
     #[arg(allow_negative_numbers = false)]
     #[arg(default_value="100")]
     pub request_count: u32,
 
-    #[arg(short='t')]
+    #[arg(short='T')]
     #[arg(long)]
     #[arg(help = "The count of CPU thread requests to run")]
     #[arg(allow_negative_numbers = false)]
     #[arg(default_value="1")]
     pub threads: u16,
+
+    #[arg(short='C')]
+    #[arg(long)]
+    #[arg(help = "Max number of requests in-flight at any one time")]
+    #[arg(allow_negative_numbers = false)]
+    #[arg(default_value="100")]
+    pub concurrency: u32,
 }
 
 pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
