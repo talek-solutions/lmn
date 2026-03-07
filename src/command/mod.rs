@@ -1,7 +1,7 @@
 pub mod run;
 
 pub trait Command {
-    fn execute(self);
+    fn execute(self) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 pub enum Commands {
@@ -9,7 +9,7 @@ pub enum Commands {
 }
 
 impl Command for Commands {
-    fn execute(self) {
+    fn execute(self) -> Result<(), Box<dyn std::error::Error>> {
         match self {
             Commands::Run(cmd) => cmd.execute(),
         }

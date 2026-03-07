@@ -51,7 +51,7 @@
     "money_object": {
       "type": "object",
       "composition": {
-        "amount": "{{amount_numer}}",
+        "amount": "{{amount_number}}",
         "currency": "{{currency_string}}"
       }
     }

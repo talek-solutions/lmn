@@ -1,11 +1,15 @@
-use crate::cli::command::{HttpMethod, RunArgs};
-use crate::cli::output::print_stats;
-use crate::command::Command;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
+
 use tokio::sync::Semaphore;
+
+use crate::cli::command::{HttpMethod, RunArgs};
+use crate::cli::output::print_stats;
+use crate::command::Command;
+use crate::template::Template;
 
 pub struct RequestResult {
     pub duration: Duration,
@@ -28,6 +32,7 @@ pub struct RunCommand {
     pub concurrency: usize,
     pub method: HttpMethod,
     pub body: Option<RequestBody>,
+    pub template_path: Option<PathBuf>,
 }
 
 impl From<RunArgs> for RunCommand {
@@ -42,6 +47,7 @@ impl From<RunArgs> for RunCommand {
                 content: s,
                 format: BodyFormat::Json,
             }),
+            template_path: args.template,
         }
     }
 }
@@ -53,10 +59,18 @@ struct WorkerConfig {
     shutdown: Arc<AtomicBool>,
     method: HttpMethod,
     body: Arc<Option<RequestBody>>,
+    /// Pre-generated template bodies for this worker's slice of requests.
+    /// When `Some`, takes priority over `body` for request construction.
+    bodies: Option<Vec<String>>,
+}
+
+struct ResolvedBody {
+    content: String,
+    content_type: &'static str,
 }
 
 impl Command for RunCommand {
-    fn execute(self) {
+    fn execute(self) -> Result<(), Box<dyn std::error::Error>> {
         let host = Arc::new(self.host);
         let threads = self.threads;
         let total = self.request_count;
@@ -67,6 +81,12 @@ impl Command for RunCommand {
         let per_thread = total / threads;
         let remainder = total % threads;
 
+        // Pre-generate all template bodies before any requests fire
+        let all_bodies: Option<Vec<String>> = self
+            .template_path
+            .map(|path| Template::parse(&path).map(|t| t.pre_generate(total)))
+            .transpose()?;
+
         let shutdown = Arc::new(AtomicBool::new(false));
 
         let shutdown_signal = Arc::clone(&shutdown);
@@ -75,7 +95,9 @@ impl Command for RunCommand {
                 .expect("failed to create signal runtime")
                 .block_on(async {
                     tokio::signal::ctrl_c().await.expect("failed to listen for ctrl_c");
-                    eprintln!("\nShutdown signal received — waiting for in-flight requests to finish...");
+                    eprintln!(
+                        "\nShutdown signal received — waiting for in-flight requests to finish..."
+                    );
                     shutdown_signal.store(true, Ordering::Relaxed);
                 });
         });
@@ -84,13 +106,21 @@ impl Command for RunCommand {
         let started_at = Instant::now();
 
         for i in 0..threads {
+            let worker_count = per_thread + if i < remainder { 1 } else { 0 };
+            let start = i * per_thread + i.min(remainder);
+
+            let worker_bodies = all_bodies
+                .as_ref()
+                .map(|bodies| bodies[start..start + worker_count].to_vec());
+
             let config = WorkerConfig {
                 host: Arc::clone(&host),
-                count: per_thread + if i < remainder { 1 } else { 0 },
+                count: worker_count,
                 concurrency: (concurrency / threads).max(1),
                 shutdown: Arc::clone(&shutdown),
                 method,
                 body: Arc::clone(&body),
+                bodies: worker_bodies,
             };
 
             let handle = thread::Builder::new()
@@ -112,22 +142,37 @@ impl Command for RunCommand {
         }
 
         print_stats(&all_results, started_at.elapsed());
+        Ok(())
     }
 }
 
 async fn run_concurrent_requests(config: WorkerConfig) -> Vec<RequestResult> {
-    let WorkerConfig { host, count, concurrency, shutdown, method, body } = config;
+    let WorkerConfig { host, count, concurrency, shutdown, method, body, bodies } = config;
     let client = reqwest::Client::new();
     let sem = Arc::new(Semaphore::new(concurrency));
     let mut tasks = Vec::with_capacity(count);
 
-    for _ in 0..count {
+    for i in 0..count {
         if shutdown.load(Ordering::Relaxed) {
             break;
         }
+
+        // Template bodies take priority; fall back to static body
+        let resolved: Option<ResolvedBody> = if let Some(ref bs) = bodies {
+            Some(ResolvedBody { content: bs[i].clone(), content_type: "application/json" })
+        } else {
+            (*body).as_ref().map(|b| match b {
+                RequestBody::Formatted { content, format } => ResolvedBody {
+                    content: content.clone(),
+                    content_type: match format {
+                        BodyFormat::Json => "application/json",
+                    },
+                },
+            })
+        };
+
         let client = client.clone();
         let url = host.as_str().to_string();
-        let body = Arc::clone(&body);
         let permit = sem.clone().acquire_owned().await.unwrap();
         tasks.push(tokio::spawn(async move {
             let _permit = permit;
@@ -139,15 +184,8 @@ async fn run_concurrent_requests(config: WorkerConfig) -> Vec<RequestResult> {
                 HttpMethod::Patch  => client.patch(&url),
                 HttpMethod::Delete => client.delete(&url),
             };
-            if let Some(b) = body.as_ref() {
-                match b {
-                    RequestBody::Formatted { content, format } => {
-                        let content_type = match format {
-                            BodyFormat::Json => "application/json",
-                        };
-                        req = req.header("Content-Type", content_type).body(content.clone());
-                    }
-                }
+            if let Some(rb) = resolved {
+                req = req.header("Content-Type", rb.content_type).body(rb.content);
             }
             match req.send().await {
                 Ok(resp) => {

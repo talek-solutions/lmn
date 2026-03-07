@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::Parser;
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
@@ -58,7 +60,13 @@ pub struct RunArgs {
     #[arg(long)]
     #[arg(help = "Request body (JSON only)")]
     #[arg(value_parser = parse_json)]
+    #[arg(conflicts_with = "template")]
     pub body: Option<String>,
+    
+    #[arg(long)]
+    #[arg(help = "Path to a JSON template file with placeholder definitions")]
+    #[arg(conflicts_with = "body")]
+    pub template: Option<PathBuf>,
 }
 
 fn parse_json(s: &str) -> Result<String, String> {
