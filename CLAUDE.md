@@ -18,3 +18,4 @@
 # Git
 - If I ask you to commit changes, opt-in for single line commit messages, which ALWAYS exclude your contribution
 - Use prefixes like: refactor:, feat:, fix:, chore: in the commit messages
+- ALWAYS request approval for commit
