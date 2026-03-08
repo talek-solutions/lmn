@@ -1,12 +1,12 @@
-use crate::command::run::RequestResult;
+use crate::command::run::{RequestResult, RunStats};
 use std::time::Duration;
 
-pub fn print_stats(results: &[RequestResult], elapsed: Duration) {
+pub fn print_stats(results: &[RequestResult], stats: &RunStats) {
     let total = results.len();
     let ok = results.iter().filter(|r| r.success).count();
     let fail = total - ok;
-    let throughput = if elapsed.as_secs_f64() > 0.0 {
-        total as f64 / elapsed.as_secs_f64()
+    let throughput = if stats.elapsed.as_secs_f64() > 0.0 {
+        total as f64 / stats.elapsed.as_secs_f64()
     } else {
         0.0
     };
@@ -48,7 +48,10 @@ pub fn print_stats(results: &[RequestResult], elapsed: Duration) {
     println!();
     println!(" Results {rule}");
     println!("  requests   {total}  ({ok} ok · {fail} failed)");
-    println!("  duration   {}", fmt_total_duration(elapsed));
+    println!("  duration   {}", fmt_total_duration(stats.elapsed));
+    if let Some(td) = stats.template_duration {
+        println!("  template   {}", fmt_total_duration(td));
+    }
     println!("  throughput {throughput:.1} req/s");
     println!();
     println!(" Latency {rule}");

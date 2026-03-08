@@ -11,6 +11,11 @@ use crate::cli::output::print_stats;
 use crate::command::Command;
 use crate::template::Template;
 
+pub struct RunStats {
+    pub elapsed: Duration,
+    pub template_duration: Option<Duration>,
+}
+
 pub struct RequestResult {
     pub duration: Duration,
     pub success: bool,
@@ -82,10 +87,12 @@ impl Command for RunCommand {
         let remainder = total % threads;
 
         // Pre-generate all template bodies before any requests fire
+        let gen_start = Instant::now();
         let all_bodies: Option<Vec<String>> = self
             .template_path
             .map(|path| Template::parse(&path).map(|t| t.pre_generate(total)))
             .transpose()?;
+        let template_duration = all_bodies.as_ref().map(|_| gen_start.elapsed());
 
         let shutdown = Arc::new(AtomicBool::new(false));
 
@@ -141,7 +148,11 @@ impl Command for RunCommand {
             all_results.extend(results);
         }
 
-        print_stats(&all_results, started_at.elapsed());
+        let stats = RunStats {
+            elapsed: started_at.elapsed(),
+            template_duration,
+        };
+        print_stats(&all_results, &stats);
         Ok(())
     }
 }
