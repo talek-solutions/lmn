@@ -1,10 +1,12 @@
 # Workflow
 - Accept edits is enabled by default
 - You are FORBIDDEN from executing any edits, until you have presented the plan to me first and I have explicitly APPROVED it
+- This rule applies to EVERY task, including follow-up instructions and continuations — approval from a previous task does NOT carry over
 
 # Plan
 - Every plan you show to me, just contain very visibly which files in the entire structure you must change
 - In the case the changes are too many, you can show how many files you will create, update and delete, with their respective folders
+- ALWAYS wait for explicit approval (e.g. "yes", "go ahead") before making any edits — do not assume approval from context or prior messages
 
 # Rust
 - Prefer using structs for parameters close by function, so they are more extendable and flexible
@@ -25,3 +27,4 @@
 # Templates
 - You are FREE to read the contents of the .templates.example folder, ALWAYS
 - Use the TEMPLATES.md file to gain information about the templating functionality
+- EVERY time you make a structural change to template placeholder, or a change to the strategy, ALWAYS update TEMPLATES.md and the actual template example accordingly 
