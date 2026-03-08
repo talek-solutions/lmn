@@ -9,17 +9,23 @@ use tokio::sync::Semaphore;
 use crate::cli::command::{HttpMethod, RunArgs};
 use crate::cli::output::print_stats;
 use crate::command::Command;
+use crate::response_template::extractor;
+use crate::response_template::field::TrackedField;
+use crate::response_template::stats::ResponseStats;
+use crate::response_template::ResponseTemplate;
 use crate::template::Template;
 
 pub struct RunStats {
     pub elapsed: Duration,
     pub template_duration: Option<Duration>,
+    pub response_stats: Option<ResponseStats>,
 }
 
 pub struct RequestResult {
     pub duration: Duration,
     pub success: bool,
     pub status_code: Option<u16>,
+    pub response_body: Option<String>,
 }
 
 pub enum BodyFormat {
@@ -38,6 +44,7 @@ pub struct RunCommand {
     pub method: HttpMethod,
     pub body: Option<RequestBody>,
     pub template_path: Option<PathBuf>,
+    pub response_template_path: Option<PathBuf>,
 }
 
 impl From<RunArgs> for RunCommand {
@@ -53,6 +60,7 @@ impl From<RunArgs> for RunCommand {
                 format: BodyFormat::Json,
             }),
             template_path: args.template,
+            response_template_path: args.response_template,
         }
     }
 }
@@ -67,6 +75,7 @@ struct WorkerConfig {
     /// Pre-generated template bodies for this worker's slice of requests.
     /// When `Some`, takes priority over `body` for request construction.
     bodies: Option<Vec<String>>,
+    tracked_fields: Option<Arc<Vec<TrackedField>>>,
 }
 
 struct ResolvedBody {
@@ -93,6 +102,15 @@ impl Command for RunCommand {
             .map(|path| Template::parse(&path).map(|t| t.pre_generate(total)))
             .transpose()?;
         let template_duration = all_bodies.as_ref().map(|_| gen_start.elapsed());
+
+        let tracked_fields: Option<Arc<Vec<TrackedField>>> = self
+            .response_template_path
+            .map(|path| {
+                ResponseTemplate::parse(&path)
+                    .map(|rt| Arc::new(rt.fields))
+                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+            })
+            .transpose()?;
 
         let shutdown = Arc::new(AtomicBool::new(false));
 
@@ -128,6 +146,7 @@ impl Command for RunCommand {
                 method,
                 body: Arc::clone(&body),
                 bodies: worker_bodies,
+                tracked_fields: tracked_fields.clone(),
             };
 
             let handle = thread::Builder::new()
@@ -148,9 +167,22 @@ impl Command for RunCommand {
             all_results.extend(results);
         }
 
+        let response_stats = tracked_fields.as_ref().map(|fields| {
+            let mut rs = ResponseStats::new();
+            for result in &all_results {
+                if let Some(ref body_str) = result.response_body {
+                    if let Ok(body_val) = serde_json::from_str(body_str) {
+                        rs.record(extractor::extract(&body_val, fields));
+                    }
+                }
+            }
+            rs
+        });
+
         let stats = RunStats {
             elapsed: started_at.elapsed(),
             template_duration,
+            response_stats,
         };
         print_stats(&all_results, &stats);
         Ok(())
@@ -158,7 +190,8 @@ impl Command for RunCommand {
 }
 
 async fn run_concurrent_requests(config: WorkerConfig) -> Vec<RequestResult> {
-    let WorkerConfig { host, count, concurrency, shutdown, method, body, bodies } = config;
+    let WorkerConfig { host, count, concurrency, shutdown, method, body, bodies, tracked_fields } =
+        config;
     let client = reqwest::Client::new();
     let sem = Arc::new(Semaphore::new(concurrency));
     let mut tasks = Vec::with_capacity(count);
@@ -185,6 +218,7 @@ async fn run_concurrent_requests(config: WorkerConfig) -> Vec<RequestResult> {
         let client = client.clone();
         let url = host.as_str().to_string();
         let permit = sem.clone().acquire_owned().await.unwrap();
+        let capture_body = tracked_fields.is_some();
         tasks.push(tokio::spawn(async move {
             let _permit = permit;
             let start = Instant::now();
@@ -201,16 +235,23 @@ async fn run_concurrent_requests(config: WorkerConfig) -> Vec<RequestResult> {
             match req.send().await {
                 Ok(resp) => {
                     let status = resp.status();
+                    let response_body = if capture_body {
+                        resp.text().await.ok()
+                    } else {
+                        None
+                    };
                     RequestResult {
                         duration: start.elapsed(),
                         success: status.is_success(),
                         status_code: Some(status.as_u16()),
+                        response_body,
                     }
                 }
                 Err(_) => RequestResult {
                     duration: start.elapsed(),
                     success: false,
                     status_code: None,
+                    response_body: None,
                 },
             }
         }));

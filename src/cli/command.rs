@@ -67,6 +67,11 @@ pub struct RunArgs {
     #[arg(help = "Path to a JSON template file with placeholder definitions")]
     #[arg(conflicts_with = "body")]
     pub template: Option<PathBuf>,
+
+    #[arg(short = 'r')]
+    #[arg(long = "response-template")]
+    #[arg(help = "Path to a JSON response template for tracking response fields")]
+    pub response_template: Option<PathBuf>,
 }
 
 fn parse_json(s: &str) -> Result<String, String> {

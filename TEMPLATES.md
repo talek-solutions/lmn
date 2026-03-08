@@ -203,6 +203,105 @@ All of the following are checked at startup before any request fires:
 
 ---
 
+---
+
+# Response Templates
+
+Response templates let you track specific fields from response bodies. You define a JSON shape that mirrors the fields you care about — everything else in the response is ignored. Extracted values are aggregated and displayed in the run statistics.
+
+---
+
+## Usage
+
+```
+loadtest run -H <host> -M post -t path/to/template.json -r path/to/response-template.json
+```
+
+`-r` / `--response-template` is optional and independent of `-t`.
+
+---
+
+## File Structure
+
+A response template is a JSON object that mirrors the expected response shape. Leaf values are `{{TYPE}}` placeholders indicating which fields to extract and how to aggregate them.
+
+```json
+{
+  "<field>": "{{TYPE}}",
+  "<nested>": {
+    "<field>": "{{TYPE}}"
+  }
+}
+```
+
+The template acts as a loose schema — the response may contain additional fields, but any field referenced in the template that is **missing** from a response is tracked as a mismatch.
+
+---
+
+## Supported Extraction Types
+
+### `{{STRING}}`
+
+Extracts a string value and tracks the frequency distribution of distinct values.
+
+**Stats output:** count per unique value.
+
+### `{{FLOAT}}`
+
+Extracts a numeric value and tracks aggregate statistics.
+
+**Stats output:** min, max, avg, percentiles.
+
+---
+
+## Nested Paths
+
+The template structure mirrors the response JSON. To track a deeply nested field, nest the template accordingly:
+
+```json
+{
+  "error": {
+    "code": "{{STRING}}"
+  }
+}
+```
+
+Given a response `{"error": {"code": "NOT_FOUND", "message": "..."}, "request_id": "..."}`, this extracts `error.code` as `"NOT_FOUND"` and ignores `error.message` and `request_id`.
+
+---
+
+## Mismatches
+
+When a response does not contain a field defined in the template, it is **not** treated as an error — the request still counts as normal. Instead, mismatches are tracked separately and reported in the statistics, so you can see how many responses did not conform to the expected shape.
+
+A mismatch occurs when:
+- A templated field path does not exist in the response
+- A templated field has a value type that does not match the extraction type (e.g. `{{FLOAT}}` on a string value)
+
+---
+
+## Full Example
+
+**Response template:**
+```json
+{
+  "error": {
+    "code": "{{STRING}}"
+  }
+}
+```
+
+**CLI:**
+```
+loadtest run -H https://api.example.com/pay -M post -t request.json -r response.json
+```
+
+After the run, the statistics section will include:
+- Distribution of `error.code` values across all responses
+- Count of responses where `error.code` was missing or had an unexpected type
+
+---
+
 ## Extending the Template System
 
 ### Adding a new generator type

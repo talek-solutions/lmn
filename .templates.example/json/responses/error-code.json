@@ -1,0 +1,7 @@
+{
+  "json": {
+    "error": {
+      "code": "{{STRING}}"
+    }
+  }
+}

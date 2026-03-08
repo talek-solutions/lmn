@@ -1,4 +1,6 @@
 use crate::command::run::{RequestResult, RunStats};
+use crate::response_template::stats::ResponseStats;
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 pub fn print_stats(results: &[RequestResult], stats: &RunStats) {
@@ -66,6 +68,61 @@ pub fn print_stats(results: &[RequestResult], stats: &RunStats) {
         println!("  {code:<5}  {count:>count_width$}  {bar}");
     }
     println!();
+
+    if let Some(ref rs) = stats.response_stats {
+        print_response_stats(rs, &rule);
+    }
+}
+
+fn print_response_stats(rs: &ResponseStats, rule: &str) {
+    let sorted_strings: BTreeMap<_, _> = rs.string_distributions.iter().collect();
+    for (path, dist) in &sorted_strings {
+        println!(" Response: {path} {rule}");
+        let mut entries: Vec<_> = dist.iter().collect();
+        entries.sort_by(|a, b| b.1.cmp(a.1));
+        let count_width = entries.iter().map(|(_, n)| n.to_string().len()).max().unwrap_or(1);
+        let bar_max = entries.iter().map(|(_, n)| **n).max().unwrap_or(1);
+        let bar_width = 28usize;
+        for (val, count) in &entries {
+            let filled = (*count * bar_width) / bar_max;
+            let bar = "█".repeat(filled);
+            println!("  {val:<20}  {count:>count_width$}  {bar}");
+        }
+        println!();
+    }
+
+    let sorted_floats: BTreeMap<_, _> = rs.float_fields.iter().collect();
+    for (path, field) in &sorted_floats {
+        if field.values.is_empty() {
+            continue;
+        }
+        let mut sorted = field.values.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let min = sorted.first().unwrap();
+        let max = sorted.last().unwrap();
+        let avg = sorted.iter().sum::<f64>() / sorted.len() as f64;
+        let p50 = sorted[sorted.len() * 50 / 100];
+        let p95 = sorted[(sorted.len() * 95 / 100).min(sorted.len() - 1)];
+        let p99 = sorted[(sorted.len() * 99 / 100).min(sorted.len() - 1)];
+
+        println!(" Response: {path} {rule}");
+        println!("  min   {min:.4}");
+        println!("  avg   {avg:.4}");
+        println!("  p50   {p50:.4}");
+        println!("  p95   {p95:.4}");
+        println!("  p99   {p99:.4}");
+        println!("  max   {max:.4}");
+        println!();
+    }
+
+    if !rs.mismatch_counts.is_empty() {
+        let sorted_mismatches: BTreeMap<_, _> = rs.mismatch_counts.iter().collect();
+        println!(" Response mismatches {rule}");
+        for (path, count) in &sorted_mismatches {
+            println!("  {path:<30}  {count}");
+        }
+        println!();
+    }
 }
 
 fn fmt_latency(d: Duration) -> String {
