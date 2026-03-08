@@ -2,6 +2,7 @@ pub mod definition;
 pub mod error;
 pub mod generator;
 pub mod renderer;
+mod generators;
 mod validators;
 
 use std::collections::HashMap;
