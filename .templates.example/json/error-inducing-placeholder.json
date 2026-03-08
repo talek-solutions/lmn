@@ -1,58 +1,26 @@
 {
-  "generatedNameField": "{{name_string}}",
-  "generatedLastNameField": "{{name_string:once}}",
-  "generatedAmountField": "{{amount_number}}",
-  "generatedMoneyField": "{{money_object}}",
+  "description": "Used to reflect error by making use of HttpBin reflection on POST method",
+  "error": {
+    "code": "{{error_code}}",
+    "message": "{{error_message}}"
+  },
   "_loadtest_metadata_templates": {
-    "name_string": {
+    "error_code": {
       "type": "string",
-      "exact": 6,
-      "max": 10,
-      "min": 3,
       "details": {
-        "uppercase": true,
-        "uppercase_count": 3,
-        "lowercase": true,
-        "lowercase_count": 2,
-        "special_chars": [
-          "@",
-          ":",
-          "_",
-          "-"
-        ],
         "choice": [
-          "Name1",
-          "Name2",
-          "Name3"
+          "WRONG_DATA",
+          "INSUFFICIENT_BALANCE",
+          "TRANSACTION_NOT_FOUND"
         ]
       }
     },
-    "amount_number": {
-      "type": "float",
-      "exact": 5.00,
-      "max": 100,
+    "error_message": {
+      "type": "string",
+      "max": 20,
       "min": 5,
       "details": {
-        "decimals": 2
-      }
-    },
-    "currency_string": {
-      "type": "string",
-      "exact": 3,
-      "details": {
-        "choice": [
-          "EUR",
-          "USD",
-          "JPY",
-          "CHF"
-        ]
-      }
-    },
-    "money_object": {
-      "type": "object",
-      "composition": {
-        "amount": "{{amount_number}}",
-        "currency": "{{currency_string}}"
+        "uppercase": true
       }
     }
   }
