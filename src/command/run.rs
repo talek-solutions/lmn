@@ -8,7 +8,7 @@ use tokio::sync::Semaphore;
 
 use crate::cli::command::{HttpMethod, RunArgs};
 use crate::cli::output::print_stats;
-use crate::command::Command;
+use crate::command::{Command, Body};
 use crate::response_template::extractor;
 use crate::response_template::field::TrackedField;
 use crate::response_template::stats::ResponseStats;
@@ -32,17 +32,13 @@ pub enum BodyFormat {
     Json,
 }
 
-pub enum RequestBody {
-    Formatted { content: String, format: BodyFormat },
-}
-
 pub struct RunCommand {
     pub host: String,
     pub threads: usize,
     pub request_count: usize,
     pub concurrency: usize,
     pub method: HttpMethod,
-    pub body: Option<RequestBody>,
+    pub body: Option<Body>,
     pub template_path: Option<PathBuf>,
     pub response_template_path: Option<PathBuf>,
 }
@@ -55,7 +51,7 @@ impl From<RunArgs> for RunCommand {
             request_count: args.request_count as usize,
             concurrency: args.concurrency as usize,
             method: args.method,
-            body: args.body.map(|s| RequestBody::Formatted {
+            body: args.body.map(|s| Body::Formatted {
                 content: s,
                 format: BodyFormat::Json,
             }),
@@ -71,7 +67,7 @@ struct WorkerConfig {
     concurrency: usize,
     shutdown: Arc<AtomicBool>,
     method: HttpMethod,
-    body: Arc<Option<RequestBody>>,
+    body: Arc<Option<Body>>,
     /// Pre-generated template bodies for this worker's slice of requests.
     /// When `Some`, takes priority over `body` for request construction.
     bodies: Option<Vec<String>>,
@@ -206,7 +202,7 @@ async fn run_concurrent_requests(config: WorkerConfig) -> Vec<RequestResult> {
             Some(ResolvedBody { content: bs[i].clone(), content_type: "application/json" })
         } else {
             (*body).as_ref().map(|b| match b {
-                RequestBody::Formatted { content, format } => ResolvedBody {
+                Body::Formatted { content, format } => ResolvedBody {
                     content: content.clone(),
                     content_type: match format {
                         BodyFormat::Json => "application/json",

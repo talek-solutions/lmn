@@ -17,6 +17,8 @@ pub enum HttpMethod {
 #[command(styles = CLAP_STYLING)]
 pub enum LoadTestRunCli {
     Run(RunArgs),
+    ConfigureRequest(ConfigureRequestArgs),
+    ConfigureResponse(ConfigureResponseArgs),
 }
 
 #[derive(clap::Args)]
@@ -72,6 +74,58 @@ pub struct RunArgs {
     #[arg(long = "response-template")]
     #[arg(help = "Path to a JSON response template for tracking response fields")]
     pub response_template: Option<PathBuf>,
+}
+
+
+#[derive(clap::Args)]
+#[command(version, about)]
+#[command(name = "configure-request")]
+#[command(long_about = "Configure a persistent request body template")]
+pub struct ConfigureRequestArgs {
+    #[arg(short='A')]
+    #[arg(long)]
+    #[arg(help = "Template alias")]
+    #[arg(required = true)]
+    pub alias: String,
+    
+    #[arg(short='B')]
+    #[arg(long)]
+    #[arg(help = "Request body (JSON only)")]
+    #[arg(value_parser = parse_json)]
+    #[arg(conflicts_with = "template_path")]
+    #[arg(requires = "alias")]
+    pub body: Option<String>,
+    
+    #[arg(short='T')]
+    #[arg(long)]
+    #[arg(help = "Path to a request template")]
+    #[arg(conflicts_with = "body")]
+    pub template_path: Option<PathBuf>,
+}
+
+#[derive(clap::Args)]
+#[command(version, about)]
+#[command(name = "configure-response")]
+#[command(long_about = "Configure a persistent request body template")]
+pub struct ConfigureResponseArgs {
+    #[arg(short='A')]
+    #[arg(long)]
+    #[arg(help = "Template alias")]
+    #[arg(required = true)]
+    pub alias: String,
+
+    #[arg(short='B')]
+    #[arg(long)]
+    #[arg(help = "Response body (JSON only)")]
+    #[arg(value_parser = parse_json)]
+    #[arg(conflicts_with = "template_path")]
+    pub body: Option<String>,
+    
+    #[arg(short='T')]
+    #[arg(long)]
+    #[arg(help = "Path to a response template")]
+    #[arg(conflicts_with = "body")]
+    pub template_path: Option<PathBuf>,
 }
 
 fn parse_json(s: &str) -> Result<String, String> {
