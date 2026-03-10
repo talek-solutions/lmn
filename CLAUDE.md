@@ -24,6 +24,9 @@
 - Use prefixes like: refactor:, feat:, fix:, chore: in the commit messages
 - ALWAYS request approval for commit
 
+# CLI
+- EVERY time you make a change to the CLI contract (flags, subcommands, aliases, conflicts), ALWAYS update CLI.md accordingly
+
 # Templates
 - You are FREE to read the contents of the .templates.example folder, ALWAYS
 - Use the TEMPLATES.md file to gain information about the templating functionality

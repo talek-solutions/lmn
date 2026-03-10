@@ -55,9 +55,19 @@ impl From<RunArgs> for RunCommand {
                 content: s,
                 format: BodyFormat::Json,
             }),
-            template_path: args.template,
-            response_template_path: args.response_template,
+            template_path: args.template.or_else(|| args.request_alias.map(resolve_alias("requests"))),
+            response_template_path: args.response_template.or_else(|| args.response_alias.map(resolve_alias("responses"))),
         }
+    }
+}
+
+fn resolve_alias(sub_dir: &'static str) -> impl Fn(String) -> PathBuf {
+    move |alias| {
+        let mut path = PathBuf::from(alias);
+        if path.extension().is_none() {
+            path.set_extension("json");
+        }
+        PathBuf::from(".templates").join(sub_dir).join(path)
     }
 }
 
