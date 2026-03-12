@@ -30,3 +30,39 @@ impl ResponseTemplate {
         Ok(ResponseTemplate { fields })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn write_temp(content: &str) -> tempfile::NamedTempFile {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(content.as_bytes()).unwrap();
+        f
+    }
+
+    #[test]
+    fn parse_fails_on_missing_file() {
+        assert!(ResponseTemplate::parse(Path::new("nonexistent.json")).is_err());
+    }
+
+    #[test]
+    fn parse_fails_on_invalid_json() {
+        let f = write_temp("not json");
+        assert!(ResponseTemplate::parse(f.path()).is_err());
+    }
+
+    #[test]
+    fn parse_fails_when_no_tracked_fields() {
+        let f = write_temp(r#"{"status": "ok"}"#);
+        assert!(ResponseTemplate::parse(f.path()).is_err());
+    }
+
+    #[test]
+    fn parse_succeeds_with_valid_template() {
+        let f = write_temp(r#"{"status": "{{STRING}}"}"#);
+        let rt = ResponseTemplate::parse(f.path()).unwrap();
+        assert_eq!(rt.fields.len(), 1);
+    }
+}

@@ -1,4 +1,5 @@
 # Workflow
+- Always provide a plan for the changes you want to make and only then you can eddit
 - Accept edits is enabled by default
 - You are FORBIDDEN from executing any edits, until you have presented the plan to me first and I have explicitly APPROVED it
 - This rule applies to EVERY task, including follow-up instructions and continuations — approval from a previous task does NOT carry over
@@ -31,3 +32,8 @@
 - You are FREE to read the contents of the .templates.example folder, ALWAYS
 - Use the TEMPLATES.md file to gain information about the templating functionality
 - EVERY time you make a structural change to template placeholder, or a change to the strategy, ALWAYS update TEMPLATES.md and the actual template example accordingly 
+
+# Tests
+- You are to ALWAYS write tests for tht functionalities you change or add
+- You are FORBIDDEN from deleting tests for making them pass
+- The only way you can delete a test is with you asking for my explicit approval on the specific test and file

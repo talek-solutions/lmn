@@ -96,3 +96,42 @@ fn create_file(sub_dir: &str, file_name: String, content: String) -> Result<(), 
     let mut file = File::create(&file_path).map_err(|_| ConfigError::Fs(file_name.clone()))?;
     file.write_all(content.as_bytes()).map_err(|_| ConfigError::Fs(file_name))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn request_kind_dir() {
+        assert_eq!(TemplateKind::Request.dir(), "requests");
+    }
+
+    #[test]
+    fn response_kind_dir() {
+        assert_eq!(TemplateKind::Response.dir(), "responses");
+    }
+
+    #[test]
+    fn create_file_writes_content() {
+        let file_name = "__test_create_file_writes.json".to_string();
+        let path = PathBuf::from(TEMPLATE_ROOT_DIR).join("requests").join(&file_name);
+        let _ = std::fs::remove_file(&path);
+
+        let result = create_file("requests", file_name.clone(), r#"{"ok":true}"#.to_string());
+        assert!(result.is_ok());
+        assert!(path.exists());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn create_file_rejects_duplicate() {
+        let file_name = "__test_create_file_duplicate.json".to_string();
+        let path = PathBuf::from(TEMPLATE_ROOT_DIR).join("requests").join(&file_name);
+        let _ = std::fs::remove_file(&path);
+
+        create_file("requests", file_name.clone(), "{}".to_string()).unwrap();
+        let result = create_file("requests", file_name.clone(), "{}".to_string());
+        assert!(matches!(result, Err(ConfigError::TemplateAlreadyExists(_))));
+        let _ = std::fs::remove_file(&path);
+    }
+}

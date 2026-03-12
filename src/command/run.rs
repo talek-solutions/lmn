@@ -271,3 +271,26 @@ async fn run_concurrent_requests(config: WorkerConfig) -> Vec<RequestResult> {
     }
     results
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_alias_appends_json_extension() {
+        let path = resolve_alias("requests")("my-alias".to_string());
+        assert_eq!(path, PathBuf::from(".templates/requests/my-alias.json"));
+    }
+
+    #[test]
+    fn resolve_alias_preserves_existing_extension() {
+        let path = resolve_alias("requests")("my-alias.json".to_string());
+        assert_eq!(path, PathBuf::from(".templates/requests/my-alias.json"));
+    }
+
+    #[test]
+    fn resolve_alias_uses_correct_subdir() {
+        let path = resolve_alias("responses")("template".to_string());
+        assert_eq!(path, PathBuf::from(".templates/responses/template.json"));
+    }
+}

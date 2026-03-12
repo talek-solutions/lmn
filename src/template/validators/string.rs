@@ -130,3 +130,61 @@ fn validate_length_spec(
 
     Ok(LengthSpec::Range { min: min_v, max: max_v })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::template::validators::Validator;
+
+    fn v(exact: Option<f64>, min: Option<f64>, max: Option<f64>, details: Option<RawStringDetails>) -> StringValidator {
+        StringValidator { exact, min, max, details }
+    }
+
+    #[test]
+    fn validates_choice_list() {
+        let d = RawStringDetails { choice: Some(vec!["a".into(), "b".into()]), ..Default::default() };
+        assert!(v(None, None, None, Some(d)).validate("x").is_ok());
+    }
+
+    #[test]
+    fn rejects_empty_choice_list() {
+        let d = RawStringDetails { choice: Some(vec![]), ..Default::default() };
+        assert!(v(None, None, None, Some(d)).validate("x").is_err());
+    }
+
+    #[test]
+    fn validates_exact_length() {
+        assert!(v(Some(5.0), None, None, None).validate("x").is_ok());
+    }
+
+    #[test]
+    fn rejects_exact_exceeds_max_allowed() {
+        assert!(v(Some(10_001.0), None, None, None).validate("x").is_err());
+    }
+
+    #[test]
+    fn validates_range() {
+        assert!(v(None, Some(3.0), Some(8.0), None).validate("x").is_ok());
+    }
+
+    #[test]
+    fn rejects_min_greater_than_max() {
+        assert!(v(None, Some(10.0), Some(5.0), None).validate("x").is_err());
+    }
+
+    #[test]
+    fn rejects_char_counts_exceeding_min_length() {
+        let d = RawStringDetails { uppercase_count: Some(5), lowercase_count: Some(5), ..Default::default() };
+        assert!(v(Some(3.0), None, None, Some(d)).validate("x").is_err());
+    }
+
+    #[test]
+    fn validate_length_spec_exact() {
+        assert!(matches!(validate_length_spec(Some(5.0), None, None, "x").unwrap(), LengthSpec::Exact(5)));
+    }
+
+    #[test]
+    fn validate_length_spec_range() {
+        assert!(matches!(validate_length_spec(None, Some(2.0), Some(8.0), "x").unwrap(), LengthSpec::Range { min: 2, max: 8 }));
+    }
+}

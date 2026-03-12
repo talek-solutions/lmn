@@ -22,3 +22,39 @@ impl std::fmt::Display for ConfigError {
 }
 
 impl std::error::Error for ConfigError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn display_fs() {
+        assert_eq!(ConfigError::Fs("file.json".into()).to_string(), "FS Error: file.json");
+    }
+
+    #[test]
+    fn display_general_error() {
+        assert_eq!(ConfigError::GeneralError.to_string(), "General FS Error");
+    }
+
+    #[test]
+    fn display_invalid_format() {
+        assert_eq!(ConfigError::InvalidFormat("bad".into()).to_string(), "Invalid format: bad");
+    }
+
+    #[test]
+    fn display_template_already_exists() {
+        assert_eq!(
+            ConfigError::TemplateAlreadyExists("foo".into()).to_string(),
+            "Template \"foo\" already exists"
+        );
+    }
+
+    #[test]
+    fn display_template_not_found() {
+        assert_eq!(
+            ConfigError::TemplateNotFound("bar".into()).to_string(),
+            "Template \"bar\" not found"
+        );
+    }
+}

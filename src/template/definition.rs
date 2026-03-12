@@ -95,3 +95,44 @@ fn detect_cycle<'a>(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn float_def() -> TemplateDef {
+        TemplateDef::Float(FloatDef { strategy: FloatStrategy::Exact(1.0), decimals: 0 })
+    }
+
+    fn object_def(refs: &[(&str, &str)]) -> TemplateDef {
+        TemplateDef::Object(ObjectDef {
+            composition: refs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+        })
+    }
+
+    #[test]
+    fn detect_cycle_finds_direct_cycle() {
+        let mut defs = HashMap::new();
+        defs.insert("a".to_string(), object_def(&[("x", "b")]));
+        defs.insert("b".to_string(), object_def(&[("y", "a")]));
+        let mut visiting = Vec::new();
+        assert!(detect_cycle("a", &defs, &mut visiting).is_err());
+    }
+
+    #[test]
+    fn detect_cycle_ok_for_acyclic_graph() {
+        let mut defs = HashMap::new();
+        defs.insert("a".to_string(), object_def(&[("x", "b")]));
+        defs.insert("b".to_string(), float_def());
+        let mut visiting = Vec::new();
+        assert!(detect_cycle("a", &defs, &mut visiting).is_ok());
+    }
+
+    #[test]
+    fn detect_cycle_ok_for_non_object() {
+        let mut defs = HashMap::new();
+        defs.insert("x".to_string(), float_def());
+        let mut visiting = Vec::new();
+        assert!(detect_cycle("x", &defs, &mut visiting).is_ok());
+    }
+}

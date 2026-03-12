@@ -97,3 +97,50 @@ impl Template {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn write_temp(content: &str) -> tempfile::NamedTempFile {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(content.as_bytes()).unwrap();
+        f
+    }
+
+    #[test]
+    fn parse_fails_on_missing_file() {
+        assert!(Template::parse(Path::new("nonexistent.json")).is_err());
+    }
+
+    #[test]
+    fn parse_fails_on_invalid_json() {
+        let f = write_temp("not json");
+        assert!(Template::parse(f.path()).is_err());
+    }
+
+    #[test]
+    fn parse_fails_on_unknown_placeholder() {
+        let f = write_temp(r#"{"field": "{{undefined}}"}"#);
+        assert!(Template::parse(f.path()).is_err());
+    }
+
+    #[test]
+    fn parse_fails_on_circular_reference() {
+        let f = write_temp(r#"{
+            "field": "{{a}}",
+            "_loadtest_metadata_templates": {
+                "a": { "type": "object", "composition": { "x": "{{b}}" } },
+                "b": { "type": "object", "composition": { "y": "{{a}}" } }
+            }
+        }"#);
+        assert!(Template::parse(f.path()).is_err());
+    }
+
+    #[test]
+    fn parse_succeeds_with_no_placeholders() {
+        let f = write_temp(r#"{"field": "static"}"#);
+        assert!(Template::parse(f.path()).is_ok());
+    }
+}

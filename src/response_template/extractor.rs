@@ -55,3 +55,23 @@ fn resolve_path<'a>(value: &'a Value, path: &[String]) -> Option<&'a Value> {
     }
     Some(current)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn resolve_path_returns_none_for_missing_key() {
+        let body = json!({ "a": { "b": 1 } });
+        let path: Vec<String> = vec!["a".into(), "c".into()];
+        assert!(resolve_path(&body, &path).is_none());
+    }
+
+    #[test]
+    fn resolve_path_returns_deeply_nested_value() {
+        let body = json!({ "a": { "b": { "c": "deep" } } });
+        let path: Vec<String> = vec!["a".into(), "b".into(), "c".into()];
+        assert_eq!(resolve_path(&body, &path), Some(&json!("deep")));
+    }
+}

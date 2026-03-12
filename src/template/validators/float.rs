@@ -60,3 +60,38 @@ impl Validator for FloatValidator {
         Ok(TemplateDef::Float(FloatDef { strategy, decimals }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::template::validators::Validator;
+
+    fn v(exact: Option<f64>, min: Option<f64>, max: Option<f64>) -> FloatValidator {
+        FloatValidator { exact, min, max, details: None }
+    }
+
+    #[test]
+    fn validates_exact() {
+        assert!(v(Some(1.0), None, None).validate("x").is_ok());
+    }
+
+    #[test]
+    fn validates_range() {
+        assert!(v(None, Some(1.0), Some(5.0)).validate("x").is_ok());
+    }
+
+    #[test]
+    fn rejects_min_greater_than_max() {
+        assert!(v(None, Some(5.0), Some(1.0)).validate("x").is_err());
+    }
+
+    #[test]
+    fn rejects_missing_min() {
+        assert!(v(None, None, Some(5.0)).validate("x").is_err());
+    }
+
+    #[test]
+    fn rejects_missing_max() {
+        assert!(v(None, Some(1.0), None).validate("x").is_err());
+    }
+}

@@ -47,3 +47,48 @@ fn generate_string(config: &StringGenConfig, rng: &mut impl Rng) -> String {
     chars.shuffle(rng);
     chars.into_iter().collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::template::generators::Generate;
+
+    #[test]
+    fn choice_strategy_returns_one_of_choices() {
+        let choices = vec!["foo".to_string(), "bar".to_string()];
+        let def = StringDef { strategy: StringStrategy::Choice(choices.clone()) };
+        let val = def.generate(&mut rand::thread_rng());
+        assert!(choices.contains(&val.as_str().unwrap().to_string()));
+    }
+
+    #[test]
+    fn generated_strategy_exact_length() {
+        let def = StringDef {
+            strategy: StringStrategy::Generated(StringGenConfig {
+                length: LengthSpec::Exact(10),
+                uppercase_count: 2,
+                lowercase_count: 3,
+                special_chars: vec![],
+            }),
+        };
+        let val = def.generate(&mut rand::thread_rng());
+        assert_eq!(val.as_str().unwrap().len(), 10);
+    }
+
+    #[test]
+    fn generated_strategy_range_length() {
+        let def = StringDef {
+            strategy: StringStrategy::Generated(StringGenConfig {
+                length: LengthSpec::Range { min: 5, max: 10 },
+                uppercase_count: 0,
+                lowercase_count: 0,
+                special_chars: vec![],
+            }),
+        };
+        let mut rng = rand::thread_rng();
+        for _ in 0..20 {
+            let len = def.generate(&mut rng).as_str().unwrap().len();
+            assert!(len >= 5 && len <= 10);
+        }
+    }
+}

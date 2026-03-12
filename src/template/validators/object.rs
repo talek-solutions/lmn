@@ -42,3 +42,36 @@ fn extract_plain_name(s: &str) -> Option<&str> {
     let inner = s.trim().strip_prefix("{{")?.strip_suffix("}}")?;
     Some(inner.trim_end_matches(":once"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::template::validators::Validator;
+
+    #[test]
+    fn validates_valid_composition() {
+        let comp = [("amount".to_string(), "{{price}}".to_string())].into_iter().collect();
+        assert!(ObjectValidator { composition: comp }.validate("x").is_ok());
+    }
+
+    #[test]
+    fn rejects_non_placeholder_value() {
+        let comp = [("amount".to_string(), "price".to_string())].into_iter().collect();
+        assert!(ObjectValidator { composition: comp }.validate("x").is_err());
+    }
+
+    #[test]
+    fn extract_plain_name_strips_braces() {
+        assert_eq!(extract_plain_name("{{name}}"), Some("name"));
+    }
+
+    #[test]
+    fn extract_plain_name_strips_once_suffix() {
+        assert_eq!(extract_plain_name("{{name:once}}"), Some("name"));
+    }
+
+    #[test]
+    fn extract_plain_name_returns_none_for_plain_string() {
+        assert_eq!(extract_plain_name("plain"), None);
+    }
+}

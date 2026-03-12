@@ -57,3 +57,30 @@ fn parse_field_type(s: &str) -> Result<Option<ResponseFieldType>, ResponseTempla
         _ => Err(ResponseTemplateError::InvalidFieldType(inner.to_string())),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_string_placeholder() {
+        let result = parse_field_type("{{STRING}}").unwrap();
+        assert!(matches!(result, Some(ResponseFieldType::String)));
+    }
+
+    #[test]
+    fn parse_float_placeholder() {
+        let result = parse_field_type("{{FLOAT}}").unwrap();
+        assert!(matches!(result, Some(ResponseFieldType::Float)));
+    }
+
+    #[test]
+    fn parse_non_placeholder_returns_none() {
+        assert!(parse_field_type("plain").unwrap().is_none());
+    }
+
+    #[test]
+    fn parse_unknown_type_returns_err() {
+        assert!(parse_field_type("{{UNKNOWN}}").is_err());
+    }
+}

@@ -55,3 +55,41 @@ impl GeneratorContext {
         Value::Object(map)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::template::definition::{FloatDef, FloatStrategy, ObjectDef, TemplateDef};
+
+    fn float_exact(v: f64) -> TemplateDef {
+        TemplateDef::Float(FloatDef { strategy: FloatStrategy::Exact(v), decimals: 0 })
+    }
+
+    #[test]
+    fn generate_by_name_returns_null_for_unknown() {
+        let ctx = GeneratorContext::new(HashMap::new());
+        let val = ctx.generate_by_name("unknown", &mut rand::thread_rng());
+        assert_eq!(val, Value::Null);
+    }
+
+    #[test]
+    fn generate_by_name_returns_value_for_known() {
+        let mut defs = HashMap::new();
+        defs.insert("price".to_string(), float_exact(10.0));
+        let ctx = GeneratorContext::new(defs);
+        let val = ctx.generate_by_name("price", &mut rand::thread_rng());
+        assert!(val.is_number());
+    }
+
+    #[test]
+    fn generate_object_composes_fields() {
+        let mut defs = HashMap::new();
+        defs.insert("price".to_string(), float_exact(42.0));
+        let ctx = GeneratorContext::new(defs);
+        let obj = ObjectDef {
+            composition: [("amount".to_string(), "price".to_string())].into_iter().collect(),
+        };
+        let val = ctx.generate_object(&obj, &mut rand::thread_rng());
+        assert!(val["amount"].is_number());
+    }
+}
