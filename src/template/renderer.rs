@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use rand::Rng;
 use serde_json::Value;
+use tracing::instrument;
 
 use crate::template::definition::TemplateDef;
 use crate::template::error::TemplateError;
@@ -29,6 +30,7 @@ pub fn render(template: &Value, ctx: &GeneratorContext, rng: &mut impl Rng) -> V
 
 /// Validates that every `{{name}}` placeholder in the body has a corresponding
 /// definition. Returns an error naming the first unknown placeholder found.
+#[instrument(skip(body, defs), fields(def_count = defs.len()))]
 pub fn validate_placeholders(
     body: &Value,
     defs: &HashMap<String, TemplateDef>,

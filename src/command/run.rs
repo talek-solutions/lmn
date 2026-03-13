@@ -6,9 +6,12 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::Semaphore;
 
+use tracing::{info_span, Instrument};
+
 use crate::cli::command::{HttpMethod, RunArgs};
 use crate::cli::output::print_stats;
 use crate::command::{Command, Body};
+use crate::monitoring::SpanName;
 use crate::response_template::extractor;
 use crate::response_template::field::TrackedField;
 use crate::response_template::stats::ResponseStats;
@@ -105,7 +108,13 @@ impl Command for RunCommand {
         let gen_start = Instant::now();
         let all_bodies: Option<Vec<String>> = self
             .template_path
-            .map(|path| Template::parse(&path).map(|t| t.pre_generate(total)))
+            .map(|path| {
+                let template = info_span!(SpanName::TEMPLATE_PARSE, path = %path.display())
+                    .in_scope(|| Template::parse(&path))?;
+                let bodies = info_span!(SpanName::TEMPLATE_RENDER, n = total)
+                    .in_scope(|| template.pre_generate(total));
+                Ok::<Vec<String>, Box<dyn std::error::Error>>(bodies)
+            })
             .transpose()?;
         let template_duration = all_bodies.as_ref().map(|_| gen_start.elapsed());
 
@@ -225,6 +234,8 @@ async fn run_concurrent_requests(config: WorkerConfig) -> Vec<RequestResult> {
         let url = host.as_str().to_string();
         let permit = sem.clone().acquire_owned().await.unwrap();
         let capture_body = tracked_fields.is_some();
+        let method_str = method.as_str();
+        let span = info_span!(SpanName::REQUEST, url = %url, method = method_str);
         tasks.push(tokio::spawn(async move {
             let _permit = permit;
             let start = Instant::now();
@@ -260,7 +271,7 @@ async fn run_concurrent_requests(config: WorkerConfig) -> Vec<RequestResult> {
                     response_body: None,
                 },
             }
-        }));
+        }.instrument(span)));
     }
 
     let mut results = Vec::with_capacity(count);

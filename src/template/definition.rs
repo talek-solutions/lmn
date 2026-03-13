@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use serde::Deserialize;
+use tracing::instrument;
 
 use crate::template::error::TemplateError;
 use crate::template::validators;
@@ -55,6 +56,7 @@ pub fn validate_all(
 
 // ── Circular reference detection ──────────────────────────────────────────────
 
+#[instrument(skip(defs), fields(def_count = defs.len()))]
 pub fn check_circular_refs(defs: &HashMap<String, TemplateDef>) -> Result<(), TemplateError> {
     for def in defs.values() {
         if let TemplateDef::Object(obj) = def {

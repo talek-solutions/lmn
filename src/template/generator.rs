@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use rand::Rng;
 use serde_json::Value;
+use tracing::debug;
 
 use crate::template::definition::{ObjectDef, TemplateDef};
 use crate::template::generators::Generate;
@@ -34,7 +35,10 @@ impl GeneratorContext {
     pub(crate) fn generate_by_name(&self, name: &str, rng: &mut impl Rng) -> Value {
         match self.defs.get(name) {
             Some(def) => self.generate_def(def, rng),
-            None => Value::Null,
+            None => {
+                debug!(placeholder = name, "unknown placeholder resolved to null");
+                Value::Null
+            }
         }
     }
 

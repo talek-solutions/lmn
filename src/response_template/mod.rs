@@ -6,6 +6,7 @@ pub mod stats;
 use std::path::Path;
 
 use serde_json::Value;
+use tracing::instrument;
 
 use error::ResponseTemplateError;
 use field::TrackedField;
@@ -15,6 +16,7 @@ pub struct ResponseTemplate {
 }
 
 impl ResponseTemplate {
+    #[instrument(fields(path = %path.display()))]
     pub fn parse(path: &Path) -> Result<Self, ResponseTemplateError> {
         let content = std::fs::read_to_string(path)?;
         let root: Value = serde_json::from_str(&content)?;
