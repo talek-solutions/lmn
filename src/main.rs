@@ -2,6 +2,7 @@ use clap::Parser;
 use loadtest::cli::command::LoadTestRunCli;
 use loadtest::command::run::RunCommand;
 use loadtest::command::{Command, Commands, ConfigureTemplateCommand};
+use loadtest::monitoring::SpanName;
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::Resource;
@@ -34,8 +35,7 @@ fn main() {
     // Trace executed code
     tracing::subscriber::set_global_default(subscriber).expect("failed to set global tracing subscriber");
 
-    // Spans will be sent to the configured OpenTelemetry exporter
-    let root = tracing::span!(tracing::Level::INFO, "start");
+    let root = tracing::span!(tracing::Level::INFO, SpanName::RUN);
     let _enter = root.enter();
 
     let cmd = match LoadTestRunCli::parse() {
@@ -56,6 +56,8 @@ fn main() {
         }
     };
 
+    drop(_enter);
+    drop(root);
     let _ = provider.shutdown();
     std::process::exit(exit_code);
 }

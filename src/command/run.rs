@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::Semaphore;
 
-use tracing::{info_span, Instrument};
+use tracing::info_span;
 
 use crate::cli::command::{HttpMethod, RunArgs};
 use crate::cli::output::print_stats;
@@ -109,10 +109,8 @@ impl Command for RunCommand {
         let all_bodies: Option<Vec<String>> = self
             .template_path
             .map(|path| {
-                let template = info_span!(SpanName::TEMPLATE_PARSE, path = %path.display())
-                    .in_scope(|| Template::parse(&path))?;
-                let bodies = info_span!(SpanName::TEMPLATE_RENDER, n = total)
-                    .in_scope(|| template.pre_generate(total));
+                let template = Template::parse(&path)?;
+                let bodies = template.pre_generate(total);
                 Ok::<Vec<String>, Box<dyn std::error::Error>>(bodies)
             })
             .transpose()?;
@@ -142,45 +140,49 @@ impl Command for RunCommand {
                 });
         });
 
-        let mut handles = Vec::new();
         let started_at = Instant::now();
 
-        for i in 0..threads {
-            let worker_count = per_thread + if i < remainder { 1 } else { 0 };
-            let start = i * per_thread + i.min(remainder);
+        let all_results: Vec<RequestResult> = info_span!(SpanName::REQUESTS, total, threads)
+            .in_scope(|| {
+                let mut handles = Vec::new();
 
-            let worker_bodies = all_bodies
-                .as_ref()
-                .map(|bodies| bodies[start..start + worker_count].to_vec());
+                for i in 0..threads {
+                    let worker_count = per_thread + if i < remainder { 1 } else { 0 };
+                    let start = i * per_thread + i.min(remainder);
 
-            let config = WorkerConfig {
-                host: Arc::clone(&host),
-                count: worker_count,
-                concurrency: (concurrency / threads).max(1),
-                shutdown: Arc::clone(&shutdown),
-                method,
-                body: Arc::clone(&body),
-                bodies: worker_bodies,
-                tracked_fields: tracked_fields.clone(),
-            };
+                    let worker_bodies = all_bodies
+                        .as_ref()
+                        .map(|bodies| bodies[start..start + worker_count].to_vec());
 
-            let handle = thread::Builder::new()
-                .name(format!("worker-{}", i))
-                .spawn(move || {
-                    tokio::runtime::Runtime::new()
-                        .expect("failed to create tokio runtime")
-                        .block_on(run_concurrent_requests(config))
-                })
-                .expect("failed to spawn thread");
+                    let config = WorkerConfig {
+                        host: Arc::clone(&host),
+                        count: worker_count,
+                        concurrency: (concurrency / threads).max(1),
+                        shutdown: Arc::clone(&shutdown),
+                        method,
+                        body: Arc::clone(&body),
+                        bodies: worker_bodies,
+                        tracked_fields: tracked_fields.clone(),
+                    };
 
-            handles.push(handle);
-        }
+                    let handle = thread::Builder::new()
+                        .name(format!("worker-{}", i))
+                        .spawn(move || {
+                            tokio::runtime::Runtime::new()
+                                .expect("failed to create tokio runtime")
+                                .block_on(run_concurrent_requests(config))
+                        })
+                        .expect("failed to spawn thread");
 
-        let mut all_results: Vec<RequestResult> = Vec::new();
-        for handle in handles {
-            let results = handle.join().expect("worker thread panicked");
-            all_results.extend(results);
-        }
+                    handles.push(handle);
+                }
+
+                let mut results = Vec::new();
+                for handle in handles {
+                    results.extend(handle.join().expect("worker thread panicked"));
+                }
+                results
+            });
 
         let response_stats = tracked_fields.as_ref().map(|fields| {
             let mut rs = ResponseStats::new();
@@ -234,8 +236,6 @@ async fn run_concurrent_requests(config: WorkerConfig) -> Vec<RequestResult> {
         let url = host.as_str().to_string();
         let permit = sem.clone().acquire_owned().await.unwrap();
         let capture_body = tracked_fields.is_some();
-        let method_str = method.as_str();
-        let span = info_span!(SpanName::REQUEST, url = %url, method = method_str);
         tasks.push(tokio::spawn(async move {
             let _permit = permit;
             let start = Instant::now();
@@ -271,7 +271,7 @@ async fn run_concurrent_requests(config: WorkerConfig) -> Vec<RequestResult> {
                     response_body: None,
                 },
             }
-        }.instrument(span)));
+        }));
     }
 
     let mut results = Vec::with_capacity(count);

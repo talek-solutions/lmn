@@ -30,7 +30,7 @@ pub fn render(template: &Value, ctx: &GeneratorContext, rng: &mut impl Rng) -> V
 
 /// Validates that every `{{name}}` placeholder in the body has a corresponding
 /// definition. Returns an error naming the first unknown placeholder found.
-#[instrument(skip(body, defs), fields(def_count = defs.len()))]
+#[instrument(name = "loadtest.template.validate_placeholders", skip(body, defs), fields(def_count = defs.len()))]
 pub fn validate_placeholders(
     body: &Value,
     defs: &HashMap<String, TemplateDef>,

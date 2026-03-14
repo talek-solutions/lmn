@@ -50,7 +50,7 @@ pub struct Template {
 impl Template {
     /// Reads, parses, and fully validates a template file.
     /// Fails fast on any invalid configuration before any requests are made.
-    #[instrument(fields(path = %path.display()))]
+    #[instrument(name = "loadtest.template.parse", fields(path = %path.display()))]
     pub fn parse(path: &Path) -> Result<Self, TemplateError> {
         let content = std::fs::read_to_string(path)?;
         let mut root: serde_json::Map<String, Value> = serde_json::from_str(&content)?;
@@ -89,7 +89,7 @@ impl Template {
 
     /// Pre-generates `n` request bodies, each with independently rendered placeholders.
     /// `:once` placeholders share the same value across all `n` bodies.
-    #[instrument(skip(self), fields(n))]
+    #[instrument(name = "loadtest.template.render", skip(self), fields(n))]
     pub fn pre_generate(&self, n: usize) -> Vec<String> {
         let mut rng = rand::thread_rng();
         (0..n)
