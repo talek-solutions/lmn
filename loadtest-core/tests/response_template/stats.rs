@@ -1,4 +1,4 @@
-use loadtest::response_template::{
+use loadtest_core::response_template::{
     extractor::{ExtractedValue, ExtractionResult},
     stats::ResponseStats,
 };

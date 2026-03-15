@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use crate::template::definition::TemplateDef;
-use crate::template::error::TemplateError;
-use crate::template::validators::Validator;
+use crate::request_template::definition::TemplateDef;
+use crate::request_template::error::TemplateError;
+use crate::request_template::validators::Validator;
 
 // ── Validated ─────────────────────────────────────────────────────────────────
 
@@ -46,7 +46,7 @@ fn extract_plain_name(s: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::template::validators::Validator;
+    use crate::request_template::validators::Validator;
 
     #[test]
     fn validates_valid_composition() {

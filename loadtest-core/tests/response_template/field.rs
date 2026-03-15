@@ -1,4 +1,4 @@
-use loadtest::response_template::field::collect_tracked_fields;
+use loadtest_core::response_template::field::collect_tracked_fields;
 use serde_json::json;
 
 #[test]

@@ -15,7 +15,7 @@ use crate::response_template::extractor;
 use crate::response_template::field::TrackedField;
 use crate::response_template::stats::ResponseStats;
 use crate::response_template::ResponseTemplate;
-use crate::template::Template;
+use crate::request_template::Template;
 
 pub struct RunStats {
     pub elapsed: Duration,

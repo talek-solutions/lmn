@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use loadtest::template::{
+use loadtest_core::request_template::{
     definition::{FloatDef, FloatStrategy, TemplateDef},
     generator::GeneratorContext,
     renderer::{collect_once_placeholder_names, render, validate_placeholders},

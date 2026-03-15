@@ -30,10 +30,10 @@ The following functions carry `#[instrument]` attributes and produce spans autom
 
 | Function | Module | Span name | Fields |
 |---|---|---|---|
-| `Template::parse` | `template` | `loadtest.template.parse` | `path` |
-| `Template::pre_generate` | `template` | `loadtest.template.render` | `n` (request count) |
-| `renderer::validate_placeholders` | `template::renderer` | `loadtest.template.validate_placeholders` | `def_count` |
-| `definition::check_circular_refs` | `template::definition` | `loadtest.template.check_circular_refs` | `def_count` |
+| `Template::parse` | `request_template` | `loadtest.template.parse` | `path` |
+| `Template::pre_generate` | `request_template` | `loadtest.template.render` | `n` (request count) |
+| `renderer::validate_placeholders` | `request_template::renderer` | `loadtest.template.validate_placeholders` | `def_count` |
+| `definition::check_circular_refs` | `request_template::definition` | `loadtest.template.check_circular_refs` | `def_count` |
 
 ### Response template parsing
 
@@ -45,7 +45,7 @@ The following functions carry `#[instrument]` attributes and produce spans autom
 
 | Function | Module | Instrumentation |
 |---|---|---|
-| `GeneratorContext::generate_by_name` | `template::generator` | `debug!` event when an unknown placeholder resolves to `null` |
+| `GeneratorContext::generate_by_name` | `request_template::generator` | `debug!` event when an unknown placeholder resolves to `null` |
 
 `render()` and `resolve()` are intentionally not spanned — they are called once per placeholder per request body and the overhead would exceed the work done.
 

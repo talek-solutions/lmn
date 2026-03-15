@@ -2,8 +2,8 @@ use rand::Rng;
 use rand::seq::SliceRandom;
 use serde_json::Value;
 
-use crate::template::definition::{LengthSpec, StringDef, StringGenConfig, StringStrategy};
-use crate::template::generators::Generate;
+use crate::request_template::definition::{LengthSpec, StringDef, StringGenConfig, StringStrategy};
+use crate::request_template::generators::Generate;
 
 impl Generate for StringDef {
     fn generate(&self, rng: &mut impl Rng) -> Value {
@@ -51,7 +51,7 @@ fn generate_string(config: &StringGenConfig, rng: &mut impl Rng) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::template::generators::Generate;
+    use crate::request_template::generators::Generate;
 
     #[test]
     fn choice_strategy_returns_one_of_choices() {

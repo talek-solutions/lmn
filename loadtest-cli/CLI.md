@@ -26,7 +26,7 @@ loadtest run [OPTIONS] -H <HOST>
 | `-C` | `--concurrency` | `100` | Max in-flight requests at any time |
 | `-M` | `--method` | `get` | HTTP method (`get`, `post`, `put`, `patch`, `delete`) |
 | `-B` | `--body` | — | Inline JSON request body |
-| `-T` | `--template` | — | Path to a request template file |
+| `-T` | `--request-template` | — | Path to a request template file |
 | `-A` | `--request-alias` | — | Alias of a stored request template |
 | `-S` | `--response-template` | — | Path to a response template file |
 | `-E` | `--response-alias` | — | Alias of a stored response template |

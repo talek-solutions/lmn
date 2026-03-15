@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use tracing::instrument;
 
-use crate::template::error::TemplateError;
-use crate::template::validators;
+use crate::request_template::error::TemplateError;
+use crate::request_template::validators;
 
 // ── Re-exports ────────────────────────────────────────────────────────────────
 
-pub use crate::template::validators::{
+pub use crate::request_template::validators::{
     float::{FloatDef, FloatStrategy, RawFloatDetails},
     object::ObjectDef,
     string::{LengthSpec, RawStringDetails, StringDef, StringGenConfig, StringStrategy},

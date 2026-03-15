@@ -4,8 +4,8 @@ use rand::Rng;
 use serde_json::Value;
 use tracing::debug;
 
-use crate::template::definition::{ObjectDef, TemplateDef};
-use crate::template::generators::Generate;
+use crate::request_template::definition::{ObjectDef, TemplateDef};
+use crate::request_template::generators::Generate;
 
 // ── Context ───────────────────────────────────────────────────────────────────
 
@@ -63,7 +63,7 @@ impl GeneratorContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::template::definition::{FloatDef, FloatStrategy, ObjectDef, TemplateDef};
+    use crate::request_template::definition::{FloatDef, FloatStrategy, ObjectDef, TemplateDef};
 
     fn float_exact(v: f64) -> TemplateDef {
         TemplateDef::Float(FloatDef { strategy: FloatStrategy::Exact(v), decimals: 0 })

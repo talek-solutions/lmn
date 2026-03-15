@@ -4,10 +4,10 @@ use rand::Rng;
 use serde_json::Value;
 use tracing::instrument;
 
-use crate::template::definition::TemplateDef;
-use crate::template::error::TemplateError;
-use crate::template::generator::GeneratorContext;
-use crate::template::parse_placeholder;
+use crate::request_template::definition::TemplateDef;
+use crate::request_template::error::TemplateError;
+use crate::request_template::generator::GeneratorContext;
+use crate::request_template::parse_placeholder;
 
 /// Recursively walks the template `Value` tree, substituting every placeholder
 /// string with a freshly generated value from the context.

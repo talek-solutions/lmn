@@ -62,19 +62,19 @@ pub struct RunArgs {
     #[arg(long)]
     #[arg(help = "Request body (JSON only)")]
     #[arg(value_parser = parse_json)]
-    #[arg(conflicts_with_all = ["template", "request_alias"])]
+    #[arg(conflicts_with_all = ["request_template", "request_alias"])]
     pub body: Option<String>,
 
     #[arg(short='T')]
-    #[arg(long)]
+    #[arg(long = "request-template")]
     #[arg(help = "Path to a JSON template file with placeholder definitions")]
     #[arg(conflicts_with_all = ["body", "request_alias"])]
-    pub template: Option<PathBuf>,
+    pub request_template: Option<PathBuf>,
 
     #[arg(short='A')]
     #[arg(long = "request-alias")]
     #[arg(help = "Alias of a stored request template (name or name.json)")]
-    #[arg(conflicts_with_all = ["body", "template"])]
+    #[arg(conflicts_with_all = ["body", "request_template"])]
     pub request_alias: Option<String>,
 
     #[arg(short='S')]

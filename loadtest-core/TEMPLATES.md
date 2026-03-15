@@ -10,7 +10,7 @@ Templates let you define JSON request bodies with dynamic placeholders. Each req
 loadtest run -H <host> -M post -T path/to/template.json
 ```
 
-`-T` / `--template` is mutually exclusive with `-B` / `--body`.
+`-T` / `--request-template` is mutually exclusive with `-B` / `--body`.
 
 ---
 
@@ -217,7 +217,7 @@ Response templates let you track specific fields from response bodies. You defin
 loadtest run -H <host> -M post -T path/to/template.json -S path/to/response-template.json
 ```
 
-`-S` / `--response-template` is optional and independent of `-T`.
+`-S` / `--response-template` is optional and independent of `-T` / `--request-template`.
 
 ---
 
@@ -306,10 +306,10 @@ After the run, the statistics section will include:
 
 ### Adding a new generator type
 
-1. Add a variant to `RawTemplateDef` in `loadtest-core/src/template/definition.rs` with its raw serde fields
+1. Add a variant to `RawTemplateDef` in `loadtest-core/src/request_template/definition.rs` with its raw serde fields
 2. Add a corresponding validated struct and variant to `TemplateDef`
 3. Implement validation in the `validate()` function
-4. Implement `Generate` for the new type in `loadtest-core/src/template/generator.rs`
+4. Implement `Generate` for the new type in `loadtest-core/src/request_template/generator.rs`
 5. Add a match arm in `GeneratorContext::generate_def`
 
 ### Adding a new body format (e.g. XML, form-data)

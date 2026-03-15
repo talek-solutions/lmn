@@ -1,8 +1,8 @@
 use rand::Rng;
 use serde_json::Value;
 
-use crate::template::definition::{FloatDef, FloatStrategy};
-use crate::template::generators::Generate;
+use crate::request_template::definition::{FloatDef, FloatStrategy};
+use crate::request_template::generators::Generate;
 
 impl Generate for FloatDef {
     fn generate(&self, rng: &mut impl Rng) -> Value {
@@ -23,7 +23,7 @@ impl Generate for FloatDef {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::template::generators::Generate;
+    use crate::request_template::generators::Generate;
 
     #[test]
     fn exact_strategy_returns_exact_value() {

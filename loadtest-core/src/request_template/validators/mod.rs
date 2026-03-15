@@ -2,8 +2,8 @@ pub mod float;
 pub mod object;
 pub mod string;
 
-use crate::template::definition::{RawTemplateDef, TemplateDef};
-use crate::template::error::TemplateError;
+use crate::request_template::definition::{RawTemplateDef, TemplateDef};
+use crate::request_template::error::TemplateError;
 
 use float::FloatValidator;
 use object::ObjectValidator;

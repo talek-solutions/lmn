@@ -1,8 +1,8 @@
 use serde::Deserialize;
 
-use crate::template::definition::TemplateDef;
-use crate::template::error::TemplateError;
-use crate::template::validators::Validator;
+use crate::request_template::definition::TemplateDef;
+use crate::request_template::error::TemplateError;
+use crate::request_template::validators::Validator;
 
 const MAX_STRING_LENGTH: usize = 10_000;
 
@@ -134,7 +134,7 @@ fn validate_length_spec(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::template::validators::Validator;
+    use crate::request_template::validators::Validator;
 
     fn v(exact: Option<f64>, min: Option<f64>, max: Option<f64>, details: Option<RawStringDetails>) -> StringValidator {
         StringValidator { exact, min, max, details }
