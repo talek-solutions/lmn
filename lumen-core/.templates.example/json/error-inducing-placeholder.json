@@ -1,0 +1,27 @@
+{
+  "description": "Used to reflect error by making use of HttpBin reflection on POST method",
+  "error": {
+    "code": "{{error_code}}",
+    "message": "{{error_message}}"
+  },
+  "_lumen_metadata_templates": {
+    "error_code": {
+      "type": "string",
+      "details": {
+        "choice": [
+          "WRONG_DATA",
+          "INSUFFICIENT_BALANCE",
+          "TRANSACTION_NOT_FOUND"
+        ]
+      }
+    },
+    "error_message": {
+      "type": "string",
+      "max": 20,
+      "min": 5,
+      "details": {
+        "uppercase": true
+      }
+    }
+  }
+}
