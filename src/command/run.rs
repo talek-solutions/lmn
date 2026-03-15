@@ -8,8 +8,7 @@ use tokio::sync::Semaphore;
 
 use tracing::info_span;
 
-use crate::cli::command::{HttpMethod, RunArgs};
-use crate::cli::output::print_stats;
+use crate::command::method::HttpMethod;
 use crate::command::{Command, Body};
 use crate::monitoring::SpanName;
 use crate::response_template::extractor;
@@ -22,6 +21,7 @@ pub struct RunStats {
     pub elapsed: Duration,
     pub template_duration: Option<Duration>,
     pub response_stats: Option<ResponseStats>,
+    pub results: Vec<RequestResult>,
 }
 
 pub struct RequestResult {
@@ -46,45 +46,23 @@ pub struct RunCommand {
     pub response_template_path: Option<PathBuf>,
 }
 
-impl From<RunArgs> for RunCommand {
-    fn from(args: RunArgs) -> Self {
-        RunCommand {
-            host: args.host,
-            threads: args.threads as usize,
-            request_count: args.request_count as usize,
-            concurrency: args.concurrency as usize,
-            method: args.method,
-            body: args.body.map(|s| Body::Formatted {
-                content: s,
-                format: BodyFormat::Json,
-            }),
-            template_path: args.template.or_else(|| args.request_alias.map(resolve_alias("requests"))),
-            response_template_path: args.response_template.or_else(|| args.response_alias.map(resolve_alias("responses"))),
-        }
-    }
-}
 
-fn resolve_alias(sub_dir: &'static str) -> impl Fn(String) -> PathBuf {
-    move |alias| {
-        let mut path = PathBuf::from(alias);
-        if path.extension().is_none() {
-            path.set_extension("json");
-        }
-        PathBuf::from(".templates").join(sub_dir).join(path)
-    }
+struct RequestConfig {
+    client: reqwest::Client,
+    host: Arc<String>,
+    method: HttpMethod,
+    body: Arc<Option<Body>>,
+    tracked_fields: Option<Arc<Vec<TrackedField>>>,
 }
 
 struct WorkerConfig {
-    host: Arc<String>,
+    request: Arc<RequestConfig>,
     count: usize,
     concurrency: usize,
     shutdown: Arc<AtomicBool>,
-    method: HttpMethod,
-    body: Arc<Option<Body>>,
     /// Pre-generated template bodies for this worker's slice of requests.
     /// When `Some`, takes priority over `body` for request construction.
     bodies: Option<Vec<String>>,
-    tracked_fields: Option<Arc<Vec<TrackedField>>>,
 }
 
 struct ResolvedBody {
@@ -93,13 +71,10 @@ struct ResolvedBody {
 }
 
 impl Command for RunCommand {
-    fn execute(self) -> Result<(), Box<dyn std::error::Error>> {
-        let host = Arc::new(self.host);
+    fn execute(self) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
         let threads = self.threads;
         let total = self.request_count;
         let concurrency = self.concurrency;
-        let method = self.method;
-        let body = Arc::new(self.body);
 
         let per_thread = total / threads;
         let remainder = total % threads;
@@ -124,6 +99,14 @@ impl Command for RunCommand {
                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
             })
             .transpose()?;
+
+        let request = Arc::new(RequestConfig {
+            client: reqwest::Client::new(),
+            host: Arc::new(self.host),
+            method: self.method,
+            body: Arc::new(self.body),
+            tracked_fields: tracked_fields.clone(),
+        });
 
         let shutdown = Arc::new(AtomicBool::new(false));
 
@@ -155,14 +138,11 @@ impl Command for RunCommand {
                         .map(|bodies| bodies[start..start + worker_count].to_vec());
 
                     let config = WorkerConfig {
-                        host: Arc::clone(&host),
+                        request: Arc::clone(&request),
                         count: worker_count,
                         concurrency: (concurrency / threads).max(1),
                         shutdown: Arc::clone(&shutdown),
-                        method,
-                        body: Arc::clone(&body),
                         bodies: worker_bodies,
-                        tracked_fields: tracked_fields.clone(),
                     };
 
                     let handle = thread::Builder::new()
@@ -184,7 +164,7 @@ impl Command for RunCommand {
                 results
             });
 
-        let response_stats = tracked_fields.as_ref().map(|fields| {
+        let response_stats = request.tracked_fields.as_ref().map(|fields| {
             let mut rs = ResponseStats::new();
             for result in &all_results {
                 if let Some(ref body_str) = result.response_body {
@@ -200,16 +180,14 @@ impl Command for RunCommand {
             elapsed: started_at.elapsed(),
             template_duration,
             response_stats,
+            results: all_results,
         };
-        print_stats(&all_results, &stats);
-        Ok(())
+        Ok(Some(stats))
     }
 }
 
 async fn run_concurrent_requests(config: WorkerConfig) -> Vec<RequestResult> {
-    let WorkerConfig { host, count, concurrency, shutdown, method, body, bodies, tracked_fields } =
-        config;
-    let client = reqwest::Client::new();
+    let WorkerConfig { request, count, concurrency, shutdown, bodies } = config;
     let sem = Arc::new(Semaphore::new(concurrency));
     let mut tasks = Vec::with_capacity(count);
 
@@ -222,7 +200,7 @@ async fn run_concurrent_requests(config: WorkerConfig) -> Vec<RequestResult> {
         let resolved: Option<ResolvedBody> = if let Some(ref bs) = bodies {
             Some(ResolvedBody { content: bs[i].clone(), content_type: "application/json" })
         } else {
-            (*body).as_ref().map(|b| match b {
+            request.body.as_ref().as_ref().map(|b| match b {
                 Body::Formatted { content, format } => ResolvedBody {
                     content: content.clone(),
                     content_type: match format {
@@ -232,10 +210,11 @@ async fn run_concurrent_requests(config: WorkerConfig) -> Vec<RequestResult> {
             })
         };
 
-        let client = client.clone();
-        let url = host.as_str().to_string();
+        let client = request.client.clone();
+        let url = request.host.as_str().to_string();
+        let method = request.method;
+        let capture_body = request.tracked_fields.is_some();
         let permit = sem.clone().acquire_owned().await.unwrap();
-        let capture_body = tracked_fields.is_some();
         tasks.push(tokio::spawn(async move {
             let _permit = permit;
             let start = Instant::now();
@@ -283,25 +262,3 @@ async fn run_concurrent_requests(config: WorkerConfig) -> Vec<RequestResult> {
     results
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn resolve_alias_appends_json_extension() {
-        let path = resolve_alias("requests")("my-alias".to_string());
-        assert_eq!(path, PathBuf::from(".templates/requests/my-alias.json"));
-    }
-
-    #[test]
-    fn resolve_alias_preserves_existing_extension() {
-        let path = resolve_alias("requests")("my-alias.json".to_string());
-        assert_eq!(path, PathBuf::from(".templates/requests/my-alias.json"));
-    }
-
-    #[test]
-    fn resolve_alias_uses_correct_subdir() {
-        let path = resolve_alias("responses")("template".to_string());
-        assert_eq!(path, PathBuf::from(".templates/responses/template.json"));
-    }
-}

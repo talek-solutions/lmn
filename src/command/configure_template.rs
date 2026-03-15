@@ -1,6 +1,5 @@
-use crate::cli::command::{ConfigureRequestArgs, ConfigureResponseArgs};
+use crate::command::run::RunStats;
 use crate::command::{Body, Command};
-use crate::command::run::BodyFormat;
 use crate::config::error::ConfigError;
 use std::error::Error;
 use std::fs::File;
@@ -36,30 +35,9 @@ pub struct ConfigureTemplateCommand {
     pub kind: TemplateKind,
 }
 
-impl From<ConfigureRequestArgs> for ConfigureTemplateCommand {
-    fn from(args: ConfigureRequestArgs) -> Self {
-        ConfigureTemplateCommand {
-            body: args.body.map(|s| Body::Formatted { content: s, format: BodyFormat::Json }),
-            template_path: args.template_path,
-            alias: args.alias,
-            kind: TemplateKind::Request,
-        }
-    }
-}
-
-impl From<ConfigureResponseArgs> for ConfigureTemplateCommand {
-    fn from(args: ConfigureResponseArgs) -> Self {
-        ConfigureTemplateCommand {
-            body: args.body.map(|s| Body::Formatted { content: s, format: BodyFormat::Json }),
-            template_path: args.template_path,
-            alias: args.alias,
-            kind: TemplateKind::Response,
-        }
-    }
-}
 
 impl Command for ConfigureTemplateCommand {
-    fn execute(self) -> Result<(), Box<dyn Error>> {
+    fn execute(self) -> Result<Option<RunStats>, Box<dyn Error>> {
         let content: String = match (self.body, self.template_path) {
             (Some(body), _) => body.into(),
             (_, Some(path)) => {
@@ -80,7 +58,8 @@ impl Command for ConfigureTemplateCommand {
             .ok_or_else(|| Box::<dyn Error>::from(ConfigError::InvalidFormat(self.alias)))?;
 
         create_file(self.kind.dir(), full_file_alias.to_string(), content)
-            .map_err(|e| Box::new(e) as Box<dyn Error>)
+            .map_err(|e| Box::new(e) as Box<dyn Error>)?;
+        Ok(None)
     }
 }
 

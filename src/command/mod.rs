@@ -1,12 +1,15 @@
-use crate::command::run::BodyFormat;
+use crate::command::run::{BodyFormat, RunStats};
 
-mod configure_template;
+pub mod configure_template;
+pub mod method;
 pub mod run;
+
+pub use method::HttpMethod;
 
 pub use configure_template::ConfigureTemplateCommand;
 
 pub trait Command {
-    fn execute(self) -> Result<(), Box<dyn std::error::Error>>;
+    fn execute(self) -> Result<Option<RunStats>, Box<dyn std::error::Error>>;
 }
 
 pub enum Body {
@@ -28,7 +31,7 @@ pub enum Commands {
 }
 
 impl Command for Commands {
-    fn execute(self) -> Result<(), Box<dyn std::error::Error>> {
+    fn execute(self) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
         match self {
             Commands::Run(cmd) => cmd.execute(),
             Commands::ConfigureRequest(cmd) => cmd.execute(),

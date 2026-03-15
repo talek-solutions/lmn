@@ -1,5 +1,6 @@
 use clap::Parser;
 use loadtest::cli::command::LoadTestRunCli;
+use loadtest::cli::output::print_stats;
 use loadtest::command::run::RunCommand;
 use loadtest::command::{Command, Commands, ConfigureTemplateCommand};
 use loadtest::monitoring::SpanName;
@@ -49,7 +50,11 @@ fn main() {
     };
 
     let exit_code = match cmd.execute() {
-        Ok(_) => 0,
+        Ok(Some(stats)) => {
+            print_stats(&stats.results, &stats);
+            0
+        }
+        Ok(None) => 0,
         Err(e) => {
             eprintln!("error: {e}");
             1
