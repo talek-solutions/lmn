@@ -1,14 +1,17 @@
 use clap::Parser;
-use loadtest::cli::command::LoadTestRunCli;
-use loadtest::cli::output::print_stats;
-use loadtest::command::run::RunCommand;
-use loadtest::command::{Command, Commands, ConfigureTemplateCommand};
-use loadtest::monitoring::SpanName;
+use cli::command::LoadTestRunCli;
+use cli::output::print_stats;
+use loadtest_core::command::run::RunCommand;
+use loadtest_core::command::{Command, Commands, ConfigureTemplateCommand};
+use loadtest_core::monitoring::SpanName;
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::Resource;
 use tracing_subscriber::Registry;
 use tracing_subscriber::layer::SubscriberExt;
+
+mod cli;
+
 fn main() {
     // Endpoint is read from OTEL_EXPORTER_OTLP_ENDPOINT env var at runtime,
     // falling back to http://localhost:4318 if unset.

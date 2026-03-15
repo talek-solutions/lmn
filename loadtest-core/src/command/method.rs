@@ -1,6 +1,4 @@
-// TODO: remove `clap::ValueEnum` when splitting into workspace crates.
-// At that point, define a CLI-side type and convert to this one in the adapter.
-#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum HttpMethod {
     Get,
     Post,

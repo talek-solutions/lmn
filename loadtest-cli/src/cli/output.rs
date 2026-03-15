@@ -1,5 +1,5 @@
-use crate::command::run::{RequestResult, RunStats};
-use crate::response_template::stats::ResponseStats;
+use loadtest_core::command::run::{RequestResult, RunStats};
+use loadtest_core::response_template::stats::ResponseStats;
 use std::collections::BTreeMap;
 use std::time::Duration;
 

@@ -2,7 +2,14 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-pub use crate::command::method::HttpMethod;
+#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+pub enum HttpMethod {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+}
 
 #[derive(Parser)]
 #[command(name = "loadtest")]

@@ -1,9 +1,21 @@
 use std::path::PathBuf;
 
-use crate::cli::command::{ConfigureRequestArgs, ConfigureResponseArgs, RunArgs};
-use crate::command::configure_template::{ConfigureTemplateCommand, TemplateKind};
-use crate::command::run::{BodyFormat, RunCommand};
-use crate::command::Body;
+use crate::cli::command::{ConfigureRequestArgs, ConfigureResponseArgs, HttpMethod, RunArgs};
+use loadtest_core::command::configure_template::{ConfigureTemplateCommand, TemplateKind};
+use loadtest_core::command::run::{BodyFormat, RunCommand};
+use loadtest_core::command::Body;
+
+impl From<HttpMethod> for loadtest_core::command::HttpMethod {
+    fn from(m: HttpMethod) -> Self {
+        match m {
+            HttpMethod::Get    => loadtest_core::command::HttpMethod::Get,
+            HttpMethod::Post   => loadtest_core::command::HttpMethod::Post,
+            HttpMethod::Put    => loadtest_core::command::HttpMethod::Put,
+            HttpMethod::Patch  => loadtest_core::command::HttpMethod::Patch,
+            HttpMethod::Delete => loadtest_core::command::HttpMethod::Delete,
+        }
+    }
+}
 
 impl From<RunArgs> for RunCommand {
     fn from(args: RunArgs) -> Self {
@@ -12,7 +24,7 @@ impl From<RunArgs> for RunCommand {
             threads: args.threads as usize,
             request_count: args.request_count as usize,
             concurrency: args.concurrency as usize,
-            method: args.method,
+            method: args.method.into(),
             body: args.body.map(|s| Body::Formatted {
                 content: s,
                 format: BodyFormat::Json,
