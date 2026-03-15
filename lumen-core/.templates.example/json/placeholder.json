@@ -1,0 +1,59 @@
+{
+  "generatedNameField": "{{name_string}}",
+  "generatedLastNameField": "{{name_string:once}}",
+  "generatedAmountField": "{{amount_number}}",
+  "generatedMoneyField": "{{money_object}}",
+  "_lumen_metadata_templates": {
+    "name_string": {
+      "type": "string",
+      "exact": 6,
+      "max": 10,
+      "min": 3,
+      "details": {
+        "uppercase": true,
+        "uppercase_count": 3,
+        "lowercase": true,
+        "lowercase_count": 2,
+        "special_chars": [
+          "@",
+          ":",
+          "_",
+          "-"
+        ],
+        "choice": [
+          "Name1",
+          "Name2",
+          "Name3"
+        ]
+      }
+    },
+    "amount_number": {
+      "type": "float",
+      "exact": 5.00,
+      "max": 100,
+      "min": 5,
+      "details": {
+        "decimals": 2
+      }
+    },
+    "currency_string": {
+      "type": "string",
+      "exact": 3,
+      "details": {
+        "choice": [
+          "EUR",
+          "USD",
+          "JPY",
+          "CHF"
+        ]
+      }
+    },
+    "money_object": {
+      "type": "object",
+      "composition": {
+        "amount": "{{amount_number}}",
+        "currency": "{{currency_string}}"
+      }
+    }
+  }
+}

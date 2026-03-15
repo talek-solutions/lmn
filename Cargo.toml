@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "loadtest-core",
-    "loadtest-cli",
+    "lumen-core",
+    "lumen-cli",
 ]
 resolver = "2"
 
