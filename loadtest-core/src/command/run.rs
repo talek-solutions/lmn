@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::sync::{mpsc, Semaphore};
+use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use tracing::info_span;
 
@@ -65,16 +66,21 @@ impl Command for RunCommand {
             tracked_fields,
         });
 
+        let token = CancellationToken::new();
+        let cancel = token.clone();
+        tokio::spawn(async move {
+            tokio::signal::ctrl_c().await.expect("failed to listen for ctrl_c");
+            eprintln!("\nShutdown signal received — waiting for in-flight requests to finish...");
+            cancel.cancel();
+        });
+
         let started_at = Instant::now();
 
         let all_results = async {
             let sem = Arc::new(Semaphore::new(concurrency));
             let (tx, mut rx) = mpsc::channel::<RequestResult>(concurrency);
-            let mut shutdown = false;
 
             for i in 0..total {
-                if shutdown { break; }
-
                 let resolved = request.resolve_body(
                     all_bodies.as_ref().map(|bs| bs[i].clone()),
                 );
@@ -86,10 +92,7 @@ impl Command for RunCommand {
                 let tx = tx.clone();
 
                 tokio::select! {
-                    _ = tokio::signal::ctrl_c() => {
-                        eprintln!("\nShutdown signal received — waiting for in-flight requests to finish...");
-                        shutdown = true;
-                    }
+                    _ = token.cancelled() => break,
                     permit = sem.clone().acquire_owned() => {
                         let permit = permit.unwrap();
                         tokio::spawn(async move {
