@@ -20,6 +20,11 @@ pub fn print_stats(results: &[RequestResult], stats: &RunStats) {
 
     let min = durations.first().copied().unwrap_or(Duration::ZERO);
     let max = durations.last().copied().unwrap_or(Duration::ZERO);
+    let avg = if durations.is_empty() {
+        Duration::ZERO
+    } else {
+        durations.iter().sum::<Duration>() / durations.len() as u32
+    };
 
     let lat_rows: Vec<(&str, String)> = {
         let mut rows = vec![("min", fmt_latency(min))];
@@ -27,6 +32,7 @@ pub fn print_stats(results: &[RequestResult], stats: &RunStats) {
             rows.push((label, fmt_latency(percentile(&durations, p))));
         }
         rows.push(("max", fmt_latency(max)));
+        rows.push(("avg", fmt_latency(avg)));
         rows
     };
 
@@ -63,10 +69,12 @@ pub fn print_stats(results: &[RequestResult], stats: &RunStats) {
         println!("  {label:<4}  {val:>val_width$}");
     }
     println!();
+    println!(" Histogram {rule}");
+    print_latency_histogram(&durations, min, max, bar_width);
+    println!();
     println!(" Status codes {rule}");
     for (code, count) in &code_counts {
-        let filled = (count * bar_width) / bar_max;
-        let bar = "█".repeat(filled);
+        let bar = frac_bar(*count, bar_max, bar_width);
         println!("  {code:<5}  {count:>count_width$}  {bar}");
     }
     println!();
@@ -74,6 +82,54 @@ pub fn print_stats(results: &[RequestResult], stats: &RunStats) {
     if let Some(ref rs) = stats.response_stats {
         print_response_stats(rs, &rule);
     }
+}
+
+fn print_latency_histogram(durations: &[Duration], min: Duration, max: Duration, bar_width: usize) {
+    const BUCKETS: usize = 10;
+    if durations.is_empty() || min == max {
+        return;
+    }
+    let min_us = min.as_micros() as f64;
+    let max_us = max.as_micros() as f64;
+    let step = (max_us - min_us) / BUCKETS as f64;
+
+    let mut counts = [0usize; BUCKETS];
+    for d in durations {
+        let us = d.as_micros() as f64;
+        let idx = ((us - min_us) / step) as usize;
+        counts[idx.min(BUCKETS - 1)] += 1;
+    }
+
+    let bucket_max = *counts.iter().max().unwrap_or(&1);
+    let label_width = fmt_latency(max).len().max(fmt_latency(min).len()) + 1;
+
+    for (i, &count) in counts.iter().enumerate() {
+        let bucket_start = Duration::from_micros((min_us + step * i as f64) as u64);
+        let label = fmt_latency(bucket_start);
+        let bar = frac_bar(count, bucket_max, bar_width);
+        println!("  {label:>label_width$}  {bar}  {count}");
+    }
+}
+
+fn frac_bar(value: usize, max: usize, width: usize) -> String {
+    const BLOCKS: [char; 9] = [' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉', '█'];
+    if max == 0 {
+        return " ".repeat(width);
+    }
+    let units = value * width * 8 / max;
+    let full = units / 8;
+    let rem = units % 8;
+    let mut s = String::with_capacity(width);
+    for _ in 0..full {
+        s.push('█');
+    }
+    if full < width {
+        s.push(BLOCKS[rem]);
+        for _ in (full + 1)..width {
+            s.push(' ');
+        }
+    }
+    s
 }
 
 fn print_response_stats(rs: &ResponseStats, rule: &str) {
@@ -86,8 +142,7 @@ fn print_response_stats(rs: &ResponseStats, rule: &str) {
         let bar_max = entries.iter().map(|(_, n)| **n).max().unwrap_or(1);
         let bar_width = 28usize;
         for (val, count) in &entries {
-            let filled = (*count * bar_width) / bar_max;
-            let bar = "█".repeat(filled);
+            let bar = frac_bar(**count, bar_max, bar_width);
             println!("  {val:<20}  {count:>count_width$}  {bar}");
         }
         println!();
