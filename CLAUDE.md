@@ -4,6 +4,10 @@
 - You are FORBIDDEN from executing any edits, until you have presented the plan to me first and I have explicitly APPROVED it
 - This rule applies to EVERY task, including follow-up instructions and continuations — approval from a previous task does NOT carry over
 
+# System
+- You CAN/SHOULD propose better practices or other improvements, after you reason exactly why they might be needed
+- You should NEVER auto implement such suggestions, without reasonining them and my explicit approval
+
 # Plan
 - Every plan you show to me, just contain very visibly which files in the entire structure you must change
 - In the case the changes are too many, you can show how many files you will create, update and delete, with their respective folders
