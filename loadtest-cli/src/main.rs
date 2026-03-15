@@ -13,6 +13,14 @@ use tracing_subscriber::layer::SubscriberExt;
 mod cli;
 
 fn main() {
+    let cli_args = LoadTestRunCli::parse();
+
+    // Extract thread count before consuming args — controls the tokio worker pool size.
+    let threads = match &cli_args {
+        LoadTestRunCli::Run(args) => args.threads as usize,
+        _ => 1,
+    };
+
     // Endpoint is read from OTEL_EXPORTER_OTLP_ENDPOINT env var at runtime,
     // falling back to http://localhost:4318 if unset.
     let exporter = opentelemetry_otlp::SpanExporter::builder()
@@ -30,42 +38,48 @@ fn main() {
         .build();
 
     let tracer = provider.tracer("loadtest");
-
-    // Create a tracing layer with the configured tracer
     let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
-
     let subscriber = Registry::default().with(telemetry);
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("failed to set global tracing subscriber");
 
-    // Trace executed code
-    tracing::subscriber::set_global_default(subscriber).expect("failed to set global tracing subscriber");
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(threads)
+        .enable_all()
+        .build()
+        .expect("failed to create tokio runtime");
 
-    let root = tracing::span!(tracing::Level::INFO, SpanName::RUN);
-    let _enter = root.enter();
+    let exit_code = runtime.block_on(async {
+        let root = tracing::span!(tracing::Level::INFO, SpanName::RUN);
+        let _enter = root.enter();
 
-    let cmd = match LoadTestRunCli::parse() {
-        LoadTestRunCli::Run(args) => Commands::Run(RunCommand::from(args)),
-        LoadTestRunCli::ConfigureRequest(args) => {
-            Commands::ConfigureRequest(ConfigureTemplateCommand::from(args))
-        }
-        LoadTestRunCli::ConfigureResponse(args) => {
-            Commands::ConfigureResponse(ConfigureTemplateCommand::from(args))
-        }
-    };
+        let cmd = match cli_args {
+            LoadTestRunCli::Run(args) => Commands::Run(RunCommand::from(args)),
+            LoadTestRunCli::ConfigureRequest(args) => {
+                Commands::ConfigureRequest(ConfigureTemplateCommand::from(args))
+            }
+            LoadTestRunCli::ConfigureResponse(args) => {
+                Commands::ConfigureResponse(ConfigureTemplateCommand::from(args))
+            }
+        };
 
-    let exit_code = match cmd.execute() {
-        Ok(Some(stats)) => {
-            print_stats(&stats.results, &stats);
-            0
-        }
-        Ok(None) => 0,
-        Err(e) => {
-            eprintln!("error: {e}");
-            1
-        }
-    };
+        let code = match cmd.execute().await {
+            Ok(Some(stats)) => {
+                print_stats(&stats.results, &stats);
+                0
+            }
+            Ok(None) => 0,
+            Err(e) => {
+                eprintln!("error: {e}");
+                1
+            }
+        };
 
-    drop(_enter);
-    drop(root);
+        drop(_enter);
+        drop(root);
+        code
+    });
+
     let _ = provider.shutdown();
     std::process::exit(exit_code);
 }

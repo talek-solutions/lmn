@@ -37,7 +37,7 @@ pub struct ConfigureTemplateCommand {
 
 
 impl Command for ConfigureTemplateCommand {
-    fn execute(self) -> Result<Option<RunStats>, Box<dyn Error>> {
+    async fn execute(self) -> Result<Option<RunStats>, Box<dyn Error>> {
         let content: String = match (self.body, self.template_path) {
             (Some(body), _) => body.into(),
             (_, Some(path)) => {

@@ -21,7 +21,6 @@ impl From<RunArgs> for RunCommand {
     fn from(args: RunArgs) -> Self {
         RunCommand {
             host: args.host,
-            threads: args.threads as usize,
             request_count: args.request_count as usize,
             concurrency: args.concurrency as usize,
             method: args.method.into(),
@@ -80,8 +79,8 @@ mod tests {
     use super::*;
     use loadtest_core::command::Command;
 
-    #[test]
-    fn execute_creates_file_from_body() {
+    #[tokio::test]
+    async fn execute_creates_file_from_body() {
         let alias = "__test_exec_body";
         let path = std::path::PathBuf::from(".templates/requests").join(format!("{}.json", alias));
         let _ = std::fs::remove_file(&path);
@@ -96,22 +95,22 @@ mod tests {
             body: Some(r#"{"ok":true}"#.to_string()),
             template_path: None,
         });
-        assert!(cmd.execute().is_ok());
+        assert!(cmd.execute().await.is_ok());
         assert!(path.exists());
     }
 
-    #[test]
-    fn execute_returns_error_when_no_body_or_path() {
+    #[tokio::test]
+    async fn execute_returns_error_when_no_body_or_path() {
         let cmd = ConfigureTemplateCommand::from(ConfigureRequestArgs {
             alias: "irrelevant".to_string(),
             body: None,
             template_path: None,
         });
-        assert!(cmd.execute().is_err());
+        assert!(cmd.execute().await.is_err());
     }
 
-    #[test]
-    fn execute_returns_error_on_duplicate_alias() {
+    #[tokio::test]
+    async fn execute_returns_error_on_duplicate_alias() {
         let alias = "__test_exec_duplicate";
         let path = std::path::PathBuf::from(".templates/requests").join(format!("{}.json", alias));
         let _ = std::fs::remove_file(&path);
@@ -126,8 +125,8 @@ mod tests {
             body: Some("{}".to_string()),
             template_path: None,
         });
-        assert!(make_cmd().execute().is_ok());
-        assert!(make_cmd().execute().is_err());
+        assert!(make_cmd().execute().await.is_ok());
+        assert!(make_cmd().execute().await.is_err());
     }
 
     #[test]

@@ -8,8 +8,9 @@ pub use method::HttpMethod;
 
 pub use configure_template::ConfigureTemplateCommand;
 
+#[allow(async_fn_in_trait)]
 pub trait Command {
-    fn execute(self) -> Result<Option<RunStats>, Box<dyn std::error::Error>>;
+    async fn execute(self) -> Result<Option<RunStats>, Box<dyn std::error::Error>>;
 }
 
 pub enum Body {
@@ -31,11 +32,11 @@ pub enum Commands {
 }
 
 impl Command for Commands {
-    fn execute(self) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
+    async fn execute(self) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
         match self {
-            Commands::Run(cmd) => cmd.execute(),
-            Commands::ConfigureRequest(cmd) => cmd.execute(),
-            Commands::ConfigureResponse(cmd) => cmd.execute(),
+            Commands::Run(cmd) => cmd.execute().await,
+            Commands::ConfigureRequest(cmd) => cmd.execute().await,
+            Commands::ConfigureResponse(cmd) => cmd.execute().await,
         }
     }
 }
