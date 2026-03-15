@@ -8,17 +8,17 @@ Tracing is built on the [`tracing`](https://docs.rs/tracing) crate, exported via
 
 ## Span Registry
 
-All named spans are defined as constants on `SpanName` in `src/monitoring/spans.rs`.
+All named spans are defined as constants on `SpanName` in `loadtest-core/src/monitoring/spans.rs`.
 
 | Constant | Span name | Where emitted |
 |---|---|---|
-| `SpanName::RUN` | `loadtest.run` | `main.rs` — root span for the entire process |
+| `SpanName::RUN` | `loadtest.run` | `loadtest-cli/src/main.rs` — root span for the entire process |
 | `SpanName::TEMPLATE_PARSE` | `loadtest.template.parse` | `#[instrument]` on `Template::parse()` |
 | `SpanName::TEMPLATE_RENDER` | `loadtest.template.render` | `#[instrument]` on `Template::pre_generate()` |
 | `SpanName::TEMPLATE_VALIDATE_PLACEHOLDERS` | `loadtest.template.validate_placeholders` | `#[instrument]` on `renderer::validate_placeholders()` |
 | `SpanName::TEMPLATE_CHECK_CIRCULAR_REFS` | `loadtest.template.check_circular_refs` | `#[instrument]` on `definition::check_circular_refs()` |
 | `SpanName::RESPONSE_TEMPLATE_PARSE` | `loadtest.response_template.parse` | `#[instrument]` on `ResponseTemplate::parse()` |
-| `SpanName::REQUESTS` | `loadtest.requests` | `run.rs` — wraps the full worker dispatch and result collection |
+| `SpanName::REQUESTS` | `loadtest.requests` | `loadtest-core/src/command/run.rs` — wraps the full worker dispatch and result collection |
 
 ---
 
@@ -88,6 +88,6 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://my-collector:4318 cargo run -- run ...
 
 ## Adding New Spans
 
-1. Add a `pub const` to `SpanName` in `src/monitoring/spans.rs` following the `loadtest.<domain>.<operation>` naming convention
+1. Add a `pub const` to `SpanName` in `loadtest-core/src/monitoring/spans.rs` following the `loadtest.<domain>.<operation>` naming convention
 2. Prefer `#[instrument(name = "loadtest.<domain>.<operation>", ...)]` on the function directly; use a manual `info_span!` only for spans that don't map cleanly to a single function
 3. Update the span registry table and hierarchy in this file

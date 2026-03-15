@@ -23,7 +23,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://my-collector:4318
 100 requests, 1 thread, default concurrency.
 
 ```bash
-cargo run -- run -H https://httpbin.org/get
+cargo run -p loadtest-cli -- run -H https://httpbin.org/get
 ```
 
 ---
@@ -31,7 +31,7 @@ cargo run -- run -H https://httpbin.org/get
 ## 2. POST with an inline body
 
 ```bash
-cargo run -- run \
+cargo run -p loadtest-cli -- run \
   -H https://httpbin.org/post \
   -M post \
   -B '{"name":"alice","email":"alice@example.com"}'
@@ -44,7 +44,7 @@ cargo run -- run \
 1000 requests spread across 4 threads, 50 in-flight at a time.
 
 ```bash
-cargo run -- run \
+cargo run -p loadtest-cli -- run \
   -H https://httpbin.org/post \
   -M post \
   -R 1000 \
@@ -60,7 +60,7 @@ cargo run -- run \
 Generates a unique body per request using the placeholder template.
 
 ```bash
-cargo run -- run \
+cargo run -p loadtest-cli -- run \
   -H https://httpbin.org/post \
   -M post \
   -R 500 \
@@ -71,11 +71,11 @@ cargo run -- run \
 To store it as a reusable alias first:
 
 ```bash
-cargo run -- configure-request \
+cargo run -p loadtest-cli -- configure-request \
   -A create-order \
   -T .templates.example/json/placeholder.json
 
-cargo run -- run \
+cargo run -p loadtest-cli -- run \
   -H https://httpbin.org/post \
   -M post \
   -R 500 \
@@ -91,7 +91,7 @@ httpbin echoes the request body back under a `json` key. The example response
 template extracts a nested field from it.
 
 ```bash
-cargo run -- run \
+cargo run -p loadtest-cli -- run \
   -H https://httpbin.org/post \
   -M post \
   -R 200 \
@@ -104,7 +104,7 @@ cargo run -- run \
 ## 6. Full example
 
 ```bash
-cargo run -- run \
+cargo run -p loadtest-cli -- run \
   -H https://httpbin.org/post \
   -M post \
   -R 1000 \

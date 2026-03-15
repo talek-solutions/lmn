@@ -734,8 +734,6 @@ dependencies = [
 name = "loadtest-core"
 version = "0.1.0"
 dependencies = [
- "opentelemetry",
- "opentelemetry_sdk",
  "rand 0.8.5",
  "reqwest 0.13.2",
  "serde",
@@ -743,7 +741,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
- "tracing-opentelemetry",
 ]
 
 [[package]]

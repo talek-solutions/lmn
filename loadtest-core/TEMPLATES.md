@@ -7,10 +7,10 @@ Templates let you define JSON request bodies with dynamic placeholders. Each req
 ## Usage
 
 ```
-loadtest run -H <host> -M post -t path/to/template.json
+loadtest run -H <host> -M post -T path/to/template.json
 ```
 
-`-t` / `--template` is mutually exclusive with `-B` / `--body`.
+`-T` / `--template` is mutually exclusive with `-B` / `--body`.
 
 ---
 
@@ -214,10 +214,10 @@ Response templates let you track specific fields from response bodies. You defin
 ## Usage
 
 ```
-loadtest run -H <host> -M post -t path/to/template.json -r path/to/response-template.json
+loadtest run -H <host> -M post -T path/to/template.json -S path/to/response-template.json
 ```
 
-`-r` / `--response-template` is optional and independent of `-t`.
+`-S` / `--response-template` is optional and independent of `-T`.
 
 ---
 
@@ -293,7 +293,7 @@ A mismatch occurs when:
 
 **CLI:**
 ```
-loadtest run -H https://api.example.com/pay -M post -t request.json -r response.json
+loadtest run -H https://api.example.com/pay -M post -T request.json -S response.json
 ```
 
 After the run, the statistics section will include:
@@ -306,17 +306,17 @@ After the run, the statistics section will include:
 
 ### Adding a new generator type
 
-1. Add a variant to `RawTemplateDef` in `src/template/definition.rs` with its raw serde fields
+1. Add a variant to `RawTemplateDef` in `loadtest-core/src/template/definition.rs` with its raw serde fields
 2. Add a corresponding validated struct and variant to `TemplateDef`
 3. Implement validation in the `validate()` function
-4. Implement `Generate` for the new type in `src/template/generator.rs`
+4. Implement `Generate` for the new type in `loadtest-core/src/template/generator.rs`
 5. Add a match arm in `GeneratorContext::generate_def`
 
 ### Adding a new body format (e.g. XML, form-data)
 
-The `BodyFormat` enum in `src/command/run.rs` is the extension point:
+The `BodyFormat` enum in `loadtest-core/src/command/run.rs` is the extension point:
 
 1. Add a new variant to `BodyFormat`
 2. Add a corresponding CLI value to the format selector (when introduced)
 3. Add the `Content-Type` mapping in the `match format` arm inside `run_concurrent_requests`
-4. Add a `value_parser` for the new format in `src/cli/command.rs` (e.g. XML validation)
+4. Add a `value_parser` for the new format in `loadtest-cli/src/cli/command.rs` (e.g. XML validation)
