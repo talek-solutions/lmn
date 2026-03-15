@@ -1,4 +1,6 @@
-use loadtest_core::command::run::{RequestResult, RunStats};
+use loadtest_core::command::run::RunStats;
+use loadtest_core::http::RequestResult;
+
 use loadtest_core::response_template::stats::ResponseStats;
 use std::collections::BTreeMap;
 use std::time::Duration;

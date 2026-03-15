@@ -1,4 +1,5 @@
-use crate::command::run::{BodyFormat, RunStats};
+use crate::command::run::RunStats;
+use crate::http::BodyFormat;
 
 pub mod configure_template;
 pub mod method;

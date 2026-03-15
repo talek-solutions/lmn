@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use crate::cli::command::{ConfigureRequestArgs, ConfigureResponseArgs, HttpMethod, RunArgs};
 use loadtest_core::command::configure_template::{ConfigureTemplateCommand, TemplateKind};
-use loadtest_core::command::run::{BodyFormat, RunCommand};
+use loadtest_core::command::run::RunCommand;
+use loadtest_core::http::BodyFormat;
 use loadtest_core::command::Body;
 
 impl From<HttpMethod> for loadtest_core::command::HttpMethod {
