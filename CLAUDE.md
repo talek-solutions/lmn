@@ -15,6 +15,7 @@
 - The tech lead signs off on all initiative maintaing balance between velocity, preventing tech debt and informing the user in a detailed way of the reasoning and technical decisions
 - The tech lead reviews all code of the senior-rust-dev once the agent is done
 - The security reviewer reviews the feature code in parallel with the tech-lead review
+- A second senior-rust-dev can be spawned to work in parallel with the first one to acoomplish the requirements by the user or the tech-lead
 
 
 # Plan
