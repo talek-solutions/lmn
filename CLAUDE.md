@@ -8,6 +8,15 @@
 - You CAN/SHOULD propose better practices or other improvements, after you reason exactly why they might be needed
 - You should NEVER auto implement such suggestions, without reasonining them and my explicit approval
 
+# Agents
+- The senior-rust-dev agent is to implement code changes as per the request of the user or the tech-lead or senior-product-manager (only after tech lead or user approval)
+- The tech lead owns implementing and keeping up-to-date documentation of the features he owns in .docs directory, creating and maintaining the TECH.md file
+- The senior product manage is to create BRD and PRD documents in .docs/initiative-name/ directory and keep them up-to-date. The PdM works with the technical lead to produce and maintain .docs/BACKLOG.md, as the list and reasoning (short) of the next 5 features that need to be implemented
+- The tech lead signs off on all initiative maintaing balance between velocity, preventing tech debt and informing the user in a detailed way of the reasoning and technical decisions
+- The tech lead reviews all code of the senior-rust-dev once the agent is done
+- The security reviewer reviews the feature code in parallel with the tech-lead review
+
+
 # Plan
 - Every plan you show to me, just contain very visibly which files in the entire structure you must change
 - In the case the changes are too many, you can show how many files you will create, update and delete, with their respective folders
