@@ -737,6 +737,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-opentelemetry",

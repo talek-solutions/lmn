@@ -1,0 +1,8 @@
+{
+  "stages": [
+    { "duration": "30s", "target_vus": 10,  "ramp": "step" },
+    { "duration": "30s", "target_vus": 50,  "ramp": "step" },
+    { "duration": "30s", "target_vus": 100, "ramp": "step" },
+    { "duration": "30s", "target_vus": 0,   "ramp": "step" }
+  ]
+}

@@ -113,3 +113,57 @@ cargo run -p lumen -- run \
   -T lumen-core/.templates.example/json/placeholder.json \
   -S lumen-core/.templates.example/json/responses/error-code.json
 ```
+
+---
+
+## 7. Load curve — ramp up, hold, ramp down
+
+Gradually increases to 50 VUs over 30s, holds for 1 minute, then ramps back to 0.
+
+```bash
+cargo run -p lumen -- run \
+  -H https://httpbin.org/get \
+  -L lumen-core/.templates.example/curves/ramp.json
+```
+
+---
+
+## 8. Load curve — spike
+
+Runs at 20 VUs, instantly spikes to 100 for 10 seconds, then drops back to 20.
+Useful for verifying recovery after a burst event.
+
+```bash
+cargo run -p lumen -- run \
+  -H https://httpbin.org/post \
+  -M post \
+  -L lumen-core/.templates.example/curves/spike.json
+```
+
+---
+
+## 9. Load curve — stepped
+
+Steps through 10 → 50 → 100 VUs in 30-second increments to find the concurrency
+level at which the service degrades.
+
+```bash
+cargo run -p lumen -- run \
+  -H https://httpbin.org/get \
+  -L lumen-core/.templates.example/curves/stepped.json
+```
+
+---
+
+## 10. Load curve — with request template
+
+Combines a ramp curve with per-VU dynamic request body generation.
+`-R` and `-C` must not be used alongside `-L`.
+
+```bash
+cargo run -p lumen -- run \
+  -H https://httpbin.org/post \
+  -M post \
+  -T lumen-core/.templates.example/json/placeholder.json \
+  -L lumen-core/.templates.example/curves/ramp.json
+```

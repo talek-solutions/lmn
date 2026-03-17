@@ -99,6 +99,15 @@ impl Template {
             })
             .collect()
     }
+
+    /// Generates a single request body on demand.
+    /// Thread-safe: each call creates its own RNG state, so concurrent VU tasks
+    /// can call this simultaneously without contention.
+    pub fn generate_one(&self) -> String {
+        let mut rng = rand::thread_rng();
+        let rendered = renderer::render(&self.body, &self.context, &mut rng);
+        serde_json::to_string(&rendered).expect("rendered Value is always valid JSON")
+    }
 }
 
 #[cfg(test)]
@@ -145,5 +154,29 @@ mod tests {
     fn parse_succeeds_with_no_placeholders() {
         let f = write_temp(r#"{"field": "static"}"#);
         assert!(Template::parse(f.path()).is_ok());
+    }
+
+    // 9. generate_one returns valid JSON string
+    #[test]
+    fn generate_one_returns_valid_json() {
+        let f = write_temp(r#"{"field": "static", "value": 42}"#);
+        let template = Template::parse(f.path()).unwrap();
+        let result = template.generate_one();
+        // Must parse as valid JSON
+        let parsed: serde_json::Value = serde_json::from_str(&result)
+            .expect("generate_one must return valid JSON");
+        assert_eq!(parsed["field"], serde_json::Value::String("static".to_string()));
+        assert_eq!(parsed["value"], serde_json::json!(42));
+    }
+
+    #[test]
+    fn generate_one_is_independent_per_call() {
+        // Two calls should both produce valid JSON (no shared mutable state issues)
+        let f = write_temp(r#"{"field": "static"}"#);
+        let template = Template::parse(f.path()).unwrap();
+        let a = template.generate_one();
+        let b = template.generate_one();
+        assert!(serde_json::from_str::<serde_json::Value>(&a).is_ok());
+        assert!(serde_json::from_str::<serde_json::Value>(&b).is_ok());
     }
 }

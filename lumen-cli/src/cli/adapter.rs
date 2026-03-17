@@ -5,6 +5,7 @@ use lumen_core::command::configure_template::{ConfigureTemplateCommand, Template
 use lumen_core::command::run::RunCommand;
 use lumen_core::http::BodyFormat;
 use lumen_core::command::Body;
+use lumen_core::load_curve::LoadCurve;
 
 impl From<HttpMethod> for lumen_core::command::HttpMethod {
     fn from(m: HttpMethod) -> Self {
@@ -18,9 +19,37 @@ impl From<HttpMethod> for lumen_core::command::HttpMethod {
     }
 }
 
-impl From<RunArgs> for RunCommand {
-    fn from(args: RunArgs) -> Self {
-        RunCommand {
+impl TryFrom<RunArgs> for RunCommand {
+    type Error = Box<dyn std::error::Error>;
+
+    fn try_from(args: RunArgs) -> Result<Self, Self::Error> {
+        const MAX_CURVE_FILE_BYTES: u64 = 1_048_576; // 1 MB
+
+        let load_curve = args
+            .load_curve
+            .map(|path| {
+                let file_size = std::fs::metadata(&path)
+                    .map_err(|e| format!("cannot access load curve file '{}': {e}", path.display()))?
+                    .len();
+                if file_size > MAX_CURVE_FILE_BYTES {
+                    return Err(format!(
+                        "load curve file '{}' exceeds 1 MB limit ({} bytes)",
+                        path.display(),
+                        file_size
+                    ));
+                }
+                let content = std::fs::read_to_string(&path)
+                    .map_err(|e| format!("failed to read load curve file '{}': {e}", path.display()))?;
+                let curve = content.parse::<LoadCurve>()
+                    .map_err(|e| format!("failed to parse load curve file '{}': {e}", path.display()))?;
+                curve.validate()
+                    .map_err(|e| format!("invalid load curve '{}': {e}", path.display()))?;
+                Ok(curve)
+            })
+            .transpose()
+            .map_err(|e: String| Box::<dyn std::error::Error>::from(e))?;
+
+        Ok(RunCommand {
             host: args.host,
             request_count: args.request_count as usize,
             concurrency: args.concurrency as usize,
@@ -35,7 +64,8 @@ impl From<RunArgs> for RunCommand {
             response_template_path: args
                 .response_template
                 .or_else(|| args.response_alias.map(resolve_alias("responses"))),
-        }
+            load_curve,
+        })
     }
 }
 
@@ -146,5 +176,78 @@ mod tests {
     fn resolve_alias_uses_correct_subdir() {
         let path = resolve_alias("responses")("template".to_string());
         assert_eq!(path, PathBuf::from(".templates/responses/template.json"));
+    }
+
+    fn make_run_args(load_curve: Option<std::path::PathBuf>) -> RunArgs {
+        RunArgs {
+            host: "http://localhost:3000".to_string(),
+            request_count: 100,
+            threads: 1,
+            concurrency: 10,
+            method: HttpMethod::Get,
+            body: None,
+            request_template: None,
+            request_alias: None,
+            response_template: None,
+            response_alias: None,
+            load_curve,
+        }
+    }
+
+    #[test]
+    fn try_from_run_args_without_curve_succeeds() {
+        let cmd = RunCommand::try_from(make_run_args(None));
+        assert!(cmd.is_ok());
+        let cmd = cmd.unwrap();
+        assert!(cmd.load_curve.is_none());
+    }
+
+    #[test]
+    fn try_from_run_args_with_nonexistent_curve_file_fails() {
+        let cmd = RunCommand::try_from(make_run_args(Some(PathBuf::from("nonexistent-curve.json"))));
+        assert!(cmd.is_err());
+    }
+
+    #[test]
+    fn try_from_run_args_with_valid_curve_file_succeeds() {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        let json = r#"{"stages":[{"duration":"10s","target_vus":5}]}"#;
+        f.write_all(json.as_bytes()).unwrap();
+
+        let cmd = RunCommand::try_from(make_run_args(Some(f.path().to_path_buf())));
+        assert!(cmd.is_ok());
+        assert!(cmd.unwrap().load_curve.is_some());
+    }
+
+    #[test]
+    fn try_from_run_args_with_invalid_json_curve_fails() {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"not json").unwrap();
+
+        let cmd = RunCommand::try_from(make_run_args(Some(f.path().to_path_buf())));
+        assert!(cmd.is_err());
+    }
+
+    #[test]
+    fn try_from_run_args_with_invalid_curve_vus_fails() {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        // target_vus exceeds MAX_VUS (10_000)
+        let json = r#"{"stages":[{"duration":"10s","target_vus":99999}]}"#;
+        f.write_all(json.as_bytes()).unwrap();
+        let cmd = RunCommand::try_from(make_run_args(Some(f.path().to_path_buf())));
+        assert!(cmd.is_err());
+    }
+
+    #[test]
+    fn try_from_run_args_with_empty_stages_fails() {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        let json = r#"{"stages":[]}"#;
+        f.write_all(json.as_bytes()).unwrap();
+        let cmd = RunCommand::try_from(make_run_args(Some(f.path().to_path_buf())));
+        assert!(cmd.is_err());
     }
 }

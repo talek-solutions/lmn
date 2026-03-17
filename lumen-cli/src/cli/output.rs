@@ -1,4 +1,4 @@
-use lumen_core::command::run::RunStats;
+use lumen_core::command::run::{ExecutionMode, RunStats};
 use lumen_core::http::RequestResult;
 
 use lumen_core::response_template::stats::ResponseStats;
@@ -57,8 +57,15 @@ pub fn print_stats(results: &[RequestResult], stats: &RunStats) {
 
     println!();
     println!(" Results {rule}");
+    match stats.mode {
+        ExecutionMode::Curve => println!("  mode       curve"),
+        ExecutionMode::Fixed => println!("  mode       fixed"),
+    }
     println!("  requests   {total}  ({ok} ok · {fail} failed)");
     println!("  duration   {}", fmt_total_duration(stats.elapsed));
+    if let Some(cd) = stats.curve_duration {
+        println!("  curve      {}", fmt_total_duration(cd));
+    }
     if let Some(td) = stats.template_duration {
         println!("  template   {}", fmt_total_duration(td));
     }

@@ -88,6 +88,12 @@ pub struct RunArgs {
     #[arg(help = "Alias of a stored response template (name or name.json)")]
     #[arg(conflicts_with = "response_template")]
     pub response_alias: Option<String>,
+
+    #[arg(short='L')]
+    #[arg(long = "load-curve")]
+    #[arg(help = "Path to a load curve JSON file (conflicts with -R and -C)")]
+    #[arg(conflicts_with_all = ["request_count", "concurrency"])]
+    pub load_curve: Option<std::path::PathBuf>,
 }
 
 
