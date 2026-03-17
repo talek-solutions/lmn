@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use clap::Parser;
 use cli::command::{LoadTestRunCli, OutputFormat};
 use cli::json_output::{JsonDest, WriteJsonOutputParams, write_json_output};
@@ -5,6 +7,7 @@ use cli::output::print_stats;
 use lumen_core::command::run::RunCommand;
 use lumen_core::command::{Command, Commands, ConfigureTemplateCommand};
 use lumen_core::monitoring::SpanName;
+use lumen_core::output::{RunReport, RunReportParams};
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::Resource;
@@ -19,7 +22,7 @@ fn main() {
     // Capture output-related args before consuming cli_args below.
     // `reservoir_size` is also captured here so it can be passed to
     // RunReportParams once Dev 1's output module is merged (TECH.md R4).
-    let (output_format, output_file, _reservoir_size) = match &cli_args {
+    let (output_format, output_file, reservoir_size) = match &cli_args {
         LoadTestRunCli::Run(args) => (args.output, args.output_file.clone(), args.result_buffer),
         _ => (OutputFormat::Table, None, 100_000),
     };
@@ -72,20 +75,23 @@ fn main() {
             }
         };
 
-        let code = match cmd.execute().await {
+        let run_start = Instant::now();
+        let result = cmd.execute().await;
+
+        let code = match result {
             Ok(Some(stats)) => {
+                let report = RunReport::from_params(RunReportParams {
+                    stats: &stats,
+                    reservoir_size,
+                    run_start,
+                });
+
                 // Determine whether to also write JSON to a file.
                 // When --output-file is set, JSON is always written to the
                 // file regardless of --output (TECH.md §4.2).
                 if let Some(ref path) = output_file {
-                    // TODO: replace the placeholder `serde_json::Value` with
-                    // `lumen_core::output::RunReport::from_params(RunReportParams {
-                    //     stats: &stats,
-                    //     reservoir_size: _reservoir_size,
-                    // })` once Dev 1's output module is merged.
-                    let placeholder: serde_json::Value = serde_json::Value::Null;
                     if let Err(e) = write_json_output(WriteJsonOutputParams {
-                        report: &placeholder,
+                        report: &report,
                         dest: JsonDest::File(path.clone()),
                     }) {
                         eprintln!("error: {e}");
@@ -102,10 +108,8 @@ fn main() {
                         // JSON is always emitted to stdout when --output json is set,
                         // whether or not --output-file is also provided (TECH.md §4.2
                         // behaviour matrix: rows 3 and 4 both produce stdout JSON).
-                        // TODO: replace placeholder with RunReport once merged.
-                        let placeholder: serde_json::Value = serde_json::Value::Null;
                         if let Err(e) = write_json_output(WriteJsonOutputParams {
-                            report: &placeholder,
+                            report: &report,
                             dest: JsonDest::Stdout,
                         }) {
                             eprintln!("error: {e}");

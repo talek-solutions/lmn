@@ -1,6 +1,8 @@
 use std::io::Write;
 use std::path::PathBuf;
 
+use lumen_core::output::RunReport;
+
 /// Where the JSON output should be written.
 pub enum JsonDest {
     Stdout,
@@ -12,12 +14,7 @@ pub enum JsonDest {
 /// Parameters for `write_json_output`.
 pub struct WriteJsonOutputParams<'a> {
     /// The serialisable run report produced by `lumen_core::output::RunReport`.
-    ///
-    /// The concrete type is a stub (`serde_json::Value`) until Dev 1's
-    /// `lumen-core/src/output/` module is merged.  Once merged, replace the
-    /// type here with `&'a lumen_core::output::RunReport` and remove the
-    /// `serde_json::Value` import.
-    pub report: &'a serde_json::Value,
+    pub report: &'a RunReport,
     pub dest: JsonDest,
 }
 
@@ -26,9 +23,6 @@ pub struct WriteJsonOutputParams<'a> {
 /// On file write failure the error is returned; the caller is responsible for
 /// printing to stderr and exiting with code 1.
 pub fn write_json_output(params: WriteJsonOutputParams<'_>) -> Result<(), Box<dyn std::error::Error>> {
-    // TODO: replace `serde_json::Value` with `lumen_core::output::RunReport`
-    // once Dev 1's output module is merged.  The serialisation call below is
-    // already correct — `serde_json::to_string_pretty` works for any `Serialize`.
     let json = serde_json::to_string_pretty(params.report)?;
 
     match params.dest {
@@ -48,30 +42,51 @@ pub fn write_json_output(params: WriteJsonOutputParams<'_>) -> Result<(), Box<dy
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use serde_json::json;
+    use std::collections::BTreeMap;
 
-    fn minimal_report() -> serde_json::Value {
-        json!({
-            "version": 1,
-            "run": { "mode": "fixed", "elapsed_ms": 100.0, "curve_duration_ms": null, "template_generation_ms": null },
-            "requests": { "total": 10, "ok": 10, "failed": 0, "error_rate": 0.0, "throughput_rps": 100.0 },
-            "latency": {
-                "min_ms": 1.0, "p10_ms": 1.0, "p25_ms": 2.0, "p50_ms": 3.0,
-                "p75_ms": 4.0, "p90_ms": 5.0, "p95_ms": 6.0, "p99_ms": 7.0,
-                "max_ms": 10.0, "avg_ms": 3.5
+    use lumen_core::output::{LatencyStats, RequestSummary, RunMeta, RunReport, SamplingInfo};
+
+    use super::*;
+
+    fn minimal_report() -> RunReport {
+        RunReport {
+            version: 1,
+            run: RunMeta {
+                mode: "fixed".to_string(),
+                elapsed_ms: 100.0,
+                curve_duration_ms: None,
+                template_generation_ms: None,
             },
-            "status_codes": { "200": 10 },
-            "sampling": {
-                "sampled": false,
-                "final_sample_rate": 1.0,
-                "min_sample_rate": 1.0,
-                "reservoir_size": 100000,
-                "results_collected": 10
+            requests: RequestSummary {
+                total: 10,
+                ok: 10,
+                failed: 0,
+                error_rate: 0.0,
+                throughput_rps: 100.0,
             },
-            "response_stats": null,
-            "curve_stages": null
-        })
+            latency: LatencyStats {
+                min_ms: 1.0,
+                p10_ms: 1.0,
+                p25_ms: 2.0,
+                p50_ms: 3.0,
+                p75_ms: 4.0,
+                p90_ms: 5.0,
+                p95_ms: 6.0,
+                p99_ms: 7.0,
+                max_ms: 10.0,
+                avg_ms: 3.5,
+            },
+            status_codes: BTreeMap::from([("200".to_string(), 10)]),
+            sampling: SamplingInfo {
+                sampled: false,
+                final_sample_rate: 1.0,
+                min_sample_rate: 1.0,
+                reservoir_size: 100000,
+                results_collected: 10,
+            },
+            response_stats: None,
+            curve_stages: None,
+        }
     }
 
     #[test]
