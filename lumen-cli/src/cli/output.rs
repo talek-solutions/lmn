@@ -1,4 +1,4 @@
-use lumen_core::command::run::RunStats;
+use lumen_core::command::run::{ExecutionMode, RunStats};
 use lumen_core::http::RequestResult;
 
 use lumen_core::response_template::stats::ResponseStats;
@@ -6,9 +6,9 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 pub fn print_stats(results: &[RequestResult], stats: &RunStats) {
-    let total = results.len();
-    let ok = results.iter().filter(|r| r.success).count();
-    let fail = total - ok;
+    let total = stats.total_requests;
+    let ok = total - stats.total_failures;
+    let fail = stats.total_failures;
     let throughput = if stats.elapsed.as_secs_f64() > 0.0 {
         total as f64 / stats.elapsed.as_secs_f64()
     } else {
@@ -57,12 +57,23 @@ pub fn print_stats(results: &[RequestResult], stats: &RunStats) {
 
     println!();
     println!(" Results {rule}");
+    match stats.mode {
+        ExecutionMode::Curve => println!("  mode       curve"),
+        ExecutionMode::Fixed => println!("  mode       fixed"),
+    }
     println!("  requests   {total}  ({ok} ok · {fail} failed)");
     println!("  duration   {}", fmt_total_duration(stats.elapsed));
+    if let Some(cd) = stats.curve_duration {
+        println!("  curve      {}", fmt_total_duration(cd));
+    }
     if let Some(td) = stats.template_duration {
         println!("  template   {}", fmt_total_duration(td));
     }
     println!("  throughput {throughput:.1} req/s");
+    if stats.min_sample_rate < 1.0 {
+        let inverse = (1.0 / stats.min_sample_rate).round() as usize;
+        println!("  sampling  ~1-in-{inverse} (latency percentiles are approximate)");
+    }
     println!();
     println!(" Latency {rule}");
     for (label, val) in &lat_rows {

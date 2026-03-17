@@ -54,7 +54,13 @@ fn main() {
         let _enter = root.enter();
 
         let cmd = match cli_args {
-            LoadTestRunCli::Run(args) => Commands::Run(RunCommand::from(args)),
+            LoadTestRunCli::Run(args) => match RunCommand::try_from(args) {
+                Ok(cmd) => Commands::Run(cmd),
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return 1;
+                }
+            },
             LoadTestRunCli::ConfigureRequest(args) => {
                 Commands::ConfigureRequest(ConfigureTemplateCommand::from(args))
             }

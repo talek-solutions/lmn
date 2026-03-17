@@ -30,11 +30,15 @@ lumen run [OPTIONS] -H <HOST>
 | `-A` | `--request-alias` | — | Alias of a stored request template |
 | `-S` | `--response-template` | — | Path to a response template file |
 | `-E` | `--response-alias` | — | Alias of a stored response template |
+| `-L` | `--load-curve` | — | Path to a load curve JSON file (time-based VU scaling mode) |
+| — | `--sample-threshold` | `50` | VU count below which all results are collected (0 = disabled) |
+| — | `--result-buffer` | `100000` | Max results to retain for percentile computation |
 
 ### Conflicts
 
 - `-B`, `-T`, `-A` are mutually exclusive (only one request body source allowed)
 - `-S` and `-E` are mutually exclusive (only one response template source allowed)
+- `-L` conflicts with `-R` and `-C` (curve mode is time-based, not count-based)
 
 ### Examples
 
@@ -53,7 +57,39 @@ lumen run -H http://localhost:3000/api -A my-alias -E my-response
 
 # Full example
 lumen run -H http://localhost:3000/api -M post -R 1000 -W 4 -C 50 -A my-alias -E my-response
+
+# Load curve (time-based VU scaling)
+lumen run -H http://localhost:3000/api -M post -L ./my-curve.json
 ```
+
+---
+
+## Load Curve JSON Format
+
+When using `-L`/`--load-curve`, provide a JSON file with the following structure:
+
+```json
+{
+  "stages": [
+    { "duration": "30s", "target_vus": 10 },
+    { "duration": "1m", "target_vus": 50, "ramp": "linear" },
+    { "duration": "30s", "target_vus": 0, "ramp": "step" }
+  ]
+}
+```
+
+### Stage Fields
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `duration` | string | yes | — | Stage duration: `"30s"`, `"2m"`, `"1m30s"` |
+| `target_vus` | number | yes | — | Target virtual user count at end of stage |
+| `ramp` | string | no | `"linear"` | Ramp type: `"linear"` or `"step"` |
+
+### Ramp Types
+
+- `linear` — Smoothly interpolates VU count from the previous stage's target to this stage's `target_vus` over the stage duration.
+- `step` — Immediately jumps to `target_vus` at the start of the stage.
 
 ---
 

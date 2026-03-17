@@ -1,0 +1,9 @@
+{
+  "stages": [
+    { "duration": "1m", "target_vus": 50 },
+    { "duration": "1m", "target_vus": 200 },
+    { "duration": "1m", "target_vus": 500 },
+    { "duration": "1m", "target_vus": 1000 },
+    { "duration": "1m", "target_vus": 0 }
+  ]
+}

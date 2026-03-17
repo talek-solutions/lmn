@@ -88,6 +88,22 @@ pub struct RunArgs {
     #[arg(help = "Alias of a stored response template (name or name.json)")]
     #[arg(conflicts_with = "response_template")]
     pub response_alias: Option<String>,
+
+    #[arg(short='L')]
+    #[arg(long = "load-curve")]
+    #[arg(help = "Path to a load curve JSON file (conflicts with -R and -C)")]
+    #[arg(conflicts_with_all = ["request_count", "concurrency"])]
+    pub load_curve: Option<std::path::PathBuf>,
+
+    #[arg(long = "sample-threshold")]
+    #[arg(help = "VU count below which all results are collected (0 = disabled)")]
+    #[arg(default_value = "50")]
+    pub sample_threshold: usize,
+
+    #[arg(long = "result-buffer")]
+    #[arg(help = "Max results to retain for percentile computation")]
+    #[arg(default_value = "100000")]
+    pub result_buffer: usize,
 }
 
 
