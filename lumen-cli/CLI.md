@@ -31,6 +31,8 @@ lumen run [OPTIONS] -H <HOST>
 | `-S` | `--response-template` | — | Path to a response template file |
 | `-E` | `--response-alias` | — | Alias of a stored response template |
 | `-L` | `--load-curve` | — | Path to a load curve JSON file (time-based VU scaling mode) |
+| — | `--sample-threshold` | `50` | VU count below which all results are collected (0 = disabled) |
+| — | `--result-buffer` | `100000` | Max results to retain for percentile computation |
 
 ### Conflicts
 

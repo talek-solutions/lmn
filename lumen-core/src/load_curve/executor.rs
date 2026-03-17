@@ -8,6 +8,7 @@ use tracing::debug;
 
 use crate::http::{Request, RequestConfig, RequestResult};
 use crate::request_template::Template;
+use crate::sampling::{ReservoirAction, SamplingParams, SamplingState};
 
 use super::LoadCurve;
 
@@ -19,6 +20,19 @@ pub struct CurveExecutorParams {
     pub request_config: Arc<RequestConfig>,
     pub template: Option<Arc<Template>>,
     pub cancellation_token: CancellationToken,
+    pub sampling: SamplingParams,
+}
+
+// ── CurveExecutionResult ──────────────────────────────────────────────────────
+
+/// Result returned by `CurveExecutor::execute`. Carries the reservoir-bounded
+/// sample of results plus the four sampling counters for `RunStats`.
+pub struct CurveExecutionResult {
+    pub results: Vec<RequestResult>,
+    pub total_requests: usize,
+    pub total_failures: usize,
+    pub sample_rate: f64,
+    pub min_sample_rate: f64,
 }
 
 // ── CurveExecutor ─────────────────────────────────────────────────────────────
@@ -34,10 +48,11 @@ impl CurveExecutor {
     }
 
     /// Runs the load curve, spawning and cancelling VU tasks as the curve
-    /// dictates. Collects all `RequestResult`s and returns them when the curve
-    /// completes or a cancellation signal is received.
-    pub async fn execute(self) -> Vec<RequestResult> {
-        let CurveExecutorParams { curve, request_config, template, cancellation_token } =
+    /// dictates. Applies VU-threshold + reservoir sampling to bound memory
+    /// usage. Returns a `CurveExecutionResult` when the curve completes or a
+    /// cancellation signal is received.
+    pub async fn execute(self) -> CurveExecutionResult {
+        let CurveExecutorParams { curve, request_config, template, cancellation_token, sampling } =
             self.params;
 
         let total_duration = curve.total_duration();
@@ -48,6 +63,9 @@ impl CurveExecutor {
 
         // Track active VU handles and their per-VU cancellation tokens.
         let mut vu_handles: Vec<(JoinHandle<()>, CancellationToken)> = Vec::new();
+
+        let mut sampling = SamplingState::new(sampling);
+        let mut results: Vec<RequestResult> = Vec::new();
 
         let mut ticker = tokio::time::interval(tokio::time::Duration::from_millis(100));
 
@@ -96,6 +114,23 @@ impl CurveExecutor {
                         }
                     }
                     // If target == current: nothing to do
+
+                    // Update sampling rate based on the current active VU count.
+                    sampling.set_active_vus(vu_handles.len());
+
+                    // Drain all results currently in the channel without blocking.
+                    // This prevents channel backpressure from inflating latency at
+                    // high throughput — a correctness fix independent of sampling.
+                    while let Ok(result) = rx.try_recv() {
+                        sampling.record_request(result.success);
+                        if sampling.should_collect() {
+                            match sampling.reservoir_slot(results.len()) {
+                                ReservoirAction::Push => results.push(result),
+                                ReservoirAction::Replace(idx) => results[idx] = result,
+                                ReservoirAction::Discard => {}
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -112,12 +147,26 @@ impl CurveExecutor {
         // senders (clones) are also dropped (they are, since tasks ended).
         drop(tx);
 
-        // Drain all results
-        let mut results = Vec::new();
+        // Final drain: collect any results that arrived between the last tick
+        // and the VU tasks completing.
         while let Some(result) = rx.recv().await {
-            results.push(result);
+            sampling.record_request(result.success);
+            if sampling.should_collect() {
+                match sampling.reservoir_slot(results.len()) {
+                    ReservoirAction::Push => results.push(result),
+                    ReservoirAction::Replace(idx) => results[idx] = result,
+                    ReservoirAction::Discard => {}
+                }
+            }
         }
-        results
+
+        CurveExecutionResult {
+            results,
+            total_requests: sampling.total_requests(),
+            total_failures: sampling.total_failures(),
+            sample_rate: sampling.sample_rate(),
+            min_sample_rate: sampling.min_sample_rate(),
+        }
     }
 }
 

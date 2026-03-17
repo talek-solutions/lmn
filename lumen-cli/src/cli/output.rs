@@ -6,9 +6,9 @@ use std::collections::BTreeMap;
 use std::time::Duration;
 
 pub fn print_stats(results: &[RequestResult], stats: &RunStats) {
-    let total = results.len();
-    let ok = results.iter().filter(|r| r.success).count();
-    let fail = total - ok;
+    let total = stats.total_requests;
+    let ok = total - stats.total_failures;
+    let fail = stats.total_failures;
     let throughput = if stats.elapsed.as_secs_f64() > 0.0 {
         total as f64 / stats.elapsed.as_secs_f64()
     } else {
@@ -70,6 +70,10 @@ pub fn print_stats(results: &[RequestResult], stats: &RunStats) {
         println!("  template   {}", fmt_total_duration(td));
     }
     println!("  throughput {throughput:.1} req/s");
+    if stats.min_sample_rate < 1.0 {
+        let inverse = (1.0 / stats.min_sample_rate).round() as usize;
+        println!("  sampling  ~1-in-{inverse} (latency percentiles are approximate)");
+    }
     println!();
     println!(" Latency {rule}");
     for (label, val) in &lat_rows {

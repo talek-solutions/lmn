@@ -16,6 +16,7 @@ use crate::request_template::Template;
 use crate::response_template::extractor;
 use crate::response_template::stats::ResponseStats;
 use crate::response_template::ResponseTemplate;
+use crate::sampling::{ReservoirAction, SamplingParams, SamplingState};
 
 // ── ExecutionMode ─────────────────────────────────────────────────────────────
 
@@ -38,6 +39,14 @@ pub struct RunStats {
     pub mode: ExecutionMode,
     /// Total curve duration (only meaningful when `mode == ExecutionMode::Curve`).
     pub curve_duration: Option<Duration>,
+    /// Actual (unsampled) total request count.
+    pub total_requests: usize,
+    /// Actual (unsampled) failure count.
+    pub total_failures: usize,
+    /// Final VU-threshold sample rate at end of run (1.0 = no threshold sampling).
+    pub sample_rate: f64,
+    /// Lowest sample rate observed at any point during the run.
+    pub min_sample_rate: f64,
 }
 
 // ── RunCommand ────────────────────────────────────────────────────────────────
@@ -51,6 +60,10 @@ pub struct RunCommand {
     pub template_path: Option<PathBuf>,
     pub response_template_path: Option<PathBuf>,
     pub load_curve: Option<LoadCurve>,
+    /// VU count below which all results are collected (0 = disabled).
+    pub sample_threshold: usize,
+    /// Maximum results to retain for percentile computation.
+    pub result_buffer: usize,
 }
 
 impl Command for RunCommand {
@@ -66,6 +79,8 @@ impl Command for RunCommand {
             template_path,
             response_template_path,
             load_curve,
+            sample_threshold,
+            result_buffer,
         } = self;
 
         let base = RunCommand {
@@ -77,6 +92,8 @@ impl Command for RunCommand {
             template_path,
             response_template_path,
             load_curve: None,
+            sample_threshold,
+            result_buffer,
         };
 
         match load_curve {
@@ -131,7 +148,10 @@ impl RunCommand {
 
         let started_at = Instant::now();
 
-        let all_results = async {
+        let sample_threshold = self.sample_threshold;
+        let result_buffer = self.result_buffer;
+
+        let (all_results, sampling) = async {
             let sem = Arc::new(Semaphore::new(concurrency));
             let (tx, mut rx) = mpsc::channel::<RequestResult>(concurrency);
 
@@ -168,11 +188,25 @@ impl RunCommand {
             // Close the last sender — rx drains once all tasks have finished
             drop(tx);
 
-            let mut results = Vec::with_capacity(total);
+            let mut sampling = SamplingState::new(SamplingParams {
+                vu_threshold: sample_threshold,
+                reservoir_size: result_buffer,
+            });
+            // In fixed mode the VU count is constant — set it once before draining.
+            sampling.set_active_vus(concurrency);
+
+            let mut results: Vec<RequestResult> = Vec::with_capacity(total.min(result_buffer));
             while let Some(result) = rx.recv().await {
-                results.push(result);
+                sampling.record_request(result.success);
+                if sampling.should_collect() {
+                    match sampling.reservoir_slot(results.len()) {
+                        ReservoirAction::Push => results.push(result),
+                        ReservoirAction::Replace(idx) => results[idx] = result,
+                        ReservoirAction::Discard => {}
+                    }
+                }
             }
-            results
+            (results, sampling)
         }
         .instrument(info_span!(SpanName::REQUESTS, total))
         .await;
@@ -196,6 +230,10 @@ impl RunCommand {
             results: all_results,
             mode: ExecutionMode::Fixed,
             curve_duration: None,
+            total_requests: sampling.total_requests(),
+            total_failures: sampling.total_failures(),
+            sample_rate: sampling.sample_rate(),
+            min_sample_rate: sampling.min_sample_rate(),
         }))
     }
 
@@ -242,13 +280,17 @@ impl RunCommand {
             request_config: Arc::clone(&request_config),
             template,
             cancellation_token,
+            sampling: SamplingParams {
+                vu_threshold: self.sample_threshold,
+                reservoir_size: self.result_buffer,
+            },
         });
 
-        let all_results = executor.execute().await;
+        let curve_result = executor.execute().await;
 
         let response_stats = request_config.tracked_fields.as_ref().map(|fields| {
             let mut rs = ResponseStats::new();
-            for result in &all_results {
+            for result in &curve_result.results {
                 if let Some(ref body_str) = result.response_body {
                     if let Ok(body_val) = serde_json::from_str(body_str) {
                         rs.record(extractor::extract(&body_val, fields));
@@ -262,9 +304,13 @@ impl RunCommand {
             elapsed: started_at.elapsed(),
             template_duration: None,
             response_stats,
-            results: all_results,
+            results: curve_result.results,
             mode: ExecutionMode::Curve,
             curve_duration: Some(curve_duration),
+            total_requests: curve_result.total_requests,
+            total_failures: curve_result.total_failures,
+            sample_rate: curve_result.sample_rate,
+            min_sample_rate: curve_result.min_sample_rate,
         }))
     }
 }

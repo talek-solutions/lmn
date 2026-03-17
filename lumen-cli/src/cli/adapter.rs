@@ -65,6 +65,8 @@ impl TryFrom<RunArgs> for RunCommand {
                 .response_template
                 .or_else(|| args.response_alias.map(resolve_alias("responses"))),
             load_curve,
+            sample_threshold: args.sample_threshold,
+            result_buffer: args.result_buffer,
         })
     }
 }
@@ -191,6 +193,8 @@ mod tests {
             response_template: None,
             response_alias: None,
             load_curve,
+            sample_threshold: 50,
+            result_buffer: 100_000,
         }
     }
 

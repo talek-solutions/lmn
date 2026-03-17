@@ -16,6 +16,8 @@
 - The tech lead reviews all code of the senior-rust-dev once the agent is done
 - The security reviewer reviews the feature code in parallel with the tech-lead review
 - A second senior-rust-dev can be spawned to work in parallel with the first one to acoomplish the requirements by the user or the tech-lead
+- NEVER work directly on master, without the users EXPLICIT approval
+- ALL agents should work on the SAME feature branch that is the CURRENTLY checked out branch, unless asked otherwise by the user
 
 
 # Plan
@@ -38,6 +40,7 @@
 - If I ask you to commit changes, opt-in for single line commit messages, which ALWAYS exclude your contribution
 - Use prefixes like: refactor:, feat:, fix:, chore: in the commit messages
 - ALWAYS request approval for commit
+- You are FORBIDDEN to perform GIT PUSH
 
 # CLI
 - EVERY time you make a change to the CLI contract (flags, subcommands, aliases, conflicts), ALWAYS update CLI.md accordingly
