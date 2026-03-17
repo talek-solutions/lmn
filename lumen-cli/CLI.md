@@ -22,7 +22,6 @@ lumen run [OPTIONS] -H <HOST>
 |-------|------|---------|-------------|
 | `-H` | `--host` | required | Target host URL |
 | `-R` | `--request-count` | `100` | Total number of requests to send |
-| `-W` | `--threads` | `1` | Number of CPU threads (workers) |
 | `-C` | `--concurrency` | `100` | Max in-flight requests at any time |
 | `-M` | `--method` | `get` | HTTP method (`get`, `post`, `put`, `patch`, `delete`) |
 | `-B` | `--body` | — | Inline JSON request body |
@@ -56,7 +55,7 @@ lumen run -H http://localhost:3000/api -M post -A my-alias
 lumen run -H http://localhost:3000/api -A my-alias -E my-response
 
 # Full example
-lumen run -H http://localhost:3000/api -M post -R 1000 -W 4 -C 50 -A my-alias -E my-response
+lumen run -H http://localhost:3000/api -M post -R 1000 -C 50 -A my-alias -E my-response
 
 # Load curve (time-based VU scaling)
 lumen run -H http://localhost:3000/api -M post -L ./my-curve.json

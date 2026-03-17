@@ -184,7 +184,6 @@ mod tests {
         RunArgs {
             host: "http://localhost:3000".to_string(),
             request_count: 100,
-            threads: 1,
             concurrency: 10,
             method: HttpMethod::Get,
             body: None,

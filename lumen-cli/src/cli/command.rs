@@ -38,13 +38,6 @@ pub struct RunArgs {
     #[arg(default_value="100")]
     pub request_count: u32,
 
-    #[arg(short='W')]
-    #[arg(long)]
-    #[arg(help = "The count of CPU thread requests to run")]
-    #[arg(allow_negative_numbers = false)]
-    #[arg(default_value="1")]
-    pub threads: u16,
-
     #[arg(short='C')]
     #[arg(long)]
     #[arg(help = "Max number of requests in-flight at any one time")]

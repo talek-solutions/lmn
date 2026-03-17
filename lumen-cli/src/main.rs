@@ -15,12 +15,6 @@ mod cli;
 fn main() {
     let cli_args = LoadTestRunCli::parse();
 
-    // Extract thread count before consuming args — controls the tokio worker pool size.
-    let threads = match &cli_args {
-        LoadTestRunCli::Run(args) => args.threads as usize,
-        _ => 1,
-    };
-
     // Endpoint is read from OTEL_EXPORTER_OTLP_ENDPOINT env var at runtime,
     // falling back to http://localhost:4318 if unset.
     let exporter = opentelemetry_otlp::SpanExporter::builder()
@@ -44,7 +38,6 @@ fn main() {
         .expect("failed to set global tracing subscriber");
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(threads)
         .enable_all()
         .build()
         .expect("failed to create tokio runtime");
