@@ -17,7 +17,7 @@
 - The security reviewer reviews the feature code in parallel with the tech-lead review
 - A second senior-rust-dev can be spawned to work in parallel with the first one to acoomplish the requirements by the user or the tech-lead
 - NEVER work directly on master, without the users EXPLICIT approval
-- ALL agents should work on the SAME feature branch that is the CURRENTLY checked out branch, unless asked otherwise by the user
+- ALL agents should work on the SAME LOCAL feature branch that is the CURRENTLY checked out branch, unless asked otherwise by the user
 
 
 # Plan
