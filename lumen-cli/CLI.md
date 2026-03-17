@@ -32,12 +32,27 @@ lumen run [OPTIONS] -H <HOST>
 | `-L` | `--load-curve` | — | Path to a load curve JSON file (time-based VU scaling mode) |
 | — | `--sample-threshold` | `50` | VU count below which all results are collected (0 = disabled) |
 | — | `--result-buffer` | `100000` | Max results to retain for percentile computation |
+| — | `--output` | `table` | Output format: `table` (default) or `json` |
+| — | `--output-file` | — | Write JSON result to `<path>` (always JSON regardless of `--output`) |
 
 ### Conflicts
 
 - `-B`, `-T`, `-A` are mutually exclusive (only one request body source allowed)
 - `-S` and `-E` are mutually exclusive (only one response template source allowed)
 - `-L` conflicts with `-R` and `-C` (curve mode is time-based, not count-based)
+
+### Output Behaviour Matrix
+
+| `--output` | `--output-file` | stdout | stderr | file |
+|-----------|----------------|--------|--------|------|
+| `table` (default) | not set | ASCII table | progress | — |
+| `json` | not set | JSON document | progress | — |
+| `table` | set | ASCII table | progress | JSON document |
+| `json` | set | JSON document | progress | JSON document (same content) |
+
+- When `--output json` and no `--output-file`: JSON goes to stdout; ASCII table is suppressed.
+- When `--output-file` is set: JSON is always written to the file regardless of `--output`. This allows `--output table --output-file run.json` for users who want both a readable terminal table and a machine-readable artifact.
+- All run-time messages (shutdown notice, sampling warnings, errors) always go to stderr.
 
 ### Examples
 
@@ -59,9 +74,20 @@ lumen run -H http://localhost:3000/api -M post -R 1000 -C 50 -A my-alias -E my-r
 
 # Load curve (time-based VU scaling)
 lumen run -H http://localhost:3000/api -M post -L ./my-curve.json
+
+# Emit JSON result to stdout instead of ASCII table
+lumen run -H http://localhost:3000/api --output json
+
+# Emit ASCII table to terminal AND write JSON artifact to a file
+lumen run -H http://localhost:3000/api --output-file run.json
+
+# Both JSON to stdout and to file
+lumen run -H http://localhost:3000/api --output json --output-file run.json
 ```
 
 ---
+
+#---
 
 ## Load Curve JSON Format
 

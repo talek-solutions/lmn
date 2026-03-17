@@ -1,5 +1,6 @@
 use clap::Parser;
-use cli::command::LoadTestRunCli;
+use cli::command::{LoadTestRunCli, OutputFormat};
+use cli::json_output::{JsonDest, WriteJsonOutputParams, write_json_output};
 use cli::output::print_stats;
 use lumen_core::command::run::RunCommand;
 use lumen_core::command::{Command, Commands, ConfigureTemplateCommand};
@@ -14,6 +15,15 @@ mod cli;
 
 fn main() {
     let cli_args = LoadTestRunCli::parse();
+
+    // Capture output-related args before consuming cli_args below.
+    // `reservoir_size` is also captured here so it can be passed to
+    // RunReportParams once Dev 1's output module is merged (TECH.md R4).
+    let (output_format, output_file, _reservoir_size) = match &cli_args {
+        LoadTestRunCli::Run(args) => (args.output, args.output_file.clone(), args.result_buffer),
+        _ => (OutputFormat::Table, None, 100_000),
+    };
+
 
     // Endpoint is read from OTEL_EXPORTER_OTLP_ENDPOINT env var at runtime,
     // falling back to http://localhost:4318 if unset.
@@ -64,7 +74,45 @@ fn main() {
 
         let code = match cmd.execute().await {
             Ok(Some(stats)) => {
-                print_stats(&stats.results, &stats);
+                // Determine whether to also write JSON to a file.
+                // When --output-file is set, JSON is always written to the
+                // file regardless of --output (TECH.md §4.2).
+                if let Some(ref path) = output_file {
+                    // TODO: replace the placeholder `serde_json::Value` with
+                    // `lumen_core::output::RunReport::from_params(RunReportParams {
+                    //     stats: &stats,
+                    //     reservoir_size: _reservoir_size,
+                    // })` once Dev 1's output module is merged.
+                    let placeholder: serde_json::Value = serde_json::Value::Null;
+                    if let Err(e) = write_json_output(WriteJsonOutputParams {
+                        report: &placeholder,
+                        dest: JsonDest::File(path.clone()),
+                    }) {
+                        eprintln!("error: {e}");
+                        return 1;
+                    }
+                }
+
+                match output_format {
+                    OutputFormat::Table => {
+                        // Table always goes to stdout regardless of --output-file.
+                        print_stats(&stats.results, &stats);
+                    }
+                    OutputFormat::Json => {
+                        // JSON is always emitted to stdout when --output json is set,
+                        // whether or not --output-file is also provided (TECH.md §4.2
+                        // behaviour matrix: rows 3 and 4 both produce stdout JSON).
+                        // TODO: replace placeholder with RunReport once merged.
+                        let placeholder: serde_json::Value = serde_json::Value::Null;
+                        if let Err(e) = write_json_output(WriteJsonOutputParams {
+                            report: &placeholder,
+                            dest: JsonDest::Stdout,
+                        }) {
+                            eprintln!("error: {e}");
+                            return 1;
+                        }
+                    }
+                }
                 0
             }
             Ok(None) => 0,

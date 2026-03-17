@@ -215,10 +215,56 @@ fn fmt_total_duration(d: Duration) -> String {
     }
 }
 
+/// Returns the array index for percentile `p` (0–100) in a slice of length `len`.
+/// Uses integer floor-index formula: `idx = (len * p / 100).min(len - 1)`.
+/// Returns 0 for an empty slice (callers must guard against empty input separately).
+pub fn percentile_index(len: usize, p: usize) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    (len * p / 100).min(len - 1)
+}
+
 fn percentile(sorted: &[Duration], p: usize) -> Duration {
     if sorted.is_empty() {
         return Duration::ZERO;
     }
-    let idx = (sorted.len() * p / 100).min(sorted.len() - 1);
-    sorted[idx]
+    sorted[percentile_index(sorted.len(), p)]
+}
+
+#[cfg(test)]
+mod output_tests {
+    use super::percentile_index;
+
+    #[test]
+    fn percentile_index_p50_of_100() {
+        assert_eq!(percentile_index(100, 50), 50);
+    }
+
+    #[test]
+    fn percentile_index_p99_of_100() {
+        assert_eq!(percentile_index(100, 99), 99);
+    }
+
+    #[test]
+    fn percentile_index_p0() {
+        assert_eq!(percentile_index(100, 0), 0);
+    }
+
+    #[test]
+    fn percentile_index_p100_clamps_to_last() {
+        // 100 * 100 / 100 = 100, clamped to 99
+        assert_eq!(percentile_index(100, 100), 99);
+    }
+
+    #[test]
+    fn percentile_index_empty_returns_zero() {
+        assert_eq!(percentile_index(0, 50), 0);
+    }
+
+    #[test]
+    fn percentile_index_single_element() {
+        assert_eq!(percentile_index(1, 99), 0);
+        assert_eq!(percentile_index(1, 0), 0);
+    }
 }

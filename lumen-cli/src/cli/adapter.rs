@@ -194,7 +194,48 @@ mod tests {
             load_curve,
             sample_threshold: 50,
             result_buffer: 100_000,
+            output: crate::cli::command::OutputFormat::Table,
+            output_file: None,
         }
+    }
+
+    #[test]
+    fn output_flag_defaults_to_table() {
+        use clap::Parser as _;
+        let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
+            "lumen", "run", "--host", "http://localhost:3000",
+        ])
+        .expect("parse failed");
+        let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
+            panic!("expected Run variant");
+        };
+        assert!(matches!(args.output, crate::cli::command::OutputFormat::Table));
+    }
+
+    #[test]
+    fn output_flag_accepts_json() {
+        use clap::Parser as _;
+        let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
+            "lumen", "run", "--host", "http://localhost:3000", "--output", "json",
+        ])
+        .expect("parse failed");
+        let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
+            panic!("expected Run variant");
+        };
+        assert!(matches!(args.output, crate::cli::command::OutputFormat::Json));
+    }
+
+    #[test]
+    fn output_file_is_none_by_default() {
+        use clap::Parser as _;
+        let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
+            "lumen", "run", "--host", "http://localhost:3000",
+        ])
+        .expect("parse failed");
+        let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
+            panic!("expected Run variant");
+        };
+        assert!(args.output_file.is_none());
     }
 
     #[test]

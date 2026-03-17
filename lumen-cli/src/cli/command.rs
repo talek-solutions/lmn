@@ -2,6 +2,13 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
+#[derive(clap::ValueEnum, Clone, Copy, Debug, Default)]
+pub enum OutputFormat {
+    #[default]
+    Table,
+    Json,
+}
+
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
 pub enum HttpMethod {
     Get,
@@ -97,6 +104,15 @@ pub struct RunArgs {
     #[arg(help = "Max results to retain for percentile computation")]
     #[arg(default_value = "100000")]
     pub result_buffer: usize,
+
+    #[arg(long = "output")]
+    #[arg(default_value = "table")]
+    #[arg(help = "Output format: table (default) or json")]
+    pub output: OutputFormat,
+
+    #[arg(long = "output-file")]
+    #[arg(help = "Write JSON result to <path> (always JSON regardless of --output)")]
+    pub output_file: Option<PathBuf>,
 }
 
 
