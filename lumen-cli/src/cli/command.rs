@@ -113,6 +113,11 @@ pub struct RunArgs {
     #[arg(long = "output-file")]
     #[arg(help = "Write JSON result to <path> (always JSON regardless of --output)")]
     pub output_file: Option<PathBuf>,
+
+    #[arg(short = 'f')]
+    #[arg(long = "config")]
+    #[arg(help = "Path to a YAML config file. CLI flags take precedence over config values.")]
+    pub config: Option<PathBuf>,
 }
 
 

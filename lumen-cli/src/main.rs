@@ -3,11 +3,13 @@ use std::time::Instant;
 use clap::Parser;
 use cli::command::{LoadTestRunCli, OutputFormat};
 use cli::json_output::{JsonDest, WriteJsonOutputParams, write_json_output};
-use cli::output::print_stats;
-use lumen_core::command::run::RunCommand;
+use cli::output::{PrintStatsParams, print_stats};
 use lumen_core::command::{Command, Commands, ConfigureTemplateCommand};
 use lumen_core::monitoring::SpanName;
 use lumen_core::output::{RunReport, RunReportParams};
+// NOTE: evaluate and EvaluateParams are implemented by Dev 1 in lumen-core.
+// These imports will resolve once the two branches are merged.
+use lumen_core::config::{evaluate, EvaluateParams};
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::Resource;
@@ -20,13 +22,10 @@ fn main() {
     let cli_args = LoadTestRunCli::parse();
 
     // Capture output-related args before consuming cli_args below.
-    // `reservoir_size` is also captured here so it can be passed to
-    // RunReportParams once Dev 1's output module is merged (TECH.md R4).
     let (output_format, output_file, reservoir_size) = match &cli_args {
         LoadTestRunCli::Run(args) => (args.output, args.output_file.clone(), args.result_buffer),
         _ => (OutputFormat::Table, None, 100_000),
     };
-
 
     // Endpoint is read from OTEL_EXPORTER_OTLP_ENDPOINT env var at runtime,
     // falling back to http://localhost:4318 if unset.
@@ -59,24 +58,33 @@ fn main() {
         let root = tracing::span!(tracing::Level::INFO, SpanName::RUN);
         let _enter = root.enter();
 
+        // Resolve run args (merges --config file values with CLI flags).
         let cmd = match cli_args {
-            LoadTestRunCli::Run(args) => match RunCommand::try_from(args) {
-                Ok(cmd) => Commands::Run(cmd),
-                Err(e) => {
-                    eprintln!("error: {e}");
-                    return 1;
+            LoadTestRunCli::Run(args) => {
+                match cli::adapter::RunArgsResolved::try_from(args) {
+                    Ok(resolved) => {
+                        let thresholds = resolved.thresholds.clone();
+                        let run_cmd = resolved.into_run_command();
+                        (Commands::Run(run_cmd), thresholds)
+                    }
+                    Err(e) => {
+                        eprintln!("error: {e}");
+                        return 1;
+                    }
                 }
-            },
+            }
             LoadTestRunCli::ConfigureRequest(args) => {
-                Commands::ConfigureRequest(ConfigureTemplateCommand::from(args))
+                (Commands::ConfigureRequest(ConfigureTemplateCommand::from(args)), None)
             }
             LoadTestRunCli::ConfigureResponse(args) => {
-                Commands::ConfigureResponse(ConfigureTemplateCommand::from(args))
+                (Commands::ConfigureResponse(ConfigureTemplateCommand::from(args)), None)
             }
         };
 
+        let (commands, thresholds) = cmd;
+
         let run_start = Instant::now();
-        let result = cmd.execute().await;
+        let result = commands.execute().await;
 
         let code = match result {
             Ok(Some(stats)) => {
@@ -91,6 +99,15 @@ fn main() {
                         run_start,
                     }),
                 };
+
+                // Evaluate thresholds when rules are present.
+                // exit code 2 = threshold failure; 1 = run error; 0 = success.
+                let threshold_report = thresholds.as_ref().map(|rules| {
+                    evaluate(EvaluateParams {
+                        report: &report,
+                        thresholds: rules,
+                    })
+                });
 
                 // Determine whether to also write JSON to a file.
                 // When --output-file is set, JSON is always written to the
@@ -108,7 +125,11 @@ fn main() {
                 match output_format {
                     OutputFormat::Table => {
                         // Table always goes to stdout regardless of --output-file.
-                        print_stats(&stats.results, &stats);
+                        print_stats(PrintStatsParams {
+                            results: &stats.results,
+                            stats: &stats,
+                            threshold_report: threshold_report.as_ref(),
+                        });
                     }
                     OutputFormat::Json => {
                         // JSON is always emitted to stdout when --output json is set,
@@ -123,7 +144,12 @@ fn main() {
                         }
                     }
                 }
-                0
+
+                // Exit code 2 when thresholds were evaluated and one or more failed.
+                match threshold_report {
+                    Some(tr) if !tr.passed => 2,
+                    _ => 0,
+                }
             }
             Ok(None) => 0,
             Err(e) => {

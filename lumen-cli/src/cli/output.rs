@@ -2,10 +2,33 @@ use lumen_core::command::run::{ExecutionMode, RunStats};
 use lumen_core::http::RequestResult;
 use lumen_core::response_template::stats::ResponseStats;
 use lumen_core::stats::{Distribution, LatencyDistribution};
+// NOTE: ThresholdReport is implemented by Dev 1 in lumen-core.
+// This import will resolve once the two branches are merged.
+use lumen_core::config::ThresholdReport;
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-pub fn print_stats(results: &[RequestResult], stats: &RunStats) {
+// ── PrintStatsParams ──────────────────────────────────────────────────────────
+
+/// Parameters for `print_stats`.
+///
+/// Wraps the previously ad-hoc positional arguments into a struct so that the
+/// function signature can grow (e.g., adding threshold report, config path)
+/// without breaking all call sites.
+pub struct PrintStatsParams<'a> {
+    pub results: &'a [RequestResult],
+    pub stats: &'a RunStats,
+    /// Optional threshold evaluation report produced by `lumen_core::config::evaluate`.
+    /// When `Some`, a "Thresholds" section is appended to the table output and
+    /// the caller should use `threshold_report.passed` to determine the exit code.
+    pub threshold_report: Option<&'a ThresholdReport>,
+}
+
+// ── print_stats ───────────────────────────────────────────────────────────────
+
+pub fn print_stats(params: PrintStatsParams<'_>) {
+    let PrintStatsParams { results, stats, threshold_report } = params;
+
     let total = stats.total_requests;
     let ok = total - stats.total_failures;
     let fail = stats.total_failures;
@@ -92,6 +115,10 @@ pub fn print_stats(results: &[RequestResult], stats: &RunStats) {
 
     if let Some(ref rs) = stats.response_stats {
         print_response_stats(rs, &rule);
+    }
+
+    if let Some(tr) = threshold_report {
+        print_threshold_report(tr, &rule);
     }
 }
 
@@ -190,6 +217,28 @@ fn print_response_stats(rs: &ResponseStats, rule: &str) {
         }
         println!();
     }
+}
+
+// ── print_threshold_report ────────────────────────────────────────────────────
+
+/// Renders the threshold evaluation summary produced by `lumen_core::config::evaluate`.
+///
+/// Each rule is printed on its own line with a PASS/FAIL indicator. The overall
+/// verdict ("all thresholds passed" / "X threshold(s) failed") is printed last.
+fn print_threshold_report(tr: &ThresholdReport, rule: &str) {
+    let overall = if tr.passed { "PASSED" } else { "FAILED" };
+    println!(" Thresholds {rule}");
+    for entry in &tr.entries {
+        let indicator = if entry.passed { "pass" } else { "FAIL" };
+        println!("  [{indicator}]  {}  (got {:.4}, threshold {})", entry.label, entry.actual, entry.limit);
+    }
+    let failed_count = tr.entries.iter().filter(|e| !e.passed).count();
+    if tr.passed {
+        println!("  {overall} — all thresholds satisfied");
+    } else {
+        println!("  {overall} — {failed_count} threshold(s) not satisfied");
+    }
+    println!();
 }
 
 fn fmt_latency(d: Duration) -> String {

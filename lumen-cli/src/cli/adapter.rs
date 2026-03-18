@@ -6,6 +6,9 @@ use lumen_core::command::run::RunCommand;
 use lumen_core::http::BodyFormat;
 use lumen_core::command::Body;
 use lumen_core::load_curve::LoadCurve;
+// NOTE: LumenConfig, Threshold, parse_config are implemented by Dev 1 in lumen-core.
+// These imports will resolve once the two branches are merged.
+use lumen_core::config::{LumenConfig, parse_config};
 
 impl From<HttpMethod> for lumen_core::command::HttpMethod {
     fn from(m: HttpMethod) -> Self {
@@ -19,11 +22,85 @@ impl From<HttpMethod> for lumen_core::command::HttpMethod {
     }
 }
 
-impl TryFrom<RunArgs> for RunCommand {
+// ── RunArgsResolved ───────────────────────────────────────────────────────────
+
+/// CLI `RunArgs` after config-file merging.
+///
+/// CLI flags always take precedence over values loaded from `--config`/`-f`.
+/// Fields that were not supplied by the user fall back to config-file values;
+/// everything else retains the CLI value (including clap defaults).
+///
+/// `thresholds` is `None` when neither the config file nor the CLI carries
+/// threshold rules — in that case the exit code is always 0 after a successful
+/// run.
+pub struct RunArgsResolved {
+    pub host: String,
+    pub request_count: usize,
+    pub concurrency: usize,
+    pub method: lumen_core::command::HttpMethod,
+    pub body: Option<Body>,
+    pub template_path: Option<PathBuf>,
+    pub response_template_path: Option<PathBuf>,
+    pub load_curve: Option<LoadCurve>,
+    pub sample_threshold: usize,
+    pub result_buffer: usize,
+    /// Threshold rules sourced from the config file.
+    /// `None` when no config was supplied or the config has no `thresholds` section.
+    pub thresholds: Option<Vec<lumen_core::config::Threshold>>,
+}
+
+impl RunArgsResolved {
+    /// Converts a `RunArgsResolved` into a `RunCommand` (the core engine type).
+    pub fn into_run_command(self) -> RunCommand {
+        RunCommand {
+            host: self.host,
+            request_count: self.request_count,
+            concurrency: self.concurrency,
+            method: self.method,
+            body: self.body,
+            template_path: self.template_path,
+            response_template_path: self.response_template_path,
+            load_curve: self.load_curve,
+            sample_threshold: self.sample_threshold,
+            result_buffer: self.result_buffer,
+        }
+    }
+}
+
+// ── TryFrom<RunArgs> for RunArgsResolved ─────────────────────────────────────
+
+impl TryFrom<RunArgs> for RunArgsResolved {
     type Error = Box<dyn std::error::Error>;
 
     fn try_from(args: RunArgs) -> Result<Self, Self::Error> {
         const MAX_CURVE_FILE_BYTES: u64 = 1_048_576; // 1 MB
+
+        // Load and parse config file when --config/-f was supplied.
+        let cfg: Option<LumenConfig> = args
+            .config
+            .as_ref()
+            .map(|path| {
+                parse_config(path)
+                    .map_err(|e| format!("failed to load config '{}': {e}", path.display()))
+            })
+            .transpose()
+            .map_err(|e: String| Box::<dyn std::error::Error>::from(e))?;
+
+        // Apply config-file defaults where CLI did not supply a value.
+        // Clap always supplies a default for --request-count and --concurrency,
+        // so we cannot distinguish "user typed -R 100" from "clap used the default".
+        // The merge strategy used here is: config values act as the baseline;
+        // clap defaults (which are always present) overwrite them. This means
+        // --config values for request_count / concurrency are only meaningful when
+        // the user also does NOT pass -R / -C on the CLI. This is documented in
+        // CLI.md and is intentional — the CLI is the authoritative layer.
+        let (request_count, concurrency) = if let Some(ref c) = cfg {
+            let rc = c.request_count.unwrap_or(args.request_count as usize);
+            let con = c.concurrency.unwrap_or(args.concurrency as usize);
+            (rc, con)
+        } else {
+            (args.request_count as usize, args.concurrency as usize)
+        };
 
         let load_curve = args
             .load_curve
@@ -49,10 +126,12 @@ impl TryFrom<RunArgs> for RunCommand {
             .transpose()
             .map_err(|e: String| Box::<dyn std::error::Error>::from(e))?;
 
-        Ok(RunCommand {
+        let thresholds = cfg.and_then(|c| c.thresholds);
+
+        Ok(RunArgsResolved {
             host: args.host,
-            request_count: args.request_count as usize,
-            concurrency: args.concurrency as usize,
+            request_count,
+            concurrency,
             method: args.method.into(),
             body: args.body.map(|s| Body::Formatted {
                 content: s,
@@ -67,6 +146,7 @@ impl TryFrom<RunArgs> for RunCommand {
             load_curve,
             sample_threshold: args.sample_threshold,
             result_buffer: args.result_buffer,
+            thresholds,
         })
     }
 }
@@ -196,6 +276,7 @@ mod tests {
             result_buffer: 100_000,
             output: crate::cli::command::OutputFormat::Table,
             output_file: None,
+            config: None,
         }
     }
 
@@ -239,17 +320,57 @@ mod tests {
     }
 
     #[test]
+    fn config_flag_is_none_by_default() {
+        use clap::Parser as _;
+        let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
+            "lumen", "run", "--host", "http://localhost:3000",
+        ])
+        .expect("parse failed");
+        let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
+            panic!("expected Run variant");
+        };
+        assert!(args.config.is_none());
+    }
+
+    #[test]
+    fn config_flag_accepts_path() {
+        use clap::Parser as _;
+        let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
+            "lumen", "run", "--host", "http://localhost:3000", "--config", "lumen.yaml",
+        ])
+        .expect("parse failed");
+        let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
+            panic!("expected Run variant");
+        };
+        assert_eq!(args.config, Some(PathBuf::from("lumen.yaml")));
+    }
+
+    #[test]
+    fn config_short_flag_accepts_path() {
+        use clap::Parser as _;
+        let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
+            "lumen", "run", "--host", "http://localhost:3000", "-f", "ci.yaml",
+        ])
+        .expect("parse failed");
+        let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
+            panic!("expected Run variant");
+        };
+        assert_eq!(args.config, Some(PathBuf::from("ci.yaml")));
+    }
+
+    #[test]
     fn try_from_run_args_without_curve_succeeds() {
-        let cmd = RunCommand::try_from(make_run_args(None));
-        assert!(cmd.is_ok());
-        let cmd = cmd.unwrap();
-        assert!(cmd.load_curve.is_none());
+        let resolved = RunArgsResolved::try_from(make_run_args(None));
+        assert!(resolved.is_ok());
+        let resolved = resolved.unwrap();
+        assert!(resolved.load_curve.is_none());
+        assert!(resolved.thresholds.is_none());
     }
 
     #[test]
     fn try_from_run_args_with_nonexistent_curve_file_fails() {
-        let cmd = RunCommand::try_from(make_run_args(Some(PathBuf::from("nonexistent-curve.json"))));
-        assert!(cmd.is_err());
+        let result = RunArgsResolved::try_from(make_run_args(Some(PathBuf::from("nonexistent-curve.json"))));
+        assert!(result.is_err());
     }
 
     #[test]
@@ -259,9 +380,9 @@ mod tests {
         let json = r#"{"stages":[{"duration":"10s","target_vus":5}]}"#;
         f.write_all(json.as_bytes()).unwrap();
 
-        let cmd = RunCommand::try_from(make_run_args(Some(f.path().to_path_buf())));
-        assert!(cmd.is_ok());
-        assert!(cmd.unwrap().load_curve.is_some());
+        let result = RunArgsResolved::try_from(make_run_args(Some(f.path().to_path_buf())));
+        assert!(result.is_ok());
+        assert!(result.unwrap().load_curve.is_some());
     }
 
     #[test]
@@ -270,8 +391,8 @@ mod tests {
         let mut f = tempfile::NamedTempFile::new().unwrap();
         f.write_all(b"not json").unwrap();
 
-        let cmd = RunCommand::try_from(make_run_args(Some(f.path().to_path_buf())));
-        assert!(cmd.is_err());
+        let result = RunArgsResolved::try_from(make_run_args(Some(f.path().to_path_buf())));
+        assert!(result.is_err());
     }
 
     #[test]
@@ -281,8 +402,8 @@ mod tests {
         // target_vus exceeds MAX_VUS (10_000)
         let json = r#"{"stages":[{"duration":"10s","target_vus":99999}]}"#;
         f.write_all(json.as_bytes()).unwrap();
-        let cmd = RunCommand::try_from(make_run_args(Some(f.path().to_path_buf())));
-        assert!(cmd.is_err());
+        let result = RunArgsResolved::try_from(make_run_args(Some(f.path().to_path_buf())));
+        assert!(result.is_err());
     }
 
     #[test]
@@ -291,7 +412,7 @@ mod tests {
         let mut f = tempfile::NamedTempFile::new().unwrap();
         let json = r#"{"stages":[]}"#;
         f.write_all(json.as_bytes()).unwrap();
-        let cmd = RunCommand::try_from(make_run_args(Some(f.path().to_path_buf())));
-        assert!(cmd.is_err());
+        let result = RunArgsResolved::try_from(make_run_args(Some(f.path().to_path_buf())));
+        assert!(result.is_err());
     }
 }

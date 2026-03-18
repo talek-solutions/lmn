@@ -1,0 +1,35 @@
+# lumen full config — all supported fields shown
+# CLI flags always take precedence over values in this file.
+
+# Target host (overridden by -H / --host)
+host: https://api.example.com
+
+# Fixed-count mode settings (overridden by -R and -C respectively)
+# These are ignored when --load-curve / -L is supplied on the CLI.
+request_count: 1000
+concurrency: 100
+
+# Threshold rules — evaluated after the run completes.
+# Exit code 2 is returned when any threshold is not satisfied.
+# Supported metrics:
+#   error_rate   — fraction of failed requests (0.0 – 1.0)
+#   p50_ms       — 50th-percentile latency in milliseconds
+#   p75_ms       — 75th-percentile latency in milliseconds
+#   p90_ms       — 90th-percentile latency in milliseconds
+#   p95_ms       — 95th-percentile latency in milliseconds
+#   p99_ms       — 99th-percentile latency in milliseconds
+#   avg_ms       — mean latency in milliseconds
+#   throughput   — minimum required requests per second
+thresholds:
+  - metric: error_rate
+    limit: 0.01       # > 1% errors → fail
+  - metric: p50_ms
+    limit: 150.0      # p50 must be under 150 ms
+  - metric: p95_ms
+    limit: 400.0      # p95 must be under 400 ms
+  - metric: p99_ms
+    limit: 1000.0     # p99 hard ceiling 1 s
+  - metric: avg_ms
+    limit: 200.0      # mean latency ceiling
+  - metric: throughput
+    limit: 100.0      # service must sustain at least 100 req/s

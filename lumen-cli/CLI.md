@@ -34,12 +34,57 @@ lumen run [OPTIONS] -H <HOST>
 | — | `--result-buffer` | `100000` | Max results to retain for percentile computation |
 | — | `--output` | `table` | Output format: `table` (default) or `json` |
 | — | `--output-file` | — | Write JSON result to `<path>` (always JSON regardless of `--output`) |
+| `-f` | `--config` | — | Path to a YAML config file. CLI flags take precedence over config values. |
 
 ### Conflicts
 
 - `-B`, `-T`, `-A` are mutually exclusive (only one request body source allowed)
 - `-S` and `-E` are mutually exclusive (only one response template source allowed)
 - `-L` conflicts with `-R` and `-C` (curve mode is time-based, not count-based)
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Run completed successfully; all thresholds satisfied (or no thresholds configured) |
+| `1` | Run error — invalid arguments, unreachable host, config parse failure, or I/O error |
+| `2` | Run completed but one or more threshold rules were not satisfied |
+
+Exit code `2` is only possible when `--config`/`-f` is supplied with a YAML file that contains a `thresholds` section.
+
+### Config File Format
+
+When `--config`/`-f` is supplied, lumen loads a YAML file before the run. CLI flags always take precedence over values in the config file.
+
+**Supported config fields:**
+
+| Field | Type | CLI equivalent | Description |
+|-------|------|---------------|-------------|
+| `host` | string | `-H` / `--host` | Target host URL |
+| `request_count` | number | `-R` / `--request-count` | Total requests to send |
+| `concurrency` | number | `-C` / `--concurrency` | Max in-flight requests |
+| `thresholds` | list | — | Pass/fail rules evaluated after the run |
+
+**Threshold rule fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `metric` | string | Metric name: `error_rate`, `p50_ms`, `p75_ms`, `p90_ms`, `p95_ms`, `p99_ms`, `avg_ms`, `throughput` |
+| `limit` | number | Maximum allowed value (for `throughput`, minimum required value) |
+
+Example:
+
+```yaml
+host: https://api.example.com
+request_count: 500
+concurrency: 50
+
+thresholds:
+  - metric: error_rate
+    limit: 0.01
+  - metric: p99_ms
+    limit: 500.0
+```
 
 ### Output Behaviour Matrix
 

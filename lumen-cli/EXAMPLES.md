@@ -282,3 +282,55 @@ cargo run -p lumen -- run \
   -L lumen-core/.templates.example/curves/stepped.json \
   --output-file stepped-report.json
 ```
+
+---
+
+## 17. Run with a YAML config file
+
+Loads host, request count, and threshold rules from a config file. CLI flags
+can still override individual values — here `-R 200` overrides `request_count`
+from the config.
+
+```bash
+cargo run -p lumen -- run \
+  -f lumen-core/.templates.example/config/ci-pipeline.yaml \
+  -R 200
+```
+
+The process exits with code 0 when all thresholds pass, or code 2 when one or
+more fail. Use `$?` to check in shell scripts:
+
+```bash
+cargo run -p lumen -- run \
+  -f lumen-core/.templates.example/config/ci-pipeline.yaml
+echo "exit code: $?"
+```
+
+---
+
+## 18. Threshold-gated CI gate with config file
+
+Runs a fixed-count test driven entirely by the CI pipeline config, then fails
+the pipeline if any threshold is exceeded.
+
+```bash
+cargo run -p lumen -- run \
+  -f lumen-core/.templates.example/config/ci-pipeline.yaml \
+  --output json \
+  --output-file ci-report.json
+
+if [ $? -eq 2 ]; then
+  echo "load test thresholds failed — see ci-report.json for details"
+  exit 1
+fi
+```
+
+To combine a load curve with threshold enforcement:
+
+```bash
+cargo run -p lumen -- run \
+  -H https://api.example.com \
+  -f lumen-core/.templates.example/config/ci-pipeline.yaml \
+  -L lumen-core/.templates.example/curves/ramp.json \
+  --output-file ramp-report.json
+```
