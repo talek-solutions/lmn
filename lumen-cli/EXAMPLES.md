@@ -65,16 +65,15 @@ cargo run -p lumen -- run \
 
 ---
 
-## 5. Higher load — multiple threads and concurrency
+## 5. Higher load — concurrency
 
-1000 requests spread across 4 threads, 50 in-flight at a time.
+1000 requests with 50 in-flight at a time.
 
 ```bash
 cargo run -p lumen -- run \
   -H https://httpbin.org/post \
   -M post \
   -R 1000 \
-  -W 4 \
   -C 50 \
   -B '{"item":"widget","qty":1}'
 ```
@@ -192,4 +191,94 @@ cargo run -p lumen -- run \
   -M post \
   -T lumen-core/.templates.example/json/placeholder.json \
   -L lumen-core/.templates.example/curves/ramp.json
+```
+
+---
+
+## 13. JSON output to stdout
+
+Emits a versioned JSON document instead of the ASCII table. Useful for piping into
+`jq` or any other tool that consumes structured data.
+
+```bash
+cargo run -p lumen -- run \
+  -H https://httpbin.org/get \
+  -R 500 \
+  --output json
+```
+
+Extract a single metric with `jq`:
+
+```bash
+cargo run -p lumen -- run \
+  -H https://httpbin.org/get \
+  -R 500 \
+  --output json | jq '.requests.error_rate'
+```
+
+Use it as a CI pass/fail gate:
+
+```bash
+error_rate=$(cargo run -p lumen -- run \
+  -H https://api.example.com/health \
+  -R 1000 \
+  --output json | jq '.requests.error_rate')
+
+if (( $(echo "$error_rate > 0.01" | bc -l) )); then
+  echo "error rate exceeded threshold: $error_rate"
+  exit 1
+fi
+```
+
+---
+
+## 14. Save JSON report to file
+
+Writes the JSON report to `report.json` while the human-readable table still
+appears in the terminal. The file is always JSON regardless of `--output`.
+
+```bash
+cargo run -p lumen -- run \
+  -H https://httpbin.org/get \
+  -R 1000 \
+  --output-file report.json
+```
+
+---
+
+## 15. JSON to stdout and file simultaneously
+
+Produces JSON on stdout for piping and saves a copy to disk in one run.
+
+```bash
+cargo run -p lumen -- run \
+  -H https://httpbin.org/post \
+  -M post \
+  -R 1000 \
+  -C 50 \
+  --output json \
+  --output-file ci-report.json
+```
+
+---
+
+## 16. Load curve with JSON output
+
+Runs a ramp curve and emits a JSON report. The `curve_stages` field in the output
+contains per-stage latency, throughput, and error rate.
+
+```bash
+cargo run -p lumen -- run \
+  -H https://httpbin.org/get \
+  -L lumen-core/.templates.example/curves/ramp.json \
+  --output json | jq '.curve_stages[] | {index, target_vus, throughput_rps: .throughput_rps}'
+```
+
+Save the full report for later comparison:
+
+```bash
+cargo run -p lumen -- run \
+  -H https://httpbin.org/get \
+  -L lumen-core/.templates.example/curves/stepped.json \
+  --output-file stepped-report.json
 ```

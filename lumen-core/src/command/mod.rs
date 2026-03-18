@@ -18,9 +18,9 @@ pub enum Body {
     Formatted { content: String, format: BodyFormat },
 }
 
-impl Into<String> for Body {
-    fn into(self) -> String {
-        match self {
+impl From<Body> for String {
+    fn from(body: Body) -> String {
+        match body {
             Body::Formatted { content, format: _ } => content,
         }
     }

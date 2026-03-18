@@ -44,9 +44,34 @@ impl RequestConfig {
 
 pub struct RequestResult {
     pub duration: Duration,
+    /// Wall-clock instant at which the response was received (or the error occurred).
+    /// Used by the output module to bucket results into per-stage windows when
+    /// `mode == Curve`. Zero-cost in fixed mode where `curve_stages` is `None`.
+    pub completed_at: Instant,
     pub success: bool,
     pub status_code: Option<u16>,
     pub response_body: Option<String>,
+}
+
+impl RequestResult {
+    /// Constructs a `RequestResult` with all fields explicit.
+    ///
+    /// Use this constructor rather than struct literals so that adding fields in the
+    /// future causes a compile error at every call site, preventing silent omissions.
+    pub fn new(
+        duration: Duration,
+        success: bool,
+        status_code: Option<u16>,
+        response_body: Option<String>,
+    ) -> Self {
+        Self {
+            duration,
+            completed_at: Instant::now(),
+            success,
+            status_code,
+            response_body,
+        }
+    }
 }
 
 // ── Request builder ───────────────────────────────────────────────────────────
@@ -94,19 +119,27 @@ impl Request {
                 } else {
                     None
                 };
+                let duration = start.elapsed();
+                let completed_at = Instant::now();
                 RequestResult {
-                    duration: start.elapsed(),
+                    duration,
+                    completed_at,
                     success: status.is_success(),
                     status_code: Some(status.as_u16()),
                     response_body,
                 }
             }
-            Err(_) => RequestResult {
-                duration: start.elapsed(),
-                success: false,
-                status_code: None,
-                response_body: None,
-            },
+            Err(_) => {
+                let duration = start.elapsed();
+                let completed_at = Instant::now();
+                RequestResult {
+                    duration,
+                    completed_at,
+                    success: false,
+                    status_code: None,
+                    response_body: None,
+                }
+            }
         }
     }
 }

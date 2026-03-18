@@ -1,7 +1,7 @@
 use lumen_core::command::run::{ExecutionMode, RunStats};
 use lumen_core::http::RequestResult;
-
 use lumen_core::response_template::stats::ResponseStats;
+use lumen_core::stats::{Distribution, LatencyDistribution};
 use std::collections::BTreeMap;
 use std::time::Duration;
 
@@ -15,21 +15,21 @@ pub fn print_stats(results: &[RequestResult], stats: &RunStats) {
         0.0
     };
 
+    let lat_dist = LatencyDistribution::from_results(results);
+
+    let min = Duration::from_secs_f64(lat_dist.min_ms() / 1000.0);
+    let max = Duration::from_secs_f64(lat_dist.max_ms() / 1000.0);
+    let avg = Duration::from_secs_f64(lat_dist.mean_ms() / 1000.0);
+
+    // Keep a sorted Duration slice for the histogram below.
     let mut durations: Vec<Duration> = results.iter().map(|r| r.duration).collect();
     durations.sort();
 
-    let min = durations.first().copied().unwrap_or(Duration::ZERO);
-    let max = durations.last().copied().unwrap_or(Duration::ZERO);
-    let avg = if durations.is_empty() {
-        Duration::ZERO
-    } else {
-        durations.iter().sum::<Duration>() / durations.len() as u32
-    };
-
     let lat_rows: Vec<(&str, String)> = {
         let mut rows = vec![("min", fmt_latency(min))];
-        for (p, label) in [(10, "p10"), (25, "p25"), (50, "p50"), (75, "p75"), (90, "p90"), (95, "p95"), (99, "p99")] {
-            rows.push((label, fmt_latency(percentile(&durations, p))));
+        for (p, label) in [(0.10, "p10"), (0.25, "p25"), (0.50, "p50"), (0.75, "p75"), (0.90, "p90"), (0.95, "p95"), (0.99, "p99")] {
+            let ms = lat_dist.quantile_ms(p);
+            rows.push((label, fmt_latency(Duration::from_secs_f64(ms / 1000.0))));
         }
         rows.push(("max", fmt_latency(max)));
         rows.push(("avg", fmt_latency(avg)));
@@ -164,14 +164,13 @@ fn print_response_stats(rs: &ResponseStats, rule: &str) {
         if field.values.is_empty() {
             continue;
         }
-        let mut sorted = field.values.clone();
-        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
-        let min = sorted.first().unwrap();
-        let max = sorted.last().unwrap();
-        let avg = sorted.iter().sum::<f64>() / sorted.len() as f64;
-        let p50 = sorted[sorted.len() * 50 / 100];
-        let p95 = sorted[(sorted.len() * 95 / 100).min(sorted.len() - 1)];
-        let p99 = sorted[(sorted.len() * 99 / 100).min(sorted.len() - 1)];
+        let dist = Distribution::from_unsorted(field.values.clone());
+        let min = dist.min();
+        let max = dist.max();
+        let avg = dist.mean();
+        let p50 = dist.quantile(0.50);
+        let p95 = dist.quantile(0.95);
+        let p99 = dist.quantile(0.99);
 
         println!(" Response: {path} {rule}");
         println!("  min   {min:.4}");
@@ -215,10 +214,52 @@ fn fmt_total_duration(d: Duration) -> String {
     }
 }
 
-fn percentile(sorted: &[Duration], p: usize) -> Duration {
-    if sorted.is_empty() {
-        return Duration::ZERO;
+#[cfg(test)]
+mod output_tests {
+    use lumen_core::stats::Distribution;
+
+    #[test]
+    fn distribution_quantile_p50_of_100() {
+        // 100-element uniform distribution: index = floor(100 * 0.50) = 50 → value 51.0
+        let values: Vec<f64> = (1..=100).map(|i| i as f64).collect();
+        let dist = Distribution::from_sorted(values);
+        assert_eq!(dist.quantile(0.50), 51.0);
     }
-    let idx = (sorted.len() * p / 100).min(sorted.len() - 1);
-    sorted[idx]
+
+    #[test]
+    fn distribution_quantile_p99_of_100() {
+        // index = floor(100 * 0.99) = 99 → value 100.0
+        let values: Vec<f64> = (1..=100).map(|i| i as f64).collect();
+        let dist = Distribution::from_sorted(values);
+        assert_eq!(dist.quantile(0.99), 100.0);
+    }
+
+    #[test]
+    fn distribution_quantile_p0() {
+        // index = floor(100 * 0.0) = 0 → value 1.0
+        let values: Vec<f64> = (1..=100).map(|i| i as f64).collect();
+        let dist = Distribution::from_sorted(values);
+        assert_eq!(dist.quantile(0.0), 1.0);
+    }
+
+    #[test]
+    fn distribution_quantile_p100_clamps_to_last() {
+        // index = floor(100 * 1.0) = 100, clamped to 99 → value 100.0
+        let values: Vec<f64> = (1..=100).map(|i| i as f64).collect();
+        let dist = Distribution::from_sorted(values);
+        assert_eq!(dist.quantile(1.0), 100.0);
+    }
+
+    #[test]
+    fn distribution_quantile_empty_returns_zero() {
+        let dist = Distribution::from_sorted(vec![]);
+        assert_eq!(dist.quantile(0.50), 0.0);
+    }
+
+    #[test]
+    fn distribution_quantile_single_element() {
+        let dist = Distribution::from_sorted(vec![42.0]);
+        assert_eq!(dist.quantile(0.99), 42.0);
+        assert_eq!(dist.quantile(0.0), 42.0);
+    }
 }
