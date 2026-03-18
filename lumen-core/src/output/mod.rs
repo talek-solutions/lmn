@@ -177,6 +177,7 @@ mod tests {
             } else {
                 None
             },
+            curve_stages: None,
             total_requests,
             total_failures,
             sample_rate,

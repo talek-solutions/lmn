@@ -80,11 +80,17 @@ fn main() {
 
         let code = match result {
             Ok(Some(stats)) => {
-                let report = RunReport::from_params(RunReportParams {
-                    stats: &stats,
-                    reservoir_size,
-                    run_start,
-                });
+                let report = match stats.curve_stages.as_deref() {
+                    Some(stages) => RunReport::from_params_with_curve(
+                        RunReportParams { stats: &stats, reservoir_size, run_start },
+                        stages,
+                    ),
+                    None => RunReport::from_params(RunReportParams {
+                        stats: &stats,
+                        reservoir_size,
+                        run_start,
+                    }),
+                };
 
                 // Determine whether to also write JSON to a file.
                 // When --output-file is set, JSON is always written to the
