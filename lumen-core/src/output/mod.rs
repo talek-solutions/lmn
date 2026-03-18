@@ -118,6 +118,7 @@ impl RunReport {
             sampling,
             response_stats,
             curve_stages,
+            thresholds: None,
         }
     }
 

@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
+use crate::threshold::ThresholdReport;
+
 // ── RunReport ─────────────────────────────────────────────────────────────────
 
 /// Versioned, serialization-ready report of a completed load test run.
@@ -25,6 +27,8 @@ pub struct RunReport {
     pub response_stats: Option<ResponseStatsReport>,
     /// Present only when `mode == "curve"`. `null` in fixed mode.
     pub curve_stages: Option<Vec<StageReport>>,
+    /// Present when thresholds were evaluated after the run. `null` otherwise.
+    pub thresholds: Option<ThresholdReport>,
 }
 
 // ── RunMeta ───────────────────────────────────────────────────────────────────
