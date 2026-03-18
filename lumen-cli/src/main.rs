@@ -7,9 +7,7 @@ use cli::output::{PrintStatsParams, print_stats};
 use lumen_core::command::{Command, Commands, ConfigureTemplateCommand};
 use lumen_core::monitoring::SpanName;
 use lumen_core::output::{RunReport, RunReportParams};
-// NOTE: evaluate and EvaluateParams are implemented by Dev 1 in lumen-core.
-// These imports will resolve once the two branches are merged.
-use lumen_core::config::{evaluate, EvaluateParams};
+use lumen_core::threshold::{evaluate, EvaluateParams};
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::Resource;
@@ -147,7 +145,7 @@ fn main() {
 
                 // Exit code 2 when thresholds were evaluated and one or more failed.
                 match threshold_report {
-                    Some(tr) if !tr.passed => 2,
+                    Some(tr) if !tr.all_passed() => 2,
                     _ => 0,
                 }
             }

@@ -86,6 +86,7 @@ mod tests {
             },
             response_stats: None,
             curve_stages: None,
+            thresholds: None,
         }
     }
 

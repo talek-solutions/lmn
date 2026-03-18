@@ -6,9 +6,8 @@ use lumen_core::command::run::RunCommand;
 use lumen_core::http::BodyFormat;
 use lumen_core::command::Body;
 use lumen_core::load_curve::LoadCurve;
-// NOTE: LumenConfig, Threshold, parse_config are implemented by Dev 1 in lumen-core.
-// These imports will resolve once the two branches are merged.
 use lumen_core::config::{LumenConfig, parse_config};
+use lumen_core::threshold::Threshold;
 
 impl From<HttpMethod> for lumen_core::command::HttpMethod {
     fn from(m: HttpMethod) -> Self {
@@ -46,7 +45,7 @@ pub struct RunArgsResolved {
     pub result_buffer: usize,
     /// Threshold rules sourced from the config file.
     /// `None` when no config was supplied or the config has no `thresholds` section.
-    pub thresholds: Option<Vec<lumen_core::config::Threshold>>,
+    pub thresholds: Option<Vec<Threshold>>,
 }
 
 impl RunArgsResolved {
@@ -80,8 +79,10 @@ impl TryFrom<RunArgs> for RunArgsResolved {
             .config
             .as_ref()
             .map(|path| {
-                parse_config(path)
-                    .map_err(|e| format!("failed to load config '{}': {e}", path.display()))
+                let contents = std::fs::read_to_string(path)
+                    .map_err(|e| format!("failed to read config '{}': {e}", path.display()))?;
+                parse_config(&contents)
+                    .map_err(|e| format!("failed to parse config '{}': {e}", path.display()))
             })
             .transpose()
             .map_err(|e: String| Box::<dyn std::error::Error>::from(e))?;
@@ -95,8 +96,8 @@ impl TryFrom<RunArgs> for RunArgsResolved {
         // the user also does NOT pass -R / -C on the CLI. This is documented in
         // CLI.md and is intentional — the CLI is the authoritative layer.
         let (request_count, concurrency) = if let Some(ref c) = cfg {
-            let rc = c.request_count.unwrap_or(args.request_count as usize);
-            let con = c.concurrency.unwrap_or(args.concurrency as usize);
+            let rc = c.run.as_ref().and_then(|r| r.requests).unwrap_or(args.request_count as usize);
+            let con = c.run.as_ref().and_then(|r| r.concurrency).unwrap_or(args.concurrency as usize);
             (rc, con)
         } else {
             (args.request_count as usize, args.concurrency as usize)

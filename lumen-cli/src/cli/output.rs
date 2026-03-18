@@ -2,9 +2,7 @@ use lumen_core::command::run::{ExecutionMode, RunStats};
 use lumen_core::http::RequestResult;
 use lumen_core::response_template::stats::ResponseStats;
 use lumen_core::stats::{Distribution, LatencyDistribution};
-// NOTE: ThresholdReport is implemented by Dev 1 in lumen-core.
-// This import will resolve once the two branches are merged.
-use lumen_core::config::ThresholdReport;
+use lumen_core::threshold::ThresholdReport;
 use std::collections::BTreeMap;
 use std::time::Duration;
 
@@ -226,17 +224,19 @@ fn print_response_stats(rs: &ResponseStats, rule: &str) {
 /// Each rule is printed on its own line with a PASS/FAIL indicator. The overall
 /// verdict ("all thresholds passed" / "X threshold(s) failed") is printed last.
 fn print_threshold_report(tr: &ThresholdReport, rule: &str) {
-    let overall = if tr.passed { "PASSED" } else { "FAILED" };
     println!(" Thresholds {rule}");
-    for entry in &tr.entries {
-        let indicator = if entry.passed { "pass" } else { "FAIL" };
-        println!("  [{indicator}]  {}  (got {:.4}, threshold {})", entry.label, entry.actual, entry.limit);
+    for result in &tr.results {
+        let indicator = if result.passed { "pass" } else { "FAIL" };
+        let symbol = result.threshold.operator.symbol();
+        println!(
+            "  [{indicator}]  {:?} {} {:.4}  (actual: {:.4})",
+            result.threshold.metric, symbol, result.threshold.value, result.actual
+        );
     }
-    let failed_count = tr.entries.iter().filter(|e| !e.passed).count();
-    if tr.passed {
-        println!("  {overall} — all thresholds satisfied");
+    if tr.all_passed() {
+        println!("  PASSED — all thresholds satisfied");
     } else {
-        println!("  {overall} — {failed_count} threshold(s) not satisfied");
+        println!("  FAILED — {} threshold(s) not satisfied", tr.failed);
     }
     println!();
 }
