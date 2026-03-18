@@ -1,10 +1,13 @@
 # lumen minimal config
 # Provides a host and basic thresholds. All values can be overridden by CLI flags.
 
-host: https://api.example.com/health
+run:
+  host: https://api.example.com/health
 
 thresholds:
   - metric: error_rate
-    limit: 0.01       # fail if more than 1% of requests error
-  - metric: p99_ms
-    limit: 500.0      # fail if p99 latency exceeds 500 ms
+    operator: lt
+    value: 0.01        # fail if more than 1% of requests error
+  - metric: latency_p99
+    operator: lt
+    value: 500.0       # fail if p99 latency exceeds 500 ms

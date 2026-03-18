@@ -2,6 +2,7 @@ use serde::Deserialize;
 
 use crate::config::error::ConfigError;
 use crate::threshold::Threshold;
+use crate::threshold::parse::validate_thresholds;
 
 // ── RunConfig ─────────────────────────────────────────────────────────────────
 
@@ -58,8 +59,22 @@ pub struct LumenConfig {
 /// Parses a `LumenConfig` from a YAML string.
 ///
 /// Returns `ConfigError::YamlParseError` if the YAML is malformed.
+/// Returns `ConfigError::ValidationError` if threshold values are invalid
+/// (non-finite, or `error_rate` outside [0.0, 1.0]).
 pub fn parse_config(yaml: &str) -> Result<LumenConfig, ConfigError> {
-    serde_yaml::from_str(yaml).map_err(ConfigError::YamlParseError)
+    let mut config: LumenConfig =
+        serde_yaml::from_str(yaml).map_err(ConfigError::YamlParseError)?;
+
+    // Validate thresholds if present — serde_yaml bypasses the validation
+    // in parse_thresholds(), so we run it explicitly here.
+    if let Some(thresholds) = config.thresholds.take() {
+        config.thresholds = Some(
+            validate_thresholds(thresholds)
+                .map_err(|e| ConfigError::ValidationError(e.to_string()))?,
+        );
+    }
+
+    Ok(config)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

@@ -43,7 +43,7 @@ pub fn parse_thresholds(json_or_yaml: &str) -> Result<Vec<Threshold>, ThresholdE
     validate_thresholds(envelope.thresholds)
 }
 
-fn validate_thresholds(thresholds: Vec<Threshold>) -> Result<Vec<Threshold>, ThresholdError> {
+pub(crate) fn validate_thresholds(thresholds: Vec<Threshold>) -> Result<Vec<Threshold>, ThresholdError> {
     for t in &thresholds {
         if !t.value.is_finite() {
             return Err(ThresholdError::ValidationError(format!(

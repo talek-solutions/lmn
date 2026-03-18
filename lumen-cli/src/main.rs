@@ -86,7 +86,7 @@ fn main() {
 
         let code = match result {
             Ok(Some(stats)) => {
-                let report = match stats.curve_stages.as_deref() {
+                let mut report = match stats.curve_stages.as_deref() {
                     Some(stages) => RunReport::from_params_with_curve(
                         RunReportParams { stats: &stats, reservoir_size, run_start },
                         stages,
@@ -98,14 +98,19 @@ fn main() {
                     }),
                 };
 
-                // Evaluate thresholds when rules are present.
+                // Evaluate thresholds and attach to report so JSON output includes them.
                 // exit code 2 = threshold failure; 1 = run error; 0 = success.
-                let threshold_report = thresholds.as_ref().map(|rules| {
-                    evaluate(EvaluateParams {
+                let threshold_failed = if let Some(ref rules) = thresholds {
+                    let tr = evaluate(EvaluateParams {
                         report: &report,
                         thresholds: rules,
-                    })
-                });
+                    });
+                    let failed = !tr.all_passed();
+                    report.thresholds = Some(tr);
+                    failed
+                } else {
+                    false
+                };
 
                 // Determine whether to also write JSON to a file.
                 // When --output-file is set, JSON is always written to the
@@ -126,7 +131,7 @@ fn main() {
                         print_stats(PrintStatsParams {
                             results: &stats.results,
                             stats: &stats,
-                            threshold_report: threshold_report.as_ref(),
+                            threshold_report: report.thresholds.as_ref(),
                         });
                     }
                     OutputFormat::Json => {
@@ -144,10 +149,7 @@ fn main() {
                 }
 
                 // Exit code 2 when thresholds were evaluated and one or more failed.
-                match threshold_report {
-                    Some(tr) if !tr.all_passed() => 2,
-                    _ => 0,
-                }
+                if threshold_failed { 2 } else { 0 }
             }
             Ok(None) => 0,
             Err(e) => {

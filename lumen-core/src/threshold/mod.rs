@@ -1,5 +1,5 @@
 pub mod error;
-mod parse;
+pub(crate) mod parse;
 mod types;
 
 pub use error::ThresholdError;

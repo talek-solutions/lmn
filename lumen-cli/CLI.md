@@ -58,32 +58,38 @@ When `--config`/`-f` is supplied, lumen loads a YAML file before the run. CLI fl
 
 **Supported config fields:**
 
-| Field | Type | CLI equivalent | Description |
-|-------|------|---------------|-------------|
-| `host` | string | `-H` / `--host` | Target host URL |
-| `request_count` | number | `-R` / `--request-count` | Total requests to send |
-| `concurrency` | number | `-C` / `--concurrency` | Max in-flight requests |
-| `thresholds` | list | — | Pass/fail rules evaluated after the run |
+All run parameters are nested under a `run:` section. The `thresholds:` section is top-level.
+
+| Section | Field | Type | CLI equivalent | Description |
+|---------|-------|------|---------------|-------------|
+| `run` | `host` | string | `-H` / `--host` | Target host URL |
+| `run` | `requests` | number | `-R` / `--request-count` | Total requests to send |
+| `run` | `concurrency` | number | `-C` / `--concurrency` | Max in-flight requests |
+| *(top-level)* | `thresholds` | list | — | Pass/fail rules evaluated after the run |
 
 **Threshold rule fields:**
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `metric` | string | Metric name: `error_rate`, `p50_ms`, `p75_ms`, `p90_ms`, `p95_ms`, `p99_ms`, `avg_ms`, `throughput` |
-| `limit` | number | Maximum allowed value (for `throughput`, minimum required value) |
+| `metric` | string | One of: `error_rate`, `throughput_rps`, `latency_min`, `latency_avg`, `latency_p50`, `latency_p75`, `latency_p90`, `latency_p95`, `latency_p99`, `latency_max` |
+| `operator` | string | One of: `lt`, `lte`, `gt`, `gte`, `eq` |
+| `value` | number | Threshold value to compare against |
 
 Example:
 
 ```yaml
-host: https://api.example.com
-request_count: 500
-concurrency: 50
+run:
+  host: https://api.example.com
+  requests: 500
+  concurrency: 50
 
 thresholds:
   - metric: error_rate
-    limit: 0.01
-  - metric: p99_ms
-    limit: 500.0
+    operator: lt
+    value: 0.01
+  - metric: latency_p99
+    operator: lt
+    value: 500.0
 ```
 
 ### Output Behaviour Matrix

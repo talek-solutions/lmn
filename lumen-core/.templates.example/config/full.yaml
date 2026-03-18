@@ -1,35 +1,43 @@
 # lumen full config — all supported fields shown
 # CLI flags always take precedence over values in this file.
 
-# Target host (overridden by -H / --host)
-host: https://api.example.com
-
-# Fixed-count mode settings (overridden by -R and -C respectively)
-# These are ignored when --load-curve / -L is supplied on the CLI.
-request_count: 1000
-concurrency: 100
+run:
+  host: https://api.example.com
+  requests: 1000       # overridden by -R / --request-count
+  concurrency: 100     # overridden by -C / --concurrency
 
 # Threshold rules — evaluated after the run completes.
 # Exit code 2 is returned when any threshold is not satisfied.
+#
 # Supported metrics:
-#   error_rate   — fraction of failed requests (0.0 – 1.0)
-#   p50_ms       — 50th-percentile latency in milliseconds
-#   p75_ms       — 75th-percentile latency in milliseconds
-#   p90_ms       — 90th-percentile latency in milliseconds
-#   p95_ms       — 95th-percentile latency in milliseconds
-#   p99_ms       — 99th-percentile latency in milliseconds
-#   avg_ms       — mean latency in milliseconds
-#   throughput   — minimum required requests per second
+#   error_rate      — fraction of failed requests (0.0 – 1.0)
+#   latency_min     — minimum latency in milliseconds
+#   latency_avg     — mean latency in milliseconds
+#   latency_p50     — 50th-percentile latency in milliseconds
+#   latency_p75     — 75th-percentile latency in milliseconds
+#   latency_p90     — 90th-percentile latency in milliseconds
+#   latency_p95     — 95th-percentile latency in milliseconds
+#   latency_p99     — 99th-percentile latency in milliseconds
+#   latency_max     — maximum latency in milliseconds
+#   throughput_rps  — requests per second achieved
+#
+# Supported operators: lt, lte, gt, gte, eq
 thresholds:
   - metric: error_rate
-    limit: 0.01       # > 1% errors → fail
-  - metric: p50_ms
-    limit: 150.0      # p50 must be under 150 ms
-  - metric: p95_ms
-    limit: 400.0      # p95 must be under 400 ms
-  - metric: p99_ms
-    limit: 1000.0     # p99 hard ceiling 1 s
-  - metric: avg_ms
-    limit: 200.0      # mean latency ceiling
-  - metric: throughput
-    limit: 100.0      # service must sustain at least 100 req/s
+    operator: lt
+    value: 0.01        # < 1% errors
+  - metric: latency_p50
+    operator: lt
+    value: 150.0       # p50 under 150 ms
+  - metric: latency_p95
+    operator: lt
+    value: 400.0       # p95 under 400 ms
+  - metric: latency_p99
+    operator: lt
+    value: 1000.0      # p99 hard ceiling 1 s
+  - metric: latency_avg
+    operator: lt
+    value: 200.0       # mean latency ceiling
+  - metric: throughput_rps
+    operator: gte
+    value: 100.0       # service must sustain at least 100 req/s
