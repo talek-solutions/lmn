@@ -47,7 +47,7 @@ in-memory reservoir size.
 ```bash
 cargo run -p lumen -- run \
   -H https://httpbin.org/get \
-  -L lumen-core/.templates.example/curves/ramp.json \
+  -L examples/load-curves/ramp.json \
   --sample-threshold 50 \
   --result-buffer 100000
 ```
@@ -90,7 +90,7 @@ cargo run -p lumen -- run \
   -M post \
   -R 500 \
   -W 2 \
-  -T lumen-core/.templates.example/json/placeholder.json
+  -T examples/request-bodies/string-and-float.json
 ```
 
 To store it as a reusable alias first:
@@ -98,7 +98,7 @@ To store it as a reusable alias first:
 ```bash
 cargo run -p lumen -- configure-request \
   -A create-order \
-  -T lumen-core/.templates.example/json/placeholder.json
+  -T examples/request-bodies/string-and-float.json
 
 cargo run -p lumen -- run \
   -H https://httpbin.org/post \
@@ -120,8 +120,8 @@ cargo run -p lumen -- run \
   -H https://httpbin.org/post \
   -M post \
   -R 200 \
-  -T lumen-core/.templates.example/json/placeholder.json \
-  -S lumen-core/.templates.example/json/responses/error-code.json
+  -T examples/request-bodies/string-and-float.json \
+  -S examples/response-extractions/nested-string.json
 ```
 
 ---
@@ -135,8 +135,8 @@ cargo run -p lumen -- run \
   -R 1000 \
   -W 4 \
   -C 50 \
-  -T lumen-core/.templates.example/json/placeholder.json \
-  -S lumen-core/.templates.example/json/responses/error-code.json
+  -T examples/request-bodies/string-and-float.json \
+  -S examples/response-extractions/nested-string.json
 ```
 
 ---
@@ -148,7 +148,7 @@ Gradually increases to 50 VUs over 30s, holds for 1 minute, then ramps back to 0
 ```bash
 cargo run -p lumen -- run \
   -H https://httpbin.org/get \
-  -L lumen-core/.templates.example/curves/ramp.json
+  -L examples/load-curves/ramp.json
 ```
 
 ---
@@ -162,7 +162,7 @@ Useful for verifying recovery after a burst event.
 cargo run -p lumen -- run \
   -H https://httpbin.org/post \
   -M post \
-  -L lumen-core/.templates.example/curves/spike.json
+  -L examples/load-curves/spike.json
 ```
 
 ---
@@ -175,7 +175,7 @@ level at which the service degrades.
 ```bash
 cargo run -p lumen -- run \
   -H https://httpbin.org/get \
-  -L lumen-core/.templates.example/curves/stepped.json
+  -L examples/load-curves/stepped.json
 ```
 
 ---
@@ -189,8 +189,8 @@ Combines a ramp curve with per-VU dynamic request body generation.
 cargo run -p lumen -- run \
   -H https://httpbin.org/post \
   -M post \
-  -T lumen-core/.templates.example/json/placeholder.json \
-  -L lumen-core/.templates.example/curves/ramp.json
+  -T examples/request-bodies/string-and-float.json \
+  -L examples/load-curves/ramp.json
 ```
 
 ---
@@ -270,7 +270,7 @@ contains per-stage latency, throughput, and error rate.
 ```bash
 cargo run -p lumen -- run \
   -H https://httpbin.org/get \
-  -L lumen-core/.templates.example/curves/ramp.json \
+  -L examples/load-curves/ramp.json \
   --output json | jq '.curve_stages[] | {index, target_vus, throughput_rps: .throughput_rps}'
 ```
 
@@ -279,7 +279,7 @@ Save the full report for later comparison:
 ```bash
 cargo run -p lumen -- run \
   -H https://httpbin.org/get \
-  -L lumen-core/.templates.example/curves/stepped.json \
+  -L examples/load-curves/stepped.json \
   --output-file stepped-report.json
 ```
 
@@ -293,7 +293,7 @@ from the config.
 
 ```bash
 cargo run -p lumen -- run \
-  -f lumen-core/.templates.example/config/ci-pipeline.yaml \
+  -f examples/configs/ci-pipeline.yaml \
   -R 200
 ```
 
@@ -302,7 +302,7 @@ more fail. Use `$?` to check in shell scripts:
 
 ```bash
 cargo run -p lumen -- run \
-  -f lumen-core/.templates.example/config/ci-pipeline.yaml
+  -f examples/configs/ci-pipeline.yaml
 echo "exit code: $?"
 ```
 
@@ -315,7 +315,7 @@ the pipeline if any threshold is exceeded.
 
 ```bash
 cargo run -p lumen -- run \
-  -f lumen-core/.templates.example/config/ci-pipeline.yaml \
+  -f examples/configs/ci-pipeline.yaml \
   --output json \
   --output-file ci-report.json
 
@@ -330,7 +330,7 @@ To combine a load curve with threshold enforcement:
 ```bash
 cargo run -p lumen -- run \
   -H https://api.example.com \
-  -f lumen-core/.templates.example/config/ci-pipeline.yaml \
-  -L lumen-core/.templates.example/curves/ramp.json \
+  -f examples/configs/ci-pipeline.yaml \
+  -L examples/load-curves/ramp.json \
   --output-file ramp-report.json
 ```

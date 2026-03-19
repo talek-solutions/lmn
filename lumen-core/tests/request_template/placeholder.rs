@@ -27,20 +27,20 @@ fn returns_none_for_empty_braces() {
 
 #[test]
 fn template_parse_succeeds_with_fixture() {
-    let path = Path::new(".templates.example/json/placeholder.json");
+    let path = Path::new("../examples/request-bodies/string-and-float.json");
     assert!(Template::parse(path).is_ok());
 }
 
 #[test]
 fn pre_generate_returns_correct_count() {
-    let path = Path::new(".templates.example/json/placeholder.json");
+    let path = Path::new("../examples/request-bodies/string-and-float.json");
     let template = Template::parse(path).unwrap();
     assert_eq!(template.pre_generate(5).len(), 5);
 }
 
 #[test]
 fn pre_generate_produces_valid_json() {
-    let path = Path::new(".templates.example/json/placeholder.json");
+    let path = Path::new("../examples/request-bodies/string-and-float.json");
     let template = Template::parse(path).unwrap();
     for body in template.pre_generate(3) {
         assert!(serde_json::from_str::<serde_json::Value>(&body).is_ok());
