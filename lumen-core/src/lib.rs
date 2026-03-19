@@ -1,4 +1,5 @@
 pub mod command;
+pub mod config;
 pub mod http;
 pub mod load_curve;
 pub mod monitoring;
@@ -7,4 +8,4 @@ pub mod response_template;
 pub mod request_template;
 pub mod sampling;
 pub mod stats;
-pub(crate) mod config;
+pub mod threshold;

@@ -34,12 +34,111 @@ lumen run [OPTIONS] -H <HOST>
 | — | `--result-buffer` | `100000` | Max results to retain for percentile computation |
 | — | `--output` | `table` | Output format: `table` (default) or `json` |
 | — | `--output-file` | — | Write JSON result to `<path>` (always JSON regardless of `--output`) |
+| `-f` | `--config` | — | Path to a YAML config file. CLI flags take precedence over config values. |
 
 ### Conflicts
 
 - `-B`, `-T`, `-A` are mutually exclusive (only one request body source allowed)
 - `-S` and `-E` are mutually exclusive (only one response template source allowed)
 - `-L` conflicts with `-R` and `-C` (curve mode is time-based, not count-based)
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Run completed successfully; all thresholds satisfied (or no thresholds configured) |
+| `1` | Run error — invalid arguments, unreachable host, config parse failure, or I/O error |
+| `2` | Run completed but one or more threshold rules were not satisfied |
+
+Exit code `2` is only possible when `--config`/`-f` is supplied with a YAML file that contains a `thresholds` section.
+
+### Config File Format
+
+When `--config`/`-f` is supplied, lumen loads a YAML file before the run. CLI flags always take precedence over values in the config file.
+
+**Supported config fields:**
+
+Run parameters are nested under a `run:` section. Execution strategy is configured under `execution:`. The `thresholds:` section is top-level.
+
+**`run:` section**
+
+| Field | Type | CLI equivalent | Description |
+|-------|------|---------------|-------------|
+| `host` | string | `-H` / `--host` | Target host URL |
+| `method` | string | `-M` / `--method` | HTTP method (`get`, `post`, `put`, `patch`, `delete`) |
+| `output` | string | `--output` | Output format (`table` or `json`) |
+| `output_file` | string | `--output-file` | Path to write JSON report |
+| `sample_threshold` | number | `--sample-threshold` | VU count below which all results are collected (0 = disabled) |
+| `result_buffer` | number | `--result-buffer` | Max results to retain for percentile computation |
+
+**`execution:` section**
+
+| Field | Type | CLI equivalent | Description |
+|-------|------|---------------|-------------|
+| `request_count` | number | `-R` / `--request-count` | Total requests to send (fixed mode) |
+| `concurrency` | number | `-C` / `--concurrency` | Max in-flight requests (fixed mode) |
+| `stages` | list | `-L` / `--load-curve` | Load curve stages (curve mode — cannot be combined with `request_count`/`concurrency`) |
+
+When `execution.stages` is present, lumen runs in curve mode. Otherwise it runs in fixed mode using `execution.request_count` and `execution.concurrency`.
+
+**Threshold rule fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `metric` | string | One of: `error_rate`, `throughput_rps`, `latency_min`, `latency_avg`, `latency_p50`, `latency_p75`, `latency_p90`, `latency_p95`, `latency_p99`, `latency_max` |
+| `operator` | string | One of: `lt`, `lte`, `gt`, `gte`, `eq` |
+| `value` | number | Threshold value to compare against |
+
+**Fixed-mode example:**
+
+```yaml
+run:
+  host: https://httpbin.org
+  method: post
+  output: table
+  sample_threshold: 100
+  result_buffer: 100000
+
+execution:
+  request_count: 500
+  concurrency: 50
+
+thresholds:
+  - metric: error_rate
+    operator: lt
+    value: 0.01
+  - metric: latency_p99
+    operator: lt
+    value: 500.0
+```
+
+**Curve-mode example:**
+
+```yaml
+run:
+  host: https://httpbin.org/post
+  method: post
+
+execution:
+  stages:
+    - duration: 30s
+      target_vus: 5
+      ramp: linear
+    - duration: 1m
+      target_vus: 20
+      ramp: linear
+    - duration: 30s
+      target_vus: 0
+      ramp: linear
+
+thresholds:
+  - metric: error_rate
+    operator: lt
+    value: 0.005
+  - metric: latency_p95
+    operator: lt
+    value: 2000.0
+```
 
 ### Output Behaviour Matrix
 

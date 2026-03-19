@@ -1,0 +1,43 @@
+# lumen full config — all supported fields shown
+# CLI flags always take precedence over values in this file.
+
+run:
+  host: https://httpbin.org
+  method: post
+  output: table
+  output_file: /tmp/run-report.json
+  sample_threshold: 100
+  result_buffer: 100000
+
+execution:
+  request_count: 200
+  concurrency: 20
+
+# Threshold rules — evaluated after the run completes.
+# Exit code 2 is returned when any threshold is not satisfied.
+#
+# Supported metrics:
+#   error_rate      — fraction of failed requests (0.0 – 1.0)
+#   latency_min     — minimum latency in milliseconds
+#   latency_avg     — mean latency in milliseconds
+#   latency_p50     — 50th-percentile latency in milliseconds
+#   latency_p75     — 75th-percentile latency in milliseconds
+#   latency_p90     — 90th-percentile latency in milliseconds
+#   latency_p95     — 95th-percentile latency in milliseconds
+#   latency_p99     — 99th-percentile latency in milliseconds
+#   latency_max     — maximum latency in milliseconds
+#   throughput_rps  — requests per second achieved
+#
+# Supported operators: lt, lte, gt, gte, eq
+thresholds:
+  - metric: error_rate
+    operator: lt
+    value: 0.01        # < 1% errors
+  - metric: latency_p95
+    operator: lt
+    value: 2000.0      # p95 under 2 s
+  - metric: throughput_rps
+    operator: gte
+    value: 10.0        # at least 10 req/s
+
+request_template: examples/request-bodies/static-body.json

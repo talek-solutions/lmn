@@ -1,0 +1,30 @@
+# lumen CI pipeline config — curve mode example
+# Designed for automated quality gates in CI using time-based VU scaling.
+# CLI flags (-H, etc.) take precedence and can override values per-run.
+
+run:
+  host: https://httpbin.org/post
+  method: post
+
+execution:
+  stages:
+    - duration: 30s
+      target_vus: 5
+      ramp: linear
+    - duration: 1m
+      target_vus: 20
+      ramp: linear
+    - duration: 30s
+      target_vus: 0
+      ramp: linear
+
+thresholds:
+  - metric: error_rate
+    operator: lt
+    value: 0.005       # 0.5% error budget — tighter than production alerting
+  - metric: latency_p95
+    operator: lt
+    value: 2000.0      # p95 must stay under 2 s
+  - metric: throughput_rps
+    operator: gte
+    value: 5.0         # service must sustain at least 5 req/s

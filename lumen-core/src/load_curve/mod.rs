@@ -181,6 +181,19 @@ impl LoadCurve {
     }
 }
 
+// ── TryFrom<ExecutionConfig> for LoadCurve ────────────────────────────────────
+
+impl TryFrom<crate::config::ExecutionConfig> for LoadCurve {
+    type Error = String;
+
+    fn try_from(cfg: crate::config::ExecutionConfig) -> Result<Self, Self::Error> {
+        let stages = cfg.stages.ok_or("execution.stages is required for curve mode")?;
+        let curve = LoadCurve { stages };
+        curve.validate()?;
+        Ok(curve)
+    }
+}
+
 impl FromStr for LoadCurve {
     type Err = serde_json::Error;
 
@@ -330,6 +343,50 @@ mod tests {
     fn validate_accepts_valid_curve() {
         let curve = make_curve(vec![(10, 100, RampType::Linear)]);
         assert!(curve.validate().is_ok());
+    }
+
+    // ── TryFrom<ExecutionConfig> tests ────────────────────────────────────────
+
+    #[test]
+    fn try_from_execution_config_valid_stages() {
+        let cfg = crate::config::ExecutionConfig {
+            stages: Some(vec![
+                Stage { duration: Duration::from_secs(10), target_vus: 5, ramp: RampType::Linear },
+                Stage { duration: Duration::from_secs(20), target_vus: 10, ramp: RampType::Step },
+            ]),
+            request_count: None,
+            concurrency: None,
+        };
+        let curve = LoadCurve::try_from(cfg).expect("should succeed");
+        assert_eq!(curve.stages.len(), 2);
+        assert_eq!(curve.stages[0].target_vus, 5);
+        assert_eq!(curve.stages[1].target_vus, 10);
+    }
+
+    #[test]
+    fn try_from_execution_config_empty_stages_fails_validation() {
+        let cfg = crate::config::ExecutionConfig {
+            stages: Some(vec![]),
+            request_count: None,
+            concurrency: None,
+        };
+        let result = LoadCurve::try_from(cfg);
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("at least one stage"), "expected validation error, got: {msg}");
+    }
+
+    #[test]
+    fn try_from_execution_config_missing_stages_field_fails() {
+        let cfg = crate::config::ExecutionConfig {
+            stages: None,
+            request_count: Some(100),
+            concurrency: Some(10),
+        };
+        let result = LoadCurve::try_from(cfg);
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("execution.stages is required"), "expected missing stages error, got: {msg}");
     }
 
     // Multi-stage linear interpolation: second stage ramps from first stage's target

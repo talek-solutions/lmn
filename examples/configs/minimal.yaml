@@ -1,0 +1,5 @@
+# lumen minimal config
+# Provides a host. All values can be overridden by CLI flags.
+
+run:
+  host: https://httpbin.org/get

@@ -5,6 +5,10 @@ pub enum ConfigError {
     InvalidFormat(String),
     TemplateAlreadyExists(String),
     TemplateNotFound(String),
+    /// YAML parsing failed on a `LumenConfig` file.
+    YamlParseError(serde_yml::Error),
+    /// The config was parseable but contained invalid values.
+    ValidationError(String),
 }
 
 impl std::fmt::Display for ConfigError {
@@ -17,6 +21,8 @@ impl std::fmt::Display for ConfigError {
                 write!(f, "Template \"{}\" already exists", name)
             },
             Self::TemplateNotFound(name) => write!(f, "Template \"{}\" not found", name),
+            Self::YamlParseError(e) => write!(f, "YAML parse error: {}", e),
+            Self::ValidationError(msg) => write!(f, "Config validation error: {}", msg),
         }
     }
 }
