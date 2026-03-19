@@ -137,10 +137,15 @@ impl TryFrom<RunArgs> for RunArgsResolved {
             .transpose()
             .map_err(|e: String| Box::<dyn std::error::Error>::from(e))?;
 
-        let thresholds = cfg.and_then(|c| c.thresholds);
+        let thresholds = cfg.as_ref().and_then(|c| c.thresholds.clone());
+
+        // Resolve host: CLI flag > config run.host > error.
+        let host = args.host
+            .or_else(|| cfg.as_ref().and_then(|c| c.run.as_ref()?.host.clone()))
+            .ok_or_else(|| "host is required: set -H or run.host in config file")?;
 
         Ok(RunArgsResolved {
-            host: args.host,
+            host,
             request_count,
             concurrency,
             method: args.method.into(),
@@ -273,7 +278,7 @@ mod tests {
 
     fn make_run_args(load_curve: Option<std::path::PathBuf>) -> RunArgs {
         RunArgs {
-            host: "http://localhost:3000".to_string(),
+            host: Some("http://localhost:3000".to_string()),
             request_count: 100,
             concurrency: 10,
             method: HttpMethod::Get,
@@ -425,5 +430,45 @@ mod tests {
         f.write_all(json.as_bytes()).unwrap();
         let result = RunArgsResolved::try_from(make_run_args(Some(f.path().to_path_buf())));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn host_missing_with_no_config_returns_error() {
+        let mut args = make_run_args(None);
+        args.host = None;
+        let result = RunArgsResolved::try_from(args);
+        assert!(result.is_err());
+        let msg = result.err().unwrap().to_string();
+        assert!(msg.contains("host is required"), "expected host error, got: {msg}");
+    }
+
+    #[test]
+    fn host_from_config_used_when_cli_host_absent() {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"run:\n  host: http://from-config:8080\n").unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+
+        let result = RunArgsResolved::try_from(args);
+        assert!(result.is_ok(), "expected ok, got error");
+        assert_eq!(result.unwrap().host, "http://from-config:8080");
+    }
+
+    #[test]
+    fn cli_host_takes_precedence_over_config_host() {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"run:\n  host: http://from-config:8080\n").unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = Some("http://from-cli:9090".to_string());
+        args.config = Some(f.path().to_path_buf());
+
+        let result = RunArgsResolved::try_from(args);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().host, "http://from-cli:9090");
     }
 }

@@ -35,8 +35,8 @@ pub enum LoadTestRunCli {
 pub struct RunArgs {
     #[arg(short='H')]
     #[arg(long)]
-    #[arg(help = "The host to run lumen against")]
-    pub host: String,
+    #[arg(help = "The host to run lumen against (required unless set via run.host in --config)")]
+    pub host: Option<String>,
 
     #[arg(short='R')]
     #[arg(long)]
