@@ -79,6 +79,16 @@ impl TryFrom<RunArgs> for RunArgsResolved {
             .config
             .as_ref()
             .map(|path| {
+                let file_size = std::fs::metadata(path)
+                    .map_err(|e| format!("cannot access config file '{}': {e}", path.display()))?
+                    .len();
+                if file_size > MAX_CURVE_FILE_BYTES {
+                    return Err(format!(
+                        "config file '{}' exceeds 1 MB limit ({} bytes)",
+                        path.display(),
+                        file_size
+                    ));
+                }
                 let contents = std::fs::read_to_string(path)
                     .map_err(|e| format!("failed to read config '{}': {e}", path.display()))?;
                 parse_config(&contents)

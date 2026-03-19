@@ -28,7 +28,7 @@ pub fn print_stats(params: PrintStatsParams<'_>) {
     let PrintStatsParams { results, stats, threshold_report } = params;
 
     let total = stats.total_requests;
-    let ok = total - stats.total_failures;
+    let ok = total.saturating_sub(stats.total_failures);
     let fail = stats.total_failures;
     let throughput = if stats.elapsed.as_secs_f64() > 0.0 {
         total as f64 / stats.elapsed.as_secs_f64()

@@ -63,6 +63,11 @@ impl Operator {
     /// For `Eq`, an epsilon comparison is used to accommodate floating-point
     /// representation imprecision.
     pub fn evaluate(&self, actual: f64, threshold: f64) -> bool {
+        // NaN/Inf actual values always fail — a non-finite metric cannot satisfy
+        // any threshold. This guards against degenerate run data silently passing.
+        if !actual.is_finite() {
+            return false;
+        }
         match self {
             Self::Lt => actual < threshold,
             Self::Lte => actual <= threshold,
