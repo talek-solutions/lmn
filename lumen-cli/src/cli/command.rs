@@ -40,23 +40,20 @@ pub struct RunArgs {
 
     #[arg(short='R')]
     #[arg(long)]
-    #[arg(help = "The count of API requests to run")]
+    #[arg(help = "The count of API requests to run (default: 100)")]
     #[arg(allow_negative_numbers = false)]
-    #[arg(default_value="100")]
-    pub request_count: u32,
+    pub request_count: Option<u32>,
 
     #[arg(short='C')]
     #[arg(long)]
-    #[arg(help = "Max number of requests in-flight at any one time")]
+    #[arg(help = "Max number of requests in-flight at any one time (default: 100)")]
     #[arg(allow_negative_numbers = false)]
-    #[arg(default_value="100")]
-    pub concurrency: u32,
+    pub concurrency: Option<u32>,
 
     #[arg(short='M')]
     #[arg(long)]
-    #[arg(help = "HTTP method to use")]
-    #[arg(default_value="get")]
-    pub method: HttpMethod,
+    #[arg(help = "HTTP method to use (default: get)")]
+    pub method: Option<HttpMethod>,
 
     #[arg(short='B')]
     #[arg(long)]
@@ -96,19 +93,16 @@ pub struct RunArgs {
     pub load_curve: Option<std::path::PathBuf>,
 
     #[arg(long = "sample-threshold")]
-    #[arg(help = "VU count below which all results are collected (0 = disabled)")]
-    #[arg(default_value = "50")]
-    pub sample_threshold: usize,
+    #[arg(help = "VU count below which all results are collected (0 = disabled) (default: 50)")]
+    pub sample_threshold: Option<usize>,
 
     #[arg(long = "result-buffer")]
-    #[arg(help = "Max results to retain for percentile computation")]
-    #[arg(default_value = "100000")]
-    pub result_buffer: usize,
+    #[arg(help = "Max results to retain for percentile computation (default: 100000)")]
+    pub result_buffer: Option<usize>,
 
     #[arg(long = "output")]
-    #[arg(default_value = "table")]
     #[arg(help = "Output format: table (default) or json")]
-    pub output: OutputFormat,
+    pub output: Option<OutputFormat>,
 
     #[arg(long = "output-file")]
     #[arg(help = "Write JSON result to <path> (always JSON regardless of --output)")]

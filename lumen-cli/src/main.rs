@@ -19,12 +19,6 @@ mod cli;
 fn main() {
     let cli_args = LoadTestRunCli::parse();
 
-    // Capture output-related args before consuming cli_args below.
-    let (output_format, output_file, reservoir_size) = match &cli_args {
-        LoadTestRunCli::Run(args) => (args.output, args.output_file.clone(), args.result_buffer),
-        _ => (OutputFormat::Table, None, 100_000),
-    };
-
     // Endpoint is read from OTEL_EXPORTER_OTLP_ENDPOINT env var at runtime,
     // falling back to http://localhost:4318 if unset.
     let exporter = opentelemetry_otlp::SpanExporter::builder()
@@ -61,9 +55,12 @@ fn main() {
             LoadTestRunCli::Run(args) => {
                 match cli::adapter::RunArgsResolved::try_from(args) {
                     Ok(resolved) => {
+                        let output_format = resolved.output;
+                        let output_file = resolved.output_file.clone();
+                        let reservoir_size = resolved.sampling.result_buffer;
                         let thresholds = resolved.thresholds.clone();
                         let run_cmd = resolved.into_run_command();
-                        (Commands::Run(run_cmd), thresholds)
+                        (Commands::Run(run_cmd), thresholds, output_format, output_file, reservoir_size)
                     }
                     Err(e) => {
                         eprintln!("error: {e}");
@@ -72,14 +69,26 @@ fn main() {
                 }
             }
             LoadTestRunCli::ConfigureRequest(args) => {
-                (Commands::ConfigureRequest(ConfigureTemplateCommand::from(args)), None)
+                (
+                    Commands::ConfigureRequest(ConfigureTemplateCommand::from(args)),
+                    None,
+                    OutputFormat::Table,
+                    None,
+                    100_000,
+                )
             }
             LoadTestRunCli::ConfigureResponse(args) => {
-                (Commands::ConfigureResponse(ConfigureTemplateCommand::from(args)), None)
+                (
+                    Commands::ConfigureResponse(ConfigureTemplateCommand::from(args)),
+                    None,
+                    OutputFormat::Table,
+                    None,
+                    100_000,
+                )
             }
         };
 
-        let (commands, thresholds) = cmd;
+        let (commands, thresholds, output_format, output_file, reservoir_size) = cmd;
 
         let run_start = Instant::now();
         let result = commands.execute().await;

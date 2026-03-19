@@ -1,4 +1,4 @@
-use lumen_core::command::run::{ExecutionMode, RunStats};
+use lumen_core::command::run::{RunMode, RunStats};
 use lumen_core::http::RequestResult;
 use lumen_core::response_template::stats::ResponseStats;
 use lumen_core::stats::{Distribution, LatencyDistribution};
@@ -79,8 +79,8 @@ pub fn print_stats(params: PrintStatsParams<'_>) {
     println!();
     println!(" Results {rule}");
     match stats.mode {
-        ExecutionMode::Curve => println!("  mode       curve"),
-        ExecutionMode::Fixed => println!("  mode       fixed"),
+        RunMode::Curve => println!("  mode       curve"),
+        RunMode::Fixed => println!("  mode       fixed"),
     }
     println!("  requests   {total}  ({ok} ok · {fail} failed)");
     println!("  duration   {}", fmt_total_duration(stats.elapsed));

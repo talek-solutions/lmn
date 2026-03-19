@@ -58,14 +58,28 @@ When `--config`/`-f` is supplied, lumen loads a YAML file before the run. CLI fl
 
 **Supported config fields:**
 
-All run parameters are nested under a `run:` section. The `thresholds:` section is top-level.
+Run parameters are nested under a `run:` section. Execution strategy is configured under `execution:`. The `thresholds:` section is top-level.
 
-| Section | Field | Type | CLI equivalent | Description |
-|---------|-------|------|---------------|-------------|
-| `run` | `host` | string | `-H` / `--host` | Target host URL |
-| `run` | `requests` | number | `-R` / `--request-count` | Total requests to send |
-| `run` | `concurrency` | number | `-C` / `--concurrency` | Max in-flight requests |
-| *(top-level)* | `thresholds` | list | — | Pass/fail rules evaluated after the run |
+**`run:` section**
+
+| Field | Type | CLI equivalent | Description |
+|-------|------|---------------|-------------|
+| `host` | string | `-H` / `--host` | Target host URL |
+| `method` | string | `-M` / `--method` | HTTP method (`get`, `post`, `put`, `patch`, `delete`) |
+| `output` | string | `--output` | Output format (`table` or `json`) |
+| `output_file` | string | `--output-file` | Path to write JSON report |
+| `sample_threshold` | number | `--sample-threshold` | VU count below which all results are collected (0 = disabled) |
+| `result_buffer` | number | `--result-buffer` | Max results to retain for percentile computation |
+
+**`execution:` section**
+
+| Field | Type | CLI equivalent | Description |
+|-------|------|---------------|-------------|
+| `request_count` | number | `-R` / `--request-count` | Total requests to send (fixed mode) |
+| `concurrency` | number | `-C` / `--concurrency` | Max in-flight requests (fixed mode) |
+| `stages` | list | `-L` / `--load-curve` | Load curve stages (curve mode — cannot be combined with `request_count`/`concurrency`) |
+
+When `execution.stages` is present, lumen runs in curve mode. Otherwise it runs in fixed mode using `execution.request_count` and `execution.concurrency`.
 
 **Threshold rule fields:**
 
@@ -75,12 +89,18 @@ All run parameters are nested under a `run:` section. The `thresholds:` section 
 | `operator` | string | One of: `lt`, `lte`, `gt`, `gte`, `eq` |
 | `value` | number | Threshold value to compare against |
 
-Example:
+**Fixed-mode example:**
 
 ```yaml
 run:
-  host: https://api.example.com
-  requests: 500
+  host: https://httpbin.org
+  method: post
+  output: table
+  sample_threshold: 100
+  result_buffer: 100000
+
+execution:
+  request_count: 500
   concurrency: 50
 
 thresholds:
@@ -90,6 +110,34 @@ thresholds:
   - metric: latency_p99
     operator: lt
     value: 500.0
+```
+
+**Curve-mode example:**
+
+```yaml
+run:
+  host: https://httpbin.org/post
+  method: post
+
+execution:
+  stages:
+    - duration: 30s
+      target_vus: 5
+      ramp: linear
+    - duration: 1m
+      target_vus: 20
+      ramp: linear
+    - duration: 30s
+      target_vus: 0
+      ramp: linear
+
+thresholds:
+  - metric: error_rate
+    operator: lt
+    value: 0.005
+  - metric: latency_p95
+    operator: lt
+    value: 2000.0
 ```
 
 ### Output Behaviour Matrix

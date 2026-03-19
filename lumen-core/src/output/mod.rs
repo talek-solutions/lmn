@@ -8,7 +8,7 @@ pub use report::{
 
 use std::time::Instant;
 
-use crate::command::run::{ExecutionMode, RunStats};
+use crate::command::run::{RunMode, RunStats};
 
 use compute::{error_rate, latency_stats, per_stage_reports, response_stats_report,
               status_code_map, throughput};
@@ -62,8 +62,8 @@ impl RunReport {
         let ok = total.saturating_sub(failed);
 
         let mode_str = match stats.mode {
-            ExecutionMode::Fixed => "fixed".to_string(),
-            ExecutionMode::Curve => "curve".to_string(),
+            RunMode::Fixed => "fixed".to_string(),
+            RunMode::Curve => "curve".to_string(),
         };
 
         let run = RunMeta {
@@ -95,7 +95,7 @@ impl RunReport {
         let response_stats = stats.response_stats.as_ref().map(response_stats_report);
 
         let curve_stages = match stats.mode {
-            ExecutionMode::Curve => {
+            RunMode::Curve => {
                 // curve_duration is always Some in Curve mode, but we need the stages.
                 // RunStats does not carry the LoadCurve directly — the stages are needed
                 // for per-stage attribution. Since RunStats does not store them, we can
@@ -106,7 +106,7 @@ impl RunReport {
                 // once the CLI layer threads it through (Step 6).
                 None
             }
-            ExecutionMode::Fixed => None,
+            RunMode::Fixed => None,
         };
 
         RunReport {
@@ -154,13 +154,13 @@ impl RunReport {
 mod tests {
     use std::time::{Duration, Instant};
 
-    use crate::command::run::{ExecutionMode, RunStats};
+    use crate::command::run::{RunMode, RunStats};
     use crate::http::RequestResult;
     use crate::load_curve::{LoadCurve, RampType, Stage};
     use crate::output::{RunReport, RunReportParams};
 
     fn make_run_stats(
-        mode: ExecutionMode,
+        mode: RunMode,
         results: Vec<RequestResult>,
         total_requests: usize,
         total_failures: usize,
@@ -173,7 +173,7 @@ mod tests {
             response_stats: None,
             results,
             mode,
-            curve_duration: if mode == ExecutionMode::Curve {
+            curve_duration: if mode == RunMode::Curve {
                 Some(Duration::from_secs(5))
             } else {
                 None
@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn run_report_fixed_mode_no_response_stats() {
         let stats = make_run_stats(
-            ExecutionMode::Fixed,
+            RunMode::Fixed,
             vec![make_result(10, true, Some(200))],
             100,
             5,
@@ -239,7 +239,7 @@ mod tests {
         ];
 
         let stats = make_run_stats(
-            ExecutionMode::Curve,
+            RunMode::Curve,
             results,
             4,
             1,
@@ -279,7 +279,7 @@ mod tests {
     #[test]
     fn run_report_sampling_fields_accurate_when_sampled() {
         let stats = make_run_stats(
-            ExecutionMode::Fixed,
+            RunMode::Fixed,
             vec![make_result(10, true, Some(200))],
             10000,
             50,
@@ -301,7 +301,7 @@ mod tests {
     #[test]
     fn run_report_sampling_fields_accurate_when_not_sampled() {
         let stats = make_run_stats(
-            ExecutionMode::Fixed,
+            RunMode::Fixed,
             vec![make_result(10, true, Some(200))],
             100,
             0,
@@ -322,7 +322,7 @@ mod tests {
     #[test]
     fn run_report_serializes_to_valid_json() {
         let stats = make_run_stats(
-            ExecutionMode::Fixed,
+            RunMode::Fixed,
             vec![
                 make_result(10, true, Some(200)),
                 make_result(20, true, Some(200)),

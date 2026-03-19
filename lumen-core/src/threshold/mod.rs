@@ -41,7 +41,7 @@ pub fn evaluate(params: EvaluateParams<'_>) -> ThresholdReport {
 mod tests {
     use std::time::Duration;
 
-    use crate::command::run::{ExecutionMode, RunStats};
+    use crate::command::run::{RunMode, RunStats};
     use crate::http::RequestResult;
     use crate::output::{RunReport, RunReportParams};
 
@@ -56,7 +56,7 @@ mod tests {
             template_duration: None,
             response_stats: None,
             results: vec![result],
-            mode: ExecutionMode::Fixed,
+            mode: RunMode::Fixed,
             curve_duration: None,
             curve_stages: None,
             total_requests: total,

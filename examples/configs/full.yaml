@@ -2,9 +2,16 @@
 # CLI flags always take precedence over values in this file.
 
 run:
-  host: https://api.example.com
-  requests: 1000       # overridden by -R / --request-count
-  concurrency: 100     # overridden by -C / --concurrency
+  host: https://httpbin.org
+  method: post
+  output: table
+  output_file: /tmp/run-report.json
+  sample_threshold: 100
+  result_buffer: 100000
+
+execution:
+  request_count: 200
+  concurrency: 20
 
 # Threshold rules — evaluated after the run completes.
 # Exit code 2 is returned when any threshold is not satisfied.
@@ -26,18 +33,11 @@ thresholds:
   - metric: error_rate
     operator: lt
     value: 0.01        # < 1% errors
-  - metric: latency_p50
-    operator: lt
-    value: 150.0       # p50 under 150 ms
   - metric: latency_p95
     operator: lt
-    value: 400.0       # p95 under 400 ms
-  - metric: latency_p99
-    operator: lt
-    value: 1000.0      # p99 hard ceiling 1 s
-  - metric: latency_avg
-    operator: lt
-    value: 200.0       # mean latency ceiling
+    value: 2000.0      # p95 under 2 s
   - metric: throughput_rps
     operator: gte
-    value: 100.0       # service must sustain at least 100 req/s
+    value: 10.0        # at least 10 req/s
+
+request_template: examples/request-bodies/static-body.json
