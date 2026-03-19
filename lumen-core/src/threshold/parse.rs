@@ -36,7 +36,7 @@ struct ThresholdEnvelope {
 pub fn parse_thresholds(json_or_yaml: &str) -> Result<Vec<Threshold>, ThresholdError> {
     let envelope: ThresholdEnvelope = serde_json::from_str(json_or_yaml)
         .or_else(|json_err| {
-            serde_yaml::from_str(json_or_yaml)
+            serde_yml::from_str(json_or_yaml)
                 .map_err(|_yaml_err| ThresholdError::ParseError(json_err.to_string()))
         })?;
 
