@@ -1,6 +1,6 @@
 [package]
 name = "lmn"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Fast HTTP load testing CLI with dynamic templates, thresholds, and load curves"
 license = "Apache-2.0"
@@ -16,7 +16,7 @@ name = "lmn"
 path = "src/main.rs"
 
 [dependencies]
-lmn-core = { path = "../lmn-core", version = "0.1.0" }
+lmn-core = { path = "../lmn-core", version = "0.1.1" }
 clap.workspace = true
 dotenvy = "0.15"
 clap-cargo.workspace = true
