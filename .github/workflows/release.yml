@@ -45,9 +45,9 @@ jobs:
             archive: zip
 
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.2.2
 
-      - uses: dtolnay/rust-toolchain@4305c58e7b2e3de0e6af2e84d61f81b42e1acef5  # stable
+      - uses: dtolnay/rust-toolchain@efa25f7f19611383d5b0ccf2d1c8914531636bf9  # stable
         with:
           targets: ${{ matrix.target }}
 
@@ -105,7 +105,7 @@ jobs:
           cd artifacts
           sha256sum lmn-* > checksums.txt
 
-      - uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191  # v2
+      - uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe  # v2
         with:
           files: |
             artifacts/lmn-*
