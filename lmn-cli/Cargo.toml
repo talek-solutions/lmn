@@ -16,7 +16,7 @@ name = "lmn"
 path = "src/main.rs"
 
 [dependencies]
-lmn-core = { path = "../lmn-core" }
+lmn-core = { path = "../lmn-core", version = "0.1.0" }
 clap.workspace = true
 dotenvy = "0.15"
 clap-cargo.workspace = true
