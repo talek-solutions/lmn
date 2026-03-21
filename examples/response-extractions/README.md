@@ -6,4 +6,4 @@ Used with `-S` / `--response-template`. Each file defines JSON paths to extract 
 |------|-------------|
 | `nested-string.json` | Extracts a nested string field (e.g. an error code) from the response body |
 
-See [TEMPLATES.md](../../lumen-cli/TEMPLATES.md) for the response template schema.
+See [TEMPLATES.md](../../lmn-core/TEMPLATES.md) for the response template schema.

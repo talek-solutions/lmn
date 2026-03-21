@@ -1,4 +1,4 @@
-# lumen full config — all supported fields shown
+# lmn full config — all supported fields shown
 # CLI flags always take precedence over values in this file.
 
 run:

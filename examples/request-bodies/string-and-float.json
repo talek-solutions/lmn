@@ -3,7 +3,7 @@
   "generatedLastNameField": "{{name_string:once}}",
   "generatedAmountField": "{{amount_number}}",
   "generatedMoneyField": "{{money_object}}",
-  "_lumen_metadata_templates": {
+  "_lmn_metadata_templates": {
     "name_string": {
       "type": "string",
       "exact": 6,

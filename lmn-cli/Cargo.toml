@@ -1,0 +1,33 @@
+[package]
+name = "lmn"
+version = "0.1.0"
+edition = "2024"
+description = "Fast HTTP load testing CLI with dynamic templates, thresholds, and load curves"
+license = "Apache-2.0"
+repository = "https://github.com/talek-solutions/lmn"
+homepage = "https://github.com/talek-solutions/lmn"
+documentation = "https://github.com/talek-solutions/lmn/blob/master/lmn-cli/CLI.md"
+keywords = ["load-testing", "http", "benchmark", "performance", "cli"]
+categories = ["command-line-utilities", "development-tools::testing"]
+readme = "../README.md"
+
+[[bin]]
+name = "lmn"
+path = "src/main.rs"
+
+[dependencies]
+lmn-core = { path = "../lmn-core", version = "0.1.0" }
+clap.workspace = true
+dotenvy = "0.15"
+clap-cargo.workspace = true
+serde_json.workspace = true
+opentelemetry.workspace = true
+opentelemetry-otlp.workspace = true
+opentelemetry_sdk.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-opentelemetry.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

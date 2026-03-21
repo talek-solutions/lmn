@@ -9,4 +9,4 @@ Used with `-T` / `--request-template`. Each file defines a JSON body template wi
 | `error-simulation.json` | Uses choice lists to inject error-triggering values for fault testing |
 | `with-env-token.json` | Mixes `{{ENV:VAR_NAME}}` built-in placeholders (resolved from environment at startup) with regular per-request generators |
 
-See [TEMPLATES.md](../../lumen-cli/TEMPLATES.md) for the full placeholder syntax reference.
+See [TEMPLATES.md](../../lmn-core/TEMPLATES.md) for the full placeholder syntax reference.

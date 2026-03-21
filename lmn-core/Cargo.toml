@@ -1,0 +1,21 @@
+[package]
+name = "lmn-core"
+version = "0.1.0"
+edition = "2024"
+description = "Core engine for the lmn HTTP load testing CLI"
+license = "Apache-2.0"
+repository = "https://github.com/talek-solutions/lmn"
+
+[dependencies]
+rand.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_norway.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+
+
+[dev-dependencies]
+tempfile.workspace = true

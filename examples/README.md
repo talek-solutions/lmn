@@ -1,6 +1,6 @@
 # Examples
 
-Reference examples for every lumen feature. Each subfolder maps to a CLI flag or config concept.
+Reference examples for every lmn feature. Each subfolder maps to a CLI flag or config concept.
 
 | Folder | CLI flag | Purpose |
 |--------|----------|---------|
