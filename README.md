@@ -245,7 +245,7 @@ lmn run -H https://api.example.com
 Start a local Tempo + Grafana stack from `lmn-cli/`:
 
 ```bash
-cd lmn-cli && docker compose up -d
+docker compose up -d
 # Grafana at http://localhost:3000 → Explore → Tempo
 ```
 
