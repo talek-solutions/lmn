@@ -82,7 +82,8 @@ pub struct LumenConfig {
 /// Returns `ConfigError::ValidationError` if threshold values are invalid
 /// (non-finite, or `error_rate` outside [0.0, 1.0]).
 pub fn parse_config(yaml: &str) -> Result<LumenConfig, ConfigError> {
-    let mut config: LumenConfig = serde_norway::from_str(yaml).map_err(ConfigError::YamlParseError)?;
+    let mut config: LumenConfig =
+        serde_norway::from_str(yaml).map_err(ConfigError::YamlParseError)?;
 
     // Validate thresholds if present — serde_norway bypasses the validation
     // in parse_thresholds(), so we run it explicitly here.
