@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::Deserialize;
 
 use crate::config::error::ConfigError;
@@ -8,6 +10,9 @@ const MAX_RESULT_BUFFER: usize = 10_000_000;
 const MAX_CONCURRENCY: usize = 10_000;
 const MAX_REQUEST_COUNT: usize = 100_000_000;
 const MAX_SAMPLE_THRESHOLD: usize = 10_000;
+const MAX_HEADERS: usize = 64;
+const MAX_HEADER_NAME_LEN: usize = 256;
+const MAX_HEADER_VALUE_LEN: usize = 8192;
 
 // ── RunConfig ─────────────────────────────────────────────────────────────────
 
@@ -21,6 +26,9 @@ pub struct RunConfig {
     pub output_file: Option<String>,
     pub sample_threshold: Option<usize>,
     pub result_buffer: Option<usize>,
+    /// Optional static HTTP headers to send with every request.
+    /// Values may contain `${ENV_VAR}` placeholders resolved at run start.
+    pub headers: Option<HashMap<String, String>>,
 }
 
 // ── ExecutionConfig ───────────────────────────────────────────────────────────
@@ -114,6 +122,27 @@ pub fn parse_config(yaml: &str) -> Result<LumenConfig, ConfigError> {
                 return Err(ConfigError::ValidationError(format!(
                     "sample_threshold {v} exceeds maximum ({MAX_SAMPLE_THRESHOLD})"
                 )));
+            }
+        }
+        // Validate headers if present.
+        if let Some(ref headers) = run.headers {
+            if headers.len() > MAX_HEADERS {
+                return Err(ConfigError::ValidationError(format!(
+                    "headers count {} exceeds maximum ({MAX_HEADERS})",
+                    headers.len()
+                )));
+            }
+            for (name, value) in headers {
+                if name.len() > MAX_HEADER_NAME_LEN {
+                    return Err(ConfigError::ValidationError(format!(
+                        "header name '{name}' exceeds maximum length ({MAX_HEADER_NAME_LEN})"
+                    )));
+                }
+                if value.len() > MAX_HEADER_VALUE_LEN {
+                    return Err(ConfigError::ValidationError(format!(
+                        "header value for '{name}' exceeds maximum length ({MAX_HEADER_VALUE_LEN})"
+                    )));
+                }
             }
         }
     }

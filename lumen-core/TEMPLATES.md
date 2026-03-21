@@ -45,6 +45,28 @@ Placeholders can appear anywhere a JSON string value can appear, including insid
 
 ---
 
+## Built-in Placeholders
+
+### `{{ENV:VAR_NAME}}`
+
+Injects the value of an environment variable at template parse time.
+
+```json
+{
+  "authorization": "{{ENV:API_TOKEN}}"
+}
+```
+
+**Behaviour:**
+
+- No `_lumen_metadata_templates` entry is required or allowed — `ENV:` placeholders are built-in.
+- The env var is read once when the template is parsed, before any requests fire (fail-closed).
+- If the named env var is not set, lumen exits immediately with an error.
+- If the var name is empty (`{{ENV:}}`), lumen exits immediately with an error.
+- `{{ENV:VAR_NAME:once}}` is **not supported**. The `:once` suffix is reserved for regular generator placeholders. Use `{{ENV:VAR_NAME}}` — it is already resolved once at startup and the same value is reused across all requests in the run.
+
+---
+
 ## Supported Types
 
 ### `string`

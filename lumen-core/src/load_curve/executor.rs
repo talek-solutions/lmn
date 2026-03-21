@@ -58,6 +58,14 @@ impl CurveExecutor {
         let total_duration = curve.total_duration();
         let started_at = Instant::now();
 
+        // Pre-convert headers once before spawning any VUs to avoid per-VU allocation.
+        let plain_headers: Arc<Vec<(String, String)>> = Arc::new(
+            request_config.headers
+                .iter()
+                .map(|(k, v)| (k.clone(), v.to_string()))
+                .collect()
+        );
+
         // Unbounded channel; VUs push results as they complete without risk of blocking.
         let (tx, mut rx) = mpsc::unbounded_channel::<RequestResult>();
 
@@ -93,6 +101,7 @@ impl CurveExecutor {
                             let vu_token = CancellationToken::new();
                             let handle = spawn_vu(VuParams {
                                 request_config: Arc::clone(&request_config),
+                                plain_headers: Arc::clone(&plain_headers),
                                 template: template.as_ref().map(Arc::clone),
                                 cancellation_token: vu_token.clone(),
                                 result_tx: tx.clone(),
@@ -174,6 +183,8 @@ impl CurveExecutor {
 
 struct VuParams {
     request_config: Arc<RequestConfig>,
+    /// Pre-converted header pairs shared across all VUs — avoids per-request allocation.
+    plain_headers: Arc<Vec<(String, String)>>,
     template: Option<Arc<Template>>,
     cancellation_token: CancellationToken,
     result_tx: mpsc::UnboundedSender<RequestResult>,
@@ -181,7 +192,7 @@ struct VuParams {
 
 fn spawn_vu(params: VuParams) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let VuParams { request_config, template, cancellation_token, result_tx } = params;
+        let VuParams { request_config, plain_headers, template, cancellation_token, result_tx } = params;
 
         loop {
             // Generate body on demand for this request
@@ -194,6 +205,9 @@ fn spawn_vu(params: VuParams) -> JoinHandle<()> {
             let method = request_config.method;
             let capture_body = request_config.tracked_fields.is_some();
 
+            // Clone the Arc cheaply; dereference to get a Vec clone only when needed.
+            let headers = Arc::clone(&plain_headers);
+
             let result_fut = async {
                 let mut req = Request::new(client, url, method);
                 if let Some((content, content_type)) = resolved {
@@ -201,6 +215,9 @@ fn spawn_vu(params: VuParams) -> JoinHandle<()> {
                 }
                 if capture_body {
                     req = req.read_response();
+                }
+                if !headers.is_empty() {
+                    req = req.headers((*headers).clone());
                 }
                 req.execute().await
             };

@@ -87,6 +87,9 @@ impl TryFrom<RunArgs> for RunArgsResolved {
     type Error = Box<dyn std::error::Error>;
 
     fn try_from(args: RunArgs) -> Result<Self, Self::Error> {
+        // Load .env file if present — silently ignore if missing
+        dotenvy::dotenv().ok();
+
         const MAX_FILE_BYTES: usize = 1_048_576; // 1 MB
 
         // Load and parse config file when --config/-f was supplied.
@@ -220,6 +223,78 @@ impl TryFrom<RunArgs> for RunArgsResolved {
             .response_template
             .or_else(|| args.response_alias.map(resolve_alias("responses")));
 
+        // ── headers ───────────────────────────────────────────────────────────────
+        // Merge strategy: config headers as base, CLI --header flags override on
+        // same key (case-insensitive). Then resolve ${ENV_VAR} in all values.
+        let mut header_map: Vec<(String, String)> = cfg
+            .as_ref()
+            .and_then(|c| c.run.as_ref()?.headers.clone())
+            .map(|map| map.into_iter().collect())
+            .unwrap_or_default();
+
+        // CLI headers override config headers (case-insensitive key match)
+        for raw in &args.headers {
+            // parse_header already validated the ': ' separator
+            let colon_pos = raw.find(": ").unwrap();
+            let name = raw[..colon_pos].to_string();
+            let value = raw[colon_pos + 2..].to_string();
+            // Remove existing entry with same name (case-insensitive)
+            header_map.retain(|(k, _)| !k.eq_ignore_ascii_case(&name));
+            header_map.push((name, value));
+        }
+
+        // Validate merged header count and lengths (mirrors parse_config validation)
+        const MAX_HEADERS: usize = 64;
+        const MAX_HEADER_NAME_LEN: usize = 256;
+        const MAX_HEADER_VALUE_LEN: usize = 8192;
+
+        if header_map.len() > MAX_HEADERS {
+            return Err(format!("too many headers: {}, maximum is {MAX_HEADERS}", header_map.len()).into());
+        }
+        for (name, value) in &header_map {
+            if name.len() > MAX_HEADER_NAME_LEN {
+                return Err(format!(
+                    "header name '{}...' exceeds maximum length of {MAX_HEADER_NAME_LEN} bytes",
+                    &name[..MAX_HEADER_NAME_LEN.min(name.len())]
+                ).into());
+            }
+            if value.len() > MAX_HEADER_VALUE_LEN {
+                return Err(format!(
+                    "header '{name}' value exceeds maximum length of {MAX_HEADER_VALUE_LEN} bytes"
+                ).into());
+            }
+        }
+
+        // Warn on raw secrets BEFORE resolution (check original values, not resolved ones)
+        for (name, raw_value) in &header_map {
+            let lower_name = name.to_lowercase();
+            if ["authorization", "x-api-key", "token", "secret", "password", "x-auth"]
+                .iter()
+                .any(|k| lower_name.contains(k))
+                && !raw_value.contains("${")
+                && raw_value.len() > 4
+            {
+                eprintln!(
+                    "warning: header '{name}' contains a raw value — consider using ${{ENV_VAR}} \
+                     to avoid hardcoding secrets"
+                );
+            }
+        }
+
+        // Resolve ${ENV_VAR} in header values, then wrap in SensitiveString so
+        // secrets are redacted if the value ever appears in debug output.
+        use lumen_core::config::resolve_env_placeholders;
+        use lumen_core::config::secret::SensitiveString;
+        let headers: Vec<(String, SensitiveString)> = header_map
+            .into_iter()
+            .map(|(name, value)| {
+                let resolved = resolve_env_placeholders(&value)
+                    .map_err(|e| format!("header '{name}': {e}"))?;
+                Ok::<_, String>((name, SensitiveString::new(resolved)))
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e: String| Box::<dyn std::error::Error>::from(e))?;
+
         Ok(RunArgsResolved {
             request: RequestSpec {
                 host,
@@ -230,6 +305,7 @@ impl TryFrom<RunArgs> for RunArgsResolved {
                 }),
                 template_path,
                 response_template_path,
+                headers,
             },
             execution,
             sampling: SamplingConfig {
@@ -369,6 +445,7 @@ mod tests {
             output: Some(crate::cli::command::OutputFormat::Table),
             output_file: None,
             config: None,
+            headers: vec![],
         }
     }
 
@@ -692,5 +769,82 @@ mod tests {
             "expected output format error, got: {msg}"
         );
         assert!(msg.contains("table, json"), "error should list valid formats, got: {msg}");
+    }
+
+    #[test]
+    fn cli_header_flag_overrides_config_header() {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\n  headers:\n    Authorization: config-token\n").unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+        args.headers = vec!["Authorization: Bearer cli-token".to_string()];
+
+        let result = RunArgsResolved::try_from(args).expect("should succeed");
+        let auth = result.request.headers.iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("Authorization"))
+            .map(|(_, v)| v.as_str());
+        assert_eq!(auth, Some("Bearer cli-token"), "CLI header should override config header");
+        // must be exactly one Authorization entry (no duplicates)
+        let count = result.request.headers.iter()
+            .filter(|(k, _)| k.eq_ignore_ascii_case("Authorization"))
+            .count();
+        assert_eq!(count, 1, "expected exactly one Authorization header after override");
+    }
+
+    #[test]
+    fn config_headers_used_when_no_cli_headers() {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\n  headers:\n    X-Custom: from-config\n").unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+        // args.headers is already vec![] from make_run_args
+
+        let result = RunArgsResolved::try_from(args).expect("should succeed");
+        let custom = result.request.headers.iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("X-Custom"))
+            .map(|(_, v)| v.as_str());
+        assert_eq!(custom, Some("from-config"), "config header should be present when no CLI headers");
+    }
+
+    #[test]
+    fn env_var_in_header_value_resolved() {
+        use std::io::Write;
+        unsafe { std::env::set_var("LUMEN_TEST_HEADER_TOKEN", "resolved-secret") };
+
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\n  headers:\n    X-Token: \"${LUMEN_TEST_HEADER_TOKEN}\"\n").unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+
+        let result = RunArgsResolved::try_from(args).expect("should succeed");
+        let token = result.request.headers.iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("X-Token"))
+            .map(|(_, v)| v.as_str());
+        assert_eq!(token, Some("resolved-secret"), "env var in header value should be resolved");
+    }
+
+    #[test]
+    fn too_many_cli_headers_returns_error() {
+        // Build RunArgs with 65 --header strings (one over the 64 limit)
+        let headers: Vec<String> = (0..65)
+            .map(|i| format!("X-Custom-{i:02}: value{i}"))
+            .collect();
+
+        let mut args = make_run_args(None);
+        args.headers = headers;
+
+        let result = RunArgsResolved::try_from(args);
+        assert!(result.is_err(), "expected error for too many headers");
+        let msg = result.err().unwrap().to_string();
+        assert!(msg.contains("too many headers"), "expected 'too many headers' error, got: {msg}");
+        assert!(msg.contains("64"), "error should mention the limit, got: {msg}");
     }
 }

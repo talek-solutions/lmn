@@ -112,6 +112,11 @@ pub struct RunArgs {
     #[arg(long = "config")]
     #[arg(help = "Path to a YAML config file. CLI flags take precedence over config values.")]
     pub config: Option<PathBuf>,
+
+    #[arg(long = "header")]
+    #[arg(help = "Custom HTTP header in 'Name: Value' format (repeatable, e.g. --header 'Authorization: Bearer token')")]
+    #[arg(value_parser = parse_header)]
+    pub headers: Vec<String>,
 }
 
 
@@ -172,6 +177,22 @@ fn parse_json(s: &str) -> Result<String, String> {
         .map_err(|e| format!("invalid JSON: {e}"))
 }
 
+fn parse_header(s: &str) -> Result<String, String> {
+    match s.find(": ") {
+        None => Err(format!("invalid header format '{s}': expected 'Name: Value'")),
+        Some(0) => Err(format!("invalid header format '{s}': header name cannot be empty")),
+        Some(pos) => {
+            let name = &s[..pos];
+            // Header field names: printable ASCII, no spaces or separators (RFC 7230)
+            if name.chars().any(|c| !c.is_ascii_graphic() || "()<>@,;:\\\"/[]?={} \t".contains(c)) {
+                Err(format!("invalid header name '{name}': contains disallowed characters"))
+            } else {
+                Ok(s.to_string())
+            }
+        }
+    }
+}
+
 pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
     .header(clap_cargo::style::HEADER)
     .usage(clap_cargo::style::USAGE)
@@ -180,3 +201,45 @@ pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling:
     .error(clap_cargo::style::ERROR)
     .valid(clap_cargo::style::VALID)
     .invalid(clap_cargo::style::INVALID);
+
+#[cfg(test)]
+mod tests {
+    use super::parse_header;
+
+    #[test]
+    fn parse_header_rejects_empty_name() {
+        let result = parse_header(": Value");
+        assert!(result.is_err());
+        let msg = result.err().unwrap();
+        assert!(msg.contains("header name cannot be empty"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn parse_header_rejects_missing_separator() {
+        let result = parse_header("Authorization:Bearer token");
+        assert!(result.is_err());
+        let msg = result.err().unwrap();
+        assert!(msg.contains("expected 'Name: Value'"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn parse_header_rejects_space_in_name() {
+        let result = parse_header("My Header: value");
+        assert!(result.is_err());
+        let msg = result.err().unwrap();
+        assert!(msg.contains("disallowed characters"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn parse_header_accepts_valid() {
+        let result = parse_header("Authorization: Bearer token123");
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Authorization: Bearer token123");
+    }
+
+    #[test]
+    fn parse_header_accepts_hyphenated_name() {
+        let result = parse_header("X-Api-Key: secret");
+        assert!(result.is_ok());
+    }
+}

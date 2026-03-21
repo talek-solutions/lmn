@@ -8,6 +8,7 @@ use tracing::Instrument;
 use tracing::info_span;
 
 use crate::command::{Command, Body};
+use crate::config::secret::SensitiveString;
 use crate::http::{Request, RequestConfig, RequestResult};
 use crate::load_curve::LoadCurve;
 use crate::load_curve::executor::{CurveExecutor, CurveExecutorParams};
@@ -62,6 +63,8 @@ pub struct RequestSpec {
     pub body: Option<Body>,
     pub template_path: Option<PathBuf>,
     pub response_template_path: Option<PathBuf>,
+    /// Custom HTTP headers to send with every request in this run.
+    pub headers: Vec<(String, SensitiveString)>,
 }
 
 // ── SamplingConfig ────────────────────────────────────────────────────────────
@@ -121,6 +124,7 @@ fn build_request_config(
     method: crate::command::HttpMethod,
     body: Option<Body>,
     tracked_fields: Option<Arc<Vec<TrackedField>>>,
+    headers: Vec<(String, SensitiveString)>,
 ) -> Arc<RequestConfig> {
     Arc::new(RequestConfig {
         client: reqwest::Client::new(),
@@ -128,6 +132,7 @@ fn build_request_config(
         method,
         body: Arc::new(body),
         tracked_fields,
+        headers: Arc::new(headers),
     })
 }
 
@@ -157,7 +162,7 @@ async fn execute_fixed(
     total: usize,
     concurrency: usize,
 ) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
-    let RequestSpec { host, method, body, template_path, response_template_path } = request_spec;
+    let RequestSpec { host, method, body, template_path, response_template_path, headers } = request_spec;
 
     // Pre-generate all template bodies before any requests fire
     let gen_start = Instant::now();
@@ -171,7 +176,7 @@ async fn execute_fixed(
     let template_duration = all_bodies.as_ref().map(|_| gen_start.elapsed());
 
     let tracked_fields = resolve_tracked_fields(response_template_path)?;
-    let request = build_request_config(host, method, body, tracked_fields);
+    let request = build_request_config(host, method, body, tracked_fields, headers);
 
     let token = CancellationToken::new();
     let cancel = token.clone();
@@ -186,6 +191,14 @@ async fn execute_fixed(
     let sample_threshold = sampling.sample_threshold;
     let result_buffer = sampling.result_buffer;
 
+    // Pre-convert headers once before the hot loop to avoid per-request allocation.
+    let plain_headers: Arc<Vec<(String, String)>> = Arc::new(
+        request.headers
+            .iter()
+            .map(|(k, v)| (k.clone(), v.to_string()))
+            .collect()
+    );
+
     let (all_results, sampling_state) = async {
         let sem = Arc::new(Semaphore::new(concurrency));
         let (tx, mut rx) = mpsc::channel::<RequestResult>(concurrency);
@@ -199,6 +212,7 @@ async fn execute_fixed(
             let url = request.host.as_str().to_string();
             let method = request.method;
             let capture_body = request.tracked_fields.is_some();
+            let headers = Arc::clone(&plain_headers);
             let tx = tx.clone();
 
             tokio::select! {
@@ -213,6 +227,9 @@ async fn execute_fixed(
                         }
                         if capture_body {
                             req = req.read_response();
+                        }
+                        if !headers.is_empty() {
+                            req = req.headers((*headers).clone());
                         }
                         let _ = tx.send(req.execute().await).await;
                     });
@@ -271,7 +288,7 @@ async fn execute_curve(
     sampling: SamplingConfig,
     curve: LoadCurve,
 ) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
-    let RequestSpec { host, method, body, template_path, response_template_path } = request_spec;
+    let RequestSpec { host, method, body, template_path, response_template_path, headers } = request_spec;
     let curve_duration = curve.total_duration();
     let curve_stages = curve.stages.clone();
 
@@ -282,7 +299,7 @@ async fn execute_curve(
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     let tracked_fields = resolve_tracked_fields(response_template_path)?;
-    let request_config = build_request_config(host, method, body, tracked_fields);
+    let request_config = build_request_config(host, method, body, tracked_fields, headers);
 
     let cancellation_token = CancellationToken::new();
     let cancel = cancellation_token.clone();

@@ -8,6 +8,8 @@ pub enum TemplateError {
     CircularReference(Vec<String>),
     InvalidConstraint(String),
     MissingDefinition(String),
+    MissingEnvVar(String),
+    InvalidEnvVarName(String),
 }
 
 impl std::fmt::Display for TemplateError {
@@ -24,6 +26,12 @@ impl std::fmt::Display for TemplateError {
             Self::InvalidConstraint(msg) => write!(f, "invalid constraint: {msg}"),
             Self::MissingDefinition(name) => {
                 write!(f, "placeholder '{name}' referenced in composition but not defined")
+            }
+            Self::MissingEnvVar(name) => {
+                write!(f, "ENV var {name} not set")
+            }
+            Self::InvalidEnvVarName(name) => {
+                write!(f, "ENV placeholder '{name}' has an empty variable name")
             }
         }
     }

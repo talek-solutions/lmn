@@ -35,12 +35,47 @@ lumen run [OPTIONS] -H <HOST>
 | — | `--output` | `table` | Output format: `table` (default) or `json` |
 | — | `--output-file` | — | Write JSON result to `<path>` (always JSON regardless of `--output`) |
 | `-f` | `--config` | — | Path to a YAML config file. CLI flags take precedence over config values. |
+| — | `--header` | — | Custom HTTP header in `'Name: Value'` format (repeatable) |
 
 ### Conflicts
 
 - `-B`, `-T`, `-A` are mutually exclusive (only one request body source allowed)
 - `-S` and `-E` are mutually exclusive (only one response template source allowed)
 - `-L` conflicts with `-R` and `-C` (curve mode is time-based, not count-based)
+
+### Custom Headers
+
+Use `--header` (repeatable) to attach static HTTP headers to every request:
+
+```bash
+lumen run -H http://localhost:3000/api --header 'Authorization: Bearer mytoken' --header 'X-Request-ID: abc123'
+```
+
+Headers can also be set in the config file under `run.headers`:
+
+```yaml
+run:
+  host: https://api.example.com
+  headers:
+    Authorization: "Bearer ${API_TOKEN}"
+    X-Custom-Header: "static-value"
+```
+
+**Precedence:** CLI `--header` wins over config `headers:` on the same key (case-insensitive match). Duplicate entries for the same key are removed before the CLI value is added.
+
+**Secret management:** Use `${ENV_VAR}` syntax in header values to avoid hardcoding secrets. The variable must use uppercase letters, digits, and underscores only. A `.env` file in the working directory is loaded automatically at startup (silently ignored if absent). If the referenced variable is not set, lumen exits with an error.
+
+```bash
+# .env file
+API_TOKEN=my-secret-token
+
+# config file
+run:
+  headers:
+    Authorization: "Bearer ${API_TOKEN}"
+```
+
+A startup warning is printed to stderr when a header with a security-sensitive name (e.g. `Authorization`, `X-Api-Key`) contains a plain string value longer than 4 characters without `${` — this is a reminder to use env var substitution instead.
 
 ### Exit Codes
 
@@ -70,6 +105,7 @@ Run parameters are nested under a `run:` section. Execution strategy is configur
 | `output_file` | string | `--output-file` | Path to write JSON report |
 | `sample_threshold` | number | `--sample-threshold` | VU count below which all results are collected (0 = disabled) |
 | `result_buffer` | number | `--result-buffer` | Max results to retain for percentile computation |
+| `headers` | map | `--header` | Static HTTP headers sent with every request (key: value pairs) |
 
 **`execution:` section**
 
@@ -182,6 +218,12 @@ lumen run -H http://localhost:3000/api --output-file run.json
 
 # Both JSON to stdout and to file
 lumen run -H http://localhost:3000/api --output json --output-file run.json
+
+# Custom headers (repeatable)
+lumen run -H http://localhost:3000/api --header 'Authorization: Bearer mytoken' --header 'X-Trace-ID: 123'
+
+# Using env var substitution for secrets (API_TOKEN must be set)
+lumen run -H http://localhost:3000/api --header 'Authorization: Bearer ${API_TOKEN}'
 ```
 
 ---

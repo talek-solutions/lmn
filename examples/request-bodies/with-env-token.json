@@ -1,0 +1,26 @@
+{
+  "userId": "{{user_id}}",
+  "amount": "{{amount}}",
+  "apiKey": "{{ENV:API_KEY}}",
+  "tenantId": "{{ENV:TENANT_ID}}",
+  "_lumen_metadata_templates": {
+    "user_id": {
+      "type": "string",
+      "details": {
+        "choice": [
+          "user-001",
+          "user-002",
+          "user-003"
+        ]
+      }
+    },
+    "amount": {
+      "type": "float",
+      "min": 1,
+      "max": 500,
+      "details": {
+        "decimals": 2
+      }
+    }
+  }
+}

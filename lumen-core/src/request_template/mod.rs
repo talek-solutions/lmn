@@ -15,6 +15,7 @@ pub use error::TemplateError;
 use generator::GeneratorContext;
 
 const METADATA_KEY: &str = "_lumen_metadata_templates";
+pub(crate) const ENV_PLACEHOLDER_PREFIX: &str = "ENV:";
 
 // ── Placeholder parsing ───────────────────────────────────────────────────────
 
@@ -38,6 +39,53 @@ pub fn parse_placeholder(s: &str) -> Option<PlaceholderRef> {
         return None;
     }
     Some(PlaceholderRef { name: name.to_string(), once })
+}
+
+// ── ENV placeholder helpers ───────────────────────────────────────────────────
+
+/// Walks the body `Value` tree and collects the names of all placeholders
+/// whose name starts with `"ENV:"` (e.g. `"ENV:MY_TOKEN"`). Deduplicated.
+fn collect_env_placeholder_names(body: &Value) -> Vec<String> {
+    let mut names = Vec::new();
+    collect_env(body, &mut names);
+    names.sort();
+    names.dedup();
+    names
+}
+
+fn collect_env(value: &Value, names: &mut Vec<String>) {
+    match value {
+        Value::String(s) => {
+            if let Some(ph) = parse_placeholder(s) {
+                if ph.name.starts_with(ENV_PLACEHOLDER_PREFIX) {
+                    names.push(ph.name);
+                }
+            }
+        }
+        Value::Object(map) => map.values().for_each(|v| collect_env(v, names)),
+        Value::Array(arr) => arr.iter().for_each(|v| collect_env(v, names)),
+        _ => {}
+    }
+}
+
+/// For each name like `"ENV:MY_TOKEN"`, reads the env var after the `ENV:` prefix.
+/// Returns `Err(TemplateError::MissingEnvVar)` if any variable is not set.
+/// Returns `Err(TemplateError::InvalidEnvVarName)` if the var name portion is empty.
+fn resolve_env_vars(names: &[String]) -> Result<HashMap<String, Value>, TemplateError> {
+    let mut map = HashMap::new();
+    for name in names {
+        let var_name = &name[ENV_PLACEHOLDER_PREFIX.len()..];
+        if var_name.is_empty() {
+            return Err(TemplateError::InvalidEnvVarName(name.to_string()));
+        }
+        match std::env::var(var_name) {
+            Ok(val) => {
+                map.insert(name.clone(), Value::String(val));
+            }
+            Err(_) => return Err(TemplateError::MissingEnvVar(var_name.to_string())),
+        }
+    }
+    Ok(map)
 }
 
 // ── Template ──────────────────────────────────────────────────────────────────
@@ -84,7 +132,15 @@ impl Template {
             })
             .collect();
 
-        Ok(Template { body, context: ctx.with_once_values(once_values) })
+        // Resolve ENV: placeholders — read from environment at startup (fail-closed)
+        let env_names = collect_env_placeholder_names(&body);
+        let env_values = resolve_env_vars(&env_names)?;
+
+        // Merge env values into once_values
+        let mut all_once_values = once_values;
+        all_once_values.extend(env_values);
+
+        Ok(Template { body, context: ctx.with_once_values(all_once_values) })
     }
 
     /// Pre-generates `n` request bodies, each with independently rendered placeholders.
@@ -178,5 +234,63 @@ mod tests {
         let b = template.generate_one();
         assert!(serde_json::from_str::<serde_json::Value>(&a).is_ok());
         assert!(serde_json::from_str::<serde_json::Value>(&b).is_ok());
+    }
+
+    #[test]
+    fn parse_env_placeholder_resolved_from_env() {
+        unsafe { std::env::set_var("LUMEN_TEST_TOKEN", "secret123") };
+        let f = write_temp(r#"{"token": "{{ENV:LUMEN_TEST_TOKEN}}"}"#);
+        let template = Template::parse(f.path()).unwrap();
+        let result = template.generate_one();
+        assert!(result.contains("secret123"), "expected 'secret123' in output, got: {result}");
+    }
+
+    #[test]
+    fn parse_env_placeholder_missing_var_is_error() {
+        // Ensure the var is definitely not set
+        unsafe { std::env::remove_var("LUMEN_NONEXISTENT_12345") };
+        let f = write_temp(r#"{"token": "{{ENV:LUMEN_NONEXISTENT_12345}}"}"#);
+        let result = Template::parse(f.path());
+        assert!(result.is_err(), "expected parse to fail for missing env var");
+        assert!(
+            matches!(result.err(), Some(TemplateError::MissingEnvVar(_))),
+            "expected MissingEnvVar error variant"
+        );
+    }
+
+    #[test]
+    fn parse_env_placeholder_no_def_required() {
+        // Template with ENV: placeholder and empty _lumen_metadata_templates should succeed
+        unsafe { std::env::set_var("LUMEN_TEST_TOKEN", "anyvalue") };
+        let f = write_temp(r#"{"token": "{{ENV:LUMEN_TEST_TOKEN}}", "_lumen_metadata_templates": {}}"#);
+        assert!(Template::parse(f.path()).is_ok());
+    }
+
+    #[test]
+    fn parse_env_placeholder_with_once_suffix_resolves_correctly() {
+        // {{ENV:LUMEN_TEST_ONCE_TOKEN:once}} — the :once suffix is parsed away by
+        // parse_placeholder, leaving name = "ENV:LUMEN_TEST_ONCE_TOKEN". The collect_once
+        // path must skip it (since there is no generator def), and the ENV resolution path
+        // must still resolve it correctly.
+        unsafe { std::env::set_var("LUMEN_TEST_ONCE_TOKEN", "once_secret_value") };
+        let f = write_temp(r#"{"token": "{{ENV:LUMEN_TEST_ONCE_TOKEN:once}}"}"#);
+        let template = Template::parse(f.path()).unwrap();
+        let result = template.generate_one();
+        assert!(
+            result.contains("once_secret_value"),
+            "expected 'once_secret_value' in output, got: {result}"
+        );
+    }
+
+    #[test]
+    fn parse_env_placeholder_empty_var_name_is_error() {
+        // {{ENV:}} has an empty variable name and must produce InvalidEnvVarName
+        let f = write_temp(r#"{"token": "{{ENV:}}"}"#);
+        let result = Template::parse(f.path());
+        assert!(result.is_err(), "expected parse to fail for empty ENV var name");
+        assert!(
+            matches!(result.err(), Some(TemplateError::InvalidEnvVarName(_))),
+            "expected InvalidEnvVarName error variant"
+        );
     }
 }

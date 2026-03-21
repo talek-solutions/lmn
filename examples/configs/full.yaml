@@ -8,6 +8,9 @@ run:
   output_file: /tmp/run-report.json
   sample_threshold: 100
   result_buffer: 100000
+  headers:
+    Authorization: "Bearer ${API_TOKEN}"
+    X-Custom-Header: "static-value"
 
 execution:
   request_count: 200

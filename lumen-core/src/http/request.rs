@@ -3,6 +3,7 @@ use std::time::Instant;
 use std::time::Duration;
 
 use crate::command::{Body, HttpMethod};
+use crate::config::secret::SensitiveString;
 use crate::response_template::field::TrackedField;
 
 // ── Body format ───────────────────────────────────────────────────────────────
@@ -19,6 +20,10 @@ pub struct RequestConfig {
     pub method: HttpMethod,
     pub body: Arc<Option<Body>>,
     pub tracked_fields: Option<Arc<Vec<TrackedField>>>,
+    /// Static headers applied to every request in the run.
+    /// Stored as `Arc` so the list is shared cheaply across concurrent tasks.
+    /// Values are `SensitiveString` so secrets are redacted in debug output.
+    pub headers: Arc<Vec<(String, SensitiveString)>>,
 }
 
 impl RequestConfig {
@@ -81,16 +86,25 @@ pub struct Request {
     url: String,
     method: HttpMethod,
     body: Option<(String, &'static str)>,
+    headers: Vec<(String, String)>,
     capture_response: bool,
 }
 
 impl Request {
     pub fn new(client: reqwest::Client, url: String, method: HttpMethod) -> Self {
-        Self { client, url, method, body: None, capture_response: false }
+        Self { client, url, method, body: None, headers: Vec::new(), capture_response: false }
     }
 
     pub fn body(mut self, content: String, content_type: &'static str) -> Self {
         self.body = Some((content, content_type));
+        self
+    }
+
+    /// Attach a list of custom HTTP headers.
+    /// These are applied after the auto-set `Content-Type`, so a user-supplied
+    /// `Content-Type` header will override the auto-set one.
+    pub fn headers(mut self, headers: Vec<(String, String)>) -> Self {
+        self.headers = headers;
         self
     }
 
@@ -110,6 +124,10 @@ impl Request {
         };
         if let Some((content, content_type)) = self.body {
             req = req.header("Content-Type", content_type).body(content);
+        }
+        // Apply user-supplied headers AFTER body/Content-Type so they take precedence.
+        for (name, value) in self.headers {
+            req = req.header(name, value);
         }
         match req.send().await {
             Ok(resp) => {
