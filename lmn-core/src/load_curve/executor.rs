@@ -100,35 +100,39 @@ impl CurveExecutor {
                     let target = curve.target_vus_at(elapsed) as usize;
                     let current = vu_handles.len();
 
-                    if target > current {
-                        // Spawn additional VUs
-                        let to_add = target - current;
-                        for _ in 0..to_add {
-                            let vu_token = CancellationToken::new();
-                            let handle = spawn_vu(VuParams {
-                                request_config: Arc::clone(&request_config),
-                                plain_headers: Arc::clone(&plain_headers),
-                                template: template.as_ref().map(Arc::clone),
-                                cancellation_token: vu_token.clone(),
-                                result_tx: tx.clone(),
-                            });
-                            vu_handles.push((handle, vu_token));
+                    match target.cmp(&current) {
+                        std::cmp::Ordering::Greater => {
+                            // Spawn additional VUs
+                            let to_add = target - current;
+                            for _ in 0..to_add {
+                                let vu_token = CancellationToken::new();
+                                let handle = spawn_vu(VuParams {
+                                    request_config: Arc::clone(&request_config),
+                                    plain_headers: Arc::clone(&plain_headers),
+                                    template: template.as_ref().map(Arc::clone),
+                                    cancellation_token: vu_token.clone(),
+                                    result_tx: tx.clone(),
+                                });
+                                vu_handles.push((handle, vu_token));
+                            }
                         }
-                    } else if target < current {
-                        // Cancel excess VUs (cancel from the end of the list)
-                        let to_remove = current - target;
-                        let drain_start = vu_handles.len() - to_remove;
-                        let excess: Vec<_> = vu_handles.drain(drain_start..).collect();
-                        // Cancel all tokens first so all VUs begin exiting simultaneously
-                        for (_, token) in &excess {
-                            token.cancel();
+                        std::cmp::Ordering::Less => {
+                            // Cancel excess VUs (cancel from the end of the list)
+                            let to_remove = current - target;
+                            let drain_start = vu_handles.len() - to_remove;
+                            let excess: Vec<_> = vu_handles.drain(drain_start..).collect();
+                            // Cancel all tokens first so all VUs begin exiting simultaneously
+                            for (_, token) in &excess {
+                                token.cancel();
+                            }
+                            // Await sequentially — VUs are already exiting in parallel on the runtime
+                            for (handle, _) in excess {
+                                let _ = handle.await;
+                            }
                         }
-                        // Await sequentially — VUs are already exiting in parallel on the runtime
-                        for (handle, _) in excess {
-                            let _ = handle.await;
-                        }
+                        std::cmp::Ordering::Equal => {}
+                        // If target == current: nothing to do
                     }
-                    // If target == current: nothing to do
 
                     // Update sampling rate based on the current active VU count.
                     sampling.set_active_vus(vu_handles.len());

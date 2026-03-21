@@ -90,7 +90,7 @@ mod tests {
         let mut rng = rand::thread_rng();
         for _ in 0..20 {
             let len = def.generate(&mut rng).as_str().unwrap().len();
-            assert!(len >= 5 && len <= 10);
+            assert!((5..=10).contains(&len));
         }
     }
 }

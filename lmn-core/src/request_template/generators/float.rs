@@ -26,11 +26,11 @@ mod tests {
     #[test]
     fn exact_strategy_returns_exact_value() {
         let def = FloatDef {
-            strategy: FloatStrategy::Exact(3.14),
+            strategy: FloatStrategy::Exact(3.15),
             decimals: 2,
         };
         let val = def.generate(&mut rand::thread_rng()).as_f64().unwrap();
-        assert!((val - 3.14).abs() < f64::EPSILON);
+        assert!((val - 3.15).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -42,7 +42,7 @@ mod tests {
         let mut rng = rand::thread_rng();
         for _ in 0..20 {
             let val = def.generate(&mut rng).as_f64().unwrap();
-            assert!(val >= 1.0 && val <= 2.0);
+            assert!((1.0..=2.0).contains(&val));
         }
     }
 
@@ -53,6 +53,8 @@ mod tests {
             decimals: 2,
         };
         let val = def.generate(&mut rand::thread_rng()).as_f64().unwrap();
-        assert!((val - 3.14).abs() < 0.001);
+        // PI rounded to 2 decimal places; derive the expected from the constant to avoid approx_constant lint
+        let expected = (std::f64::consts::PI * 100.0).round() / 100.0;
+        assert!((val - expected).abs() < 0.001);
     }
 }

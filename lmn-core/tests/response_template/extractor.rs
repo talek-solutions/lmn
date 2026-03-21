@@ -24,11 +24,11 @@ fn extracts_string_field() {
 
 #[test]
 fn extracts_float_field() {
-    let body = json!({ "amount": 3.14 });
+    let body = json!({ "amount": 3.15 });
     let result = extract(&body, &[field(&["amount"], ResponseFieldType::Float)]);
     assert_eq!(result.values.len(), 1);
     assert!(
-        matches!(&result.values[0], (k, ExtractedValue::Float(v)) if k == "amount" && (*v - 3.14).abs() < f64::EPSILON)
+        matches!(&result.values[0], (k, ExtractedValue::Float(v)) if k == "amount" && (*v - 3.15).abs() < f64::EPSILON)
     );
 }
 

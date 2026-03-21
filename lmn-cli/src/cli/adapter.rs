@@ -127,7 +127,7 @@ impl TryFrom<RunArgs> for RunArgsResolved {
         let method: lmn_core::command::HttpMethod = if let Some(m) = args.method {
             m.into()
         } else if let Some(s) = cfg.as_ref().and_then(|c| c.run.as_ref()?.method.as_deref()) {
-            parse_method_str(s).map_err(|e| Box::<dyn std::error::Error>::from(e))?
+            parse_method_str(s).map_err(Box::<dyn std::error::Error>::from)?
         } else {
             lmn_core::command::HttpMethod::Get
         };
@@ -136,7 +136,7 @@ impl TryFrom<RunArgs> for RunArgsResolved {
         let output: OutputFormat = if let Some(o) = args.output {
             o
         } else if let Some(s) = cfg.as_ref().and_then(|c| c.run.as_ref()?.output.as_deref()) {
-            parse_output_str(s).map_err(|e| Box::<dyn std::error::Error>::from(e))?
+            parse_output_str(s).map_err(Box::<dyn std::error::Error>::from)?
         } else {
             OutputFormat::Table
         };
@@ -210,7 +210,7 @@ impl TryFrom<RunArgs> for RunArgsResolved {
             if exec_cfg.and_then(|e| e.stages.as_ref()).is_some() {
                 let exec = exec_cfg.unwrap().clone();
                 let curve =
-                    LoadCurve::try_from(exec).map_err(|e| Box::<dyn std::error::Error>::from(e))?;
+                    LoadCurve::try_from(exec).map_err(Box::<dyn std::error::Error>::from)?;
                 ExecutionMode::Curve(curve)
             } else {
                 ExecutionMode::Fixed {
@@ -231,7 +231,7 @@ impl TryFrom<RunArgs> for RunArgsResolved {
         let host = args
             .host
             .or_else(|| cfg.as_ref().and_then(|c| c.run.as_ref()?.host.clone()))
-            .ok_or_else(|| "host is required: set -H or run.host in config file")?;
+            .ok_or("host is required: set -H or run.host in config file")?;
 
         // Resolve optional template paths from config
         let template_path = args

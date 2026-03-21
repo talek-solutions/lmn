@@ -284,9 +284,8 @@ mod tests {
         }
         // Now results_len == reservoir_size == 5; must not Push.
         for _ in 0..100 {
-            match s.reservoir_slot(5) {
-                ReservoirAction::Push => panic!("Push when reservoir is full"),
-                _ => {}
+            if let ReservoirAction::Push = s.reservoir_slot(5) {
+                panic!("Push when reservoir is full")
             }
         }
     }

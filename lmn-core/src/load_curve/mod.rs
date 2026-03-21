@@ -67,17 +67,12 @@ where
 /// Determines how VU count changes within a stage.
 /// `Linear` interpolates smoothly from the previous VU count to `target_vus`.
 /// `Step` jumps immediately to `target_vus` at the start of the stage.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RampType {
+    #[default]
     Linear,
     Step,
-}
-
-impl Default for RampType {
-    fn default() -> Self {
-        RampType::Linear
-    }
 }
 
 // ── Stage ─────────────────────────────────────────────────────────────────────

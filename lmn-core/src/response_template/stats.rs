@@ -13,6 +13,12 @@ pub struct ResponseStats {
     pub total_responses: usize,
 }
 
+impl Default for ResponseStats {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ResponseStats {
     pub fn new() -> Self {
         Self {

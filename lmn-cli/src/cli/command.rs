@@ -23,7 +23,7 @@ pub enum HttpMethod {
 #[command(bin_name = "lmn")]
 #[command(styles = CLAP_STYLING)]
 pub enum LoadTestRunCli {
-    Run(RunArgs),
+    Run(Box<RunArgs>),
     ConfigureRequest(ConfigureRequestArgs),
     ConfigureResponse(ConfigureResponseArgs),
 }

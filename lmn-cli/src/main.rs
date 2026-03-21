@@ -50,7 +50,7 @@ fn main() {
 
         // Resolve run args (merges --config file values with CLI flags).
         let cmd = match cli_args {
-            LoadTestRunCli::Run(args) => match cli::adapter::RunArgsResolved::try_from(args) {
+            LoadTestRunCli::Run(args) => match cli::adapter::RunArgsResolved::try_from(*args) {
                 Ok(resolved) => {
                     let output_format = resolved.output;
                     let output_file = resolved.output_file.clone();
