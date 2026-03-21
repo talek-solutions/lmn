@@ -109,19 +109,19 @@ pub fn parse_config(yaml: &str) -> Result<LumenConfig, ConfigError> {
 
     // Validate numeric bounds.
     if let Some(ref run) = config.run {
-        if let Some(v) = run.result_buffer {
-            if v > MAX_RESULT_BUFFER {
-                return Err(ConfigError::ValidationError(format!(
-                    "result_buffer {v} exceeds maximum ({MAX_RESULT_BUFFER})"
-                )));
-            }
+        if let Some(v) = run.result_buffer
+            && v > MAX_RESULT_BUFFER
+        {
+            return Err(ConfigError::ValidationError(format!(
+                "result_buffer {v} exceeds maximum ({MAX_RESULT_BUFFER})"
+            )));
         }
-        if let Some(v) = run.sample_threshold {
-            if v > MAX_SAMPLE_THRESHOLD {
-                return Err(ConfigError::ValidationError(format!(
-                    "sample_threshold {v} exceeds maximum ({MAX_SAMPLE_THRESHOLD})"
-                )));
-            }
+        if let Some(v) = run.sample_threshold
+            && v > MAX_SAMPLE_THRESHOLD
+        {
+            return Err(ConfigError::ValidationError(format!(
+                "sample_threshold {v} exceeds maximum ({MAX_SAMPLE_THRESHOLD})"
+            )));
         }
         // Validate headers if present.
         if let Some(ref headers) = run.headers {
@@ -146,19 +146,19 @@ pub fn parse_config(yaml: &str) -> Result<LumenConfig, ConfigError> {
         }
     }
     if let Some(ref exec) = config.execution {
-        if let Some(v) = exec.request_count {
-            if v > MAX_REQUEST_COUNT {
-                return Err(ConfigError::ValidationError(format!(
-                    "request_count {v} exceeds maximum ({MAX_REQUEST_COUNT})"
-                )));
-            }
+        if let Some(v) = exec.request_count
+            && v > MAX_REQUEST_COUNT
+        {
+            return Err(ConfigError::ValidationError(format!(
+                "request_count {v} exceeds maximum ({MAX_REQUEST_COUNT})"
+            )));
         }
-        if let Some(v) = exec.concurrency {
-            if v > MAX_CONCURRENCY {
-                return Err(ConfigError::ValidationError(format!(
-                    "concurrency {v} exceeds maximum ({MAX_CONCURRENCY})"
-                )));
-            }
+        if let Some(v) = exec.concurrency
+            && v > MAX_CONCURRENCY
+        {
+            return Err(ConfigError::ValidationError(format!(
+                "concurrency {v} exceeds maximum ({MAX_CONCURRENCY})"
+            )));
         }
     }
 

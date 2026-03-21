@@ -145,10 +145,10 @@ fn compute_response_stats(
     tracked_fields.as_ref().map(|fields| {
         let mut rs = ResponseStats::new();
         for result in results {
-            if let Some(ref body_str) = result.response_body {
-                if let Ok(body_val) = serde_json::from_str(body_str) {
-                    rs.record(extractor::extract(&body_val, fields));
-                }
+            if let Some(ref body_str) = result.response_body
+                && let Ok(body_val) = serde_json::from_str(body_str)
+            {
+                rs.record(extractor::extract(&body_val, fields));
             }
         }
         rs

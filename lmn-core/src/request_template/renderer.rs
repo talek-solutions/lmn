@@ -129,10 +129,11 @@ pub fn collect_once_placeholder_names(body: &Value) -> Vec<String> {
 fn collect_once(value: &Value, names: &mut Vec<String>) {
     match value {
         Value::String(s) => {
-            if let Some(ph) = parse_placeholder(s) {
-                if ph.once && !ph.name.starts_with(ENV_PLACEHOLDER_PREFIX) {
-                    names.push(ph.name);
-                }
+            if let Some(ph) = parse_placeholder(s)
+                && ph.once
+                && !ph.name.starts_with(ENV_PLACEHOLDER_PREFIX)
+            {
+                names.push(ph.name);
             }
         }
         Value::Object(map) => map.values().for_each(|v| collect_once(v, names)),
