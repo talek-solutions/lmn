@@ -6,7 +6,7 @@ pub enum ConfigError {
     TemplateAlreadyExists(String),
     TemplateNotFound(String),
     /// YAML parsing failed on a `LumenConfig` file.
-    YamlParseError(serde_yml::Error),
+    YamlParseError(serde_norway::Error),
     /// The config was parseable but contained invalid values.
     ValidationError(String),
 }

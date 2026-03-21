@@ -126,14 +126,14 @@ fn main() {
                 // Determine whether to also write JSON to a file.
                 // When --output-file is set, JSON is always written to the
                 // file regardless of --output (TECH.md §4.2).
-                if let Some(ref path) = output_file {
-                    if let Err(e) = write_json_output(WriteJsonOutputParams {
+                if let Some(ref path) = output_file
+                    && let Err(e) = write_json_output(WriteJsonOutputParams {
                         report: &report,
                         dest: JsonDest::File(path.clone()),
-                    }) {
-                        eprintln!("error: {e}");
-                        return 1;
-                    }
+                    })
+                {
+                    eprintln!("error: {e}");
+                    return 1;
                 }
 
                 match output_format {
