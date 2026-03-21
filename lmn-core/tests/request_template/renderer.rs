@@ -22,7 +22,7 @@ fn ctx_with_float(name: &str, value: f64) -> GeneratorContext {
 fn render_substitutes_placeholder_string() {
     let ctx = ctx_with_float("val", 42.0);
     let template = json!({ "field": "{{val}}" });
-    let result = render(&template, &ctx, &mut rand::thread_rng());
+    let result = render(&template, &ctx, &mut rand::rng());
     assert!(result["field"].is_number());
 }
 
@@ -30,7 +30,7 @@ fn render_substitutes_placeholder_string() {
 fn render_leaves_plain_string_unchanged() {
     let ctx = GeneratorContext::new(HashMap::new());
     let template = json!({ "field": "plain" });
-    let result = render(&template, &ctx, &mut rand::thread_rng());
+    let result = render(&template, &ctx, &mut rand::rng());
     assert_eq!(result["field"], json!("plain"));
 }
 
@@ -38,7 +38,7 @@ fn render_leaves_plain_string_unchanged() {
 fn render_handles_nested_objects() {
     let ctx = ctx_with_float("price", 10.0);
     let template = json!({ "order": { "price": "{{price}}" } });
-    let result = render(&template, &ctx, &mut rand::thread_rng());
+    let result = render(&template, &ctx, &mut rand::rng());
     assert!(result["order"]["price"].is_number());
 }
 

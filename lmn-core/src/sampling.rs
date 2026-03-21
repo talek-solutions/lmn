@@ -62,7 +62,7 @@ impl SamplingState {
             total_requests: 0,
             total_failures: 0,
             total_seen_for_reservoir: 0,
-            rng: rand::thread_rng(),
+            rng: rand::rng(),
         }
     }
 
@@ -91,7 +91,7 @@ impl SamplingState {
     /// VU-threshold gate: returns `true` if this result should proceed toward
     /// the reservoir. At `sample_rate >= 1.0` always returns `true`.
     pub fn should_collect(&mut self) -> bool {
-        self.sample_rate >= 1.0 || self.rng.r#gen::<f64>() < self.sample_rate
+        self.sample_rate >= 1.0 || self.rng.random::<f64>() < self.sample_rate
     }
 
     /// Reservoir gate (Vitter's Algorithm R). Call only when `should_collect()`
@@ -106,7 +106,7 @@ impl SamplingState {
         if results_len < self.reservoir_size {
             ReservoirAction::Push
         } else {
-            let j = self.rng.gen_range(0..self.total_seen_for_reservoir);
+            let j = self.rng.random_range(0..self.total_seen_for_reservoir);
             if j < self.reservoir_size {
                 ReservoirAction::Replace(j)
             } else {
