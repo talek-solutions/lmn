@@ -51,31 +51,12 @@ thresholds:
 | `1` | Error — invalid config, unreachable host |
 | `2` | Run completed, one or more thresholds failed |
 
-## GitHub Actions
+## CI integration
 
-```yaml
-# .github/workflows/load-test.yml
-name: Load Test
+Exit code `2` automatically fails a CI step, blocking the pipeline. For ready-to-use workflow files see:
 
-on:
-  pull_request:
-
-jobs:
-  load-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install lmn
-        run: cargo install lmn
-
-      - name: Run load test
-        run: lmn run -f lmn.yaml
-        env:
-          API_TOKEN: ${{ secrets.API_TOKEN }}
-```
-
-Exit code `2` automatically fails the workflow step, blocking the PR merge.
+- [Gate CI — GitHub Actions](../recipes/ci-github.md)
+- [Gate CI — GitLab CI](../recipes/ci-gitlab.md)
 
 !!! tip
     Store `lmn.yaml` in your service repository alongside your code. Treat performance requirements as code — review and version them like any other config.

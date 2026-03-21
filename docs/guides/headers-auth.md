@@ -61,6 +61,7 @@ When the same header key appears in both CLI `--header` flags and config `header
 
 ## Secrets in templates
 
+{% raw %}
 For secrets embedded in request bodies, use `{{ENV:VAR_NAME}}` in your template file — resolved once at startup, not stored in the template definition:
 
 ```json
@@ -68,5 +69,6 @@ For secrets embedded in request bodies, use `{{ENV:VAR_NAME}}` in your template 
   "api_key": "{{ENV:API_KEY}}"
 }
 ```
+{% endraw %}
 
 See [Dynamic Request Bodies](request-bodies.md) for details.

@@ -66,6 +66,7 @@ If thresholds pass, you'll see a green summary and exit code `0`. If they fail, 
 
 ## Step 4: Wire it into CI
 
+{% raw %}
 ```yaml
 # .github/workflows/load-test.yml
 - name: Run load test
@@ -73,5 +74,6 @@ If thresholds pass, you'll see a green summary and exit code `0`. If they fail, 
   env:
     API_TOKEN: ${{ secrets.API_TOKEN }}
 ```
+{% endraw %}
 
 Exit code `2` will fail the workflow step. See [Thresholds & CI Gating](thresholds-ci.md) for a complete example.

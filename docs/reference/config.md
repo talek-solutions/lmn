@@ -54,6 +54,6 @@ Array of threshold rules:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `metric` | string | Yes | Metric name. See [Thresholds & CI Gating](../guides/thresholds-ci.md#available-metrics) |
+| `metric` | string | Yes | Metric name. See [Thresholds & CI Gating](../guides/thresholds-ci.md) |
 | `operator` | string | Yes | Comparison operator: `lt`, `lte`, `gt`, `gte`, `eq` |
 | `value` | float | Yes | Threshold value. Must be finite. `error_rate` must be between 0.0 and 1.0 |

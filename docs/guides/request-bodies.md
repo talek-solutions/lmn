@@ -10,11 +10,12 @@ Static bodies send the same payload on every request. Templates let you generate
 
 Create `template.json`:
 
+{% raw %}
 ```json
 {
   "userId": "{{user_id}}",
   "amount": "{{amount}}",
-  "_lmn_metadata_templates": {
+  "_loadtest_metadata_templates": {
     "user_id": {
       "type": "string",
       "details": { "choice": ["user-001", "user-002", "user-003"] }
@@ -28,6 +29,7 @@ Create `template.json`:
   }
 }
 ```
+{% endraw %}
 
 Run it:
 
@@ -65,14 +67,17 @@ Each request body will have a randomly chosen `userId` and a random `amount` bet
 
 Use `:once` to generate a value once at startup and reuse it across all requests:
 
+{% raw %}
 ```json
 { "session": "{{session_id:once}}" }
 ```
+{% endraw %}
 
 Useful for correlation IDs or session tokens that should be consistent across a run.
 
 ## Environment variable injection
 
+{% raw %}
 Use `{{ENV:VAR_NAME}}` to inject environment variables at startup — no definition needed:
 
 ```json
@@ -81,6 +86,7 @@ Use `{{ENV:VAR_NAME}}` to inject environment variables at startup — no definit
 
 !!! tip
     `{{ENV:VAR_NAME}}` values are resolved once at template load time and are never logged or included in output.
+{% endraw %}
 
 ## Full placeholder reference
 

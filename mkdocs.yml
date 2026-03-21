@@ -43,7 +43,11 @@ markdown_extensions:
       base_path: .
   - admonition
   - pymdownx.details
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.highlight:
@@ -61,15 +65,29 @@ nav:
     - Quickstart: getting-started/quickstart.md
     - Core Concepts: getting-started/core-concepts.md
   - Guides:
+    - guides/index.md
     - Your First Load Test: guides/first-load-test.md
     - Config Files: guides/config-files.md
     - Headers & Authentication: guides/headers-auth.md
     - Dynamic Request Bodies: guides/request-bodies.md
     - Thresholds & CI Gating: guides/thresholds-ci.md
+    - Load Curves: guides/load-curves.md
+  - Recipes:
+    - recipes/index.md
+    - Quick GET test: recipes/quick-get.md
+    - POST with inline JSON: recipes/post-inline.md
+    - POST with a template: recipes/post-template.md
+    - Auth headers & secrets: recipes/auth-headers.md
+    - Run from a config file: recipes/config-file.md
+    - CI gate — GitHub Actions: recipes/ci-github.md
+    - CI gate — GitLab CI: recipes/ci-gitlab.md
+    - Traffic ramp-up: recipes/load-curve.md
+    - CI artifact output: recipes/ci-artifact.md
   - Reference:
     - CLI Reference: reference/cli.md
     - Config File Reference: reference/config.md
     - Template Placeholders: reference/template-placeholders.md
     - Exit Codes: reference/exit-codes.md
+    - JSON Output Schema: reference/json-output.md
   - Project:
     - Changelog: project/changelog.md
