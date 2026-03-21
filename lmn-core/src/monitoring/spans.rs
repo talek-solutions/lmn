@@ -1,7 +1,6 @@
 /// Central registry of all tracing span names used in lmn.
 ///
-/// Use the associated constants directly or call [`SpanName::for_request`] /
-/// [`SpanName::for_template`] to get the right name in a given context.
+/// Use the associated constants directly to get the right span name in a given context.
 pub struct SpanName;
 
 impl SpanName {
