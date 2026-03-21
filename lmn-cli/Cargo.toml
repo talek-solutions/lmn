@@ -31,3 +31,11 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[package.metadata.deb]
+depends = "$auto"
+section = "utils"
+assets = [
+    ["target/release/lmn", "usr/bin/", "755"],
+    ["../README.md", "usr/share/doc/lmn/README.md", "644"],
+]
