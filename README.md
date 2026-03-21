@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="lumen_logo.png" alt="Lumen" width="200" />
+  <img src="logo.svg" alt="Lumen" width="200" />
 </p>
 
 <h1 align="center">Lumen</h1>
