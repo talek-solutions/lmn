@@ -13,7 +13,7 @@
 Execute a load test against a target host.
 
 ```
-lumen run [OPTIONS] -H <HOST>
+lmn run [OPTIONS] -H <HOST>
 ```
 
 ### Flags
@@ -48,7 +48,7 @@ lumen run [OPTIONS] -H <HOST>
 Use `--header` (repeatable) to attach static HTTP headers to every request:
 
 ```bash
-lumen run -H http://localhost:3000/api --header 'Authorization: Bearer mytoken' --header 'X-Request-ID: abc123'
+lmn run -H http://localhost:3000/api --header 'Authorization: Bearer mytoken' --header 'X-Request-ID: abc123'
 ```
 
 Headers can also be set in the config file under `run.headers`:
@@ -63,7 +63,7 @@ run:
 
 **Precedence:** CLI `--header` wins over config `headers:` on the same key (case-insensitive match). Duplicate entries for the same key are removed before the CLI value is added.
 
-**Secret management:** Use `${ENV_VAR}` syntax in header values to avoid hardcoding secrets. The variable must use uppercase letters, digits, and underscores only. A `.env` file in the working directory is loaded automatically at startup (silently ignored if absent). If the referenced variable is not set, lumen exits with an error.
+**Secret management:** Use `${ENV_VAR}` syntax in header values to avoid hardcoding secrets. The variable must use uppercase letters, digits, and underscores only. A `.env` file in the working directory is loaded automatically at startup (silently ignored if absent). If the referenced variable is not set, lmn exits with an error.
 
 ```bash
 # .env file
@@ -89,7 +89,7 @@ Exit code `2` is only possible when `--config`/`-f` is supplied with a YAML file
 
 ### Config File Format
 
-When `--config`/`-f` is supplied, lumen loads a YAML file before the run. CLI flags always take precedence over values in the config file.
+When `--config`/`-f` is supplied, lmn loads a YAML file before the run. CLI flags always take precedence over values in the config file.
 
 **Supported config fields:**
 
@@ -115,7 +115,7 @@ Run parameters are nested under a `run:` section. Execution strategy is configur
 | `concurrency` | number | `-C` / `--concurrency` | Max in-flight requests (fixed mode) |
 | `stages` | list | `-L` / `--load-curve` | Load curve stages (curve mode — cannot be combined with `request_count`/`concurrency`) |
 
-When `execution.stages` is present, lumen runs in curve mode. Otherwise it runs in fixed mode using `execution.request_count` and `execution.concurrency`.
+When `execution.stages` is present, lmn runs in curve mode. Otherwise it runs in fixed mode using `execution.request_count` and `execution.concurrency`.
 
 **Threshold rule fields:**
 
@@ -193,37 +193,37 @@ thresholds:
 
 ```bash
 # Inline body
-lumen run -H http://localhost:3000/api -M post -B '{"name":"test"}'
+lmn run -H http://localhost:3000/api -M post -B '{"name":"test"}'
 
 # From a template file with placeholders
-lumen run -H http://localhost:3000/api -M post -T ./my-template.json
+lmn run -H http://localhost:3000/api -M post -T ./my-template.json
 
 # From a stored request alias
-lumen run -H http://localhost:3000/api -M post -A my-alias
+lmn run -H http://localhost:3000/api -M post -A my-alias
 
 # With a stored response template to track response fields
-lumen run -H http://localhost:3000/api -A my-alias -E my-response
+lmn run -H http://localhost:3000/api -A my-alias -E my-response
 
 # Full example
-lumen run -H http://localhost:3000/api -M post -R 1000 -C 50 -A my-alias -E my-response
+lmn run -H http://localhost:3000/api -M post -R 1000 -C 50 -A my-alias -E my-response
 
 # Load curve (time-based VU scaling)
-lumen run -H http://localhost:3000/api -M post -L ./my-curve.json
+lmn run -H http://localhost:3000/api -M post -L ./my-curve.json
 
 # Emit JSON result to stdout instead of ASCII table
-lumen run -H http://localhost:3000/api --output json
+lmn run -H http://localhost:3000/api --output json
 
 # Emit ASCII table to terminal AND write JSON artifact to a file
-lumen run -H http://localhost:3000/api --output-file run.json
+lmn run -H http://localhost:3000/api --output-file run.json
 
 # Both JSON to stdout and to file
-lumen run -H http://localhost:3000/api --output json --output-file run.json
+lmn run -H http://localhost:3000/api --output json --output-file run.json
 
 # Custom headers (repeatable)
-lumen run -H http://localhost:3000/api --header 'Authorization: Bearer mytoken' --header 'X-Trace-ID: 123'
+lmn run -H http://localhost:3000/api --header 'Authorization: Bearer mytoken' --header 'X-Trace-ID: 123'
 
 # Using env var substitution for secrets (API_TOKEN must be set)
-lumen run -H http://localhost:3000/api --header 'Authorization: Bearer ${API_TOKEN}'
+lmn run -H http://localhost:3000/api --header 'Authorization: Bearer ${API_TOKEN}'
 ```
 
 ---
@@ -265,7 +265,7 @@ Store a reusable request body template under an alias.
 Templates are saved to `.templates/requests/<alias>.json`.
 
 ```
-lumen configure-request -A <ALIAS> [OPTIONS]
+lmn configure-request -A <ALIAS> [OPTIONS]
 ```
 
 ### Flags
@@ -284,10 +284,10 @@ lumen configure-request -A <ALIAS> [OPTIONS]
 
 ```bash
 # Store an inline body
-lumen configure-request -A my-alias -B '{"name":"test"}'
+lmn configure-request -A my-alias -B '{"name":"test"}'
 
 # Store from an existing file
-lumen configure-request -A my-alias -T ./payload.json
+lmn configure-request -A my-alias -T ./payload.json
 ```
 
 ---
@@ -298,7 +298,7 @@ Store a reusable response template under an alias.
 Templates are saved to `.templates/responses/<alias>.json`.
 
 ```
-lumen configure-response -A <ALIAS> [OPTIONS]
+lmn configure-response -A <ALIAS> [OPTIONS]
 ```
 
 ### Flags
@@ -317,10 +317,10 @@ lumen configure-response -A <ALIAS> [OPTIONS]
 
 ```bash
 # Store an inline response shape
-lumen configure-response -A my-response -B '{"status":"ok","id":0}'
+lmn configure-response -A my-response -B '{"status":"ok","id":0}'
 
 # Store from an existing file
-lumen configure-response -A my-response -T ./response-shape.json
+lmn configure-response -A my-response -T ./response-shape.json
 ```
 
 ---

@@ -4,10 +4,10 @@ use clap::Parser;
 use cli::command::{LoadTestRunCli, OutputFormat};
 use cli::json_output::{JsonDest, WriteJsonOutputParams, write_json_output};
 use cli::output::{PrintStatsParams, print_stats};
-use lumen_core::command::{Command, Commands, ConfigureTemplateCommand};
-use lumen_core::monitoring::SpanName;
-use lumen_core::output::{RunReport, RunReportParams};
-use lumen_core::threshold::{evaluate, EvaluateParams};
+use lmn_core::command::{Command, Commands, ConfigureTemplateCommand};
+use lmn_core::monitoring::SpanName;
+use lmn_core::output::{RunReport, RunReportParams};
+use lmn_core::threshold::{evaluate, EvaluateParams};
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::Resource;
@@ -27,7 +27,7 @@ fn main() {
         .expect("failed to build OTLP exporter");
 
     let resource = Resource::builder()
-        .with_service_name("lumen")
+        .with_service_name("lmn")
         .build();
 
     let provider = SdkTracerProvider::builder()
@@ -35,7 +35,7 @@ fn main() {
         .with_resource(resource)
         .build();
 
-    let tracer = provider.tracer("lumen");
+    let tracer = provider.tracer("lmn");
     let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
     let subscriber = Registry::default().with(telemetry);
     tracing::subscriber::set_global_default(subscriber)

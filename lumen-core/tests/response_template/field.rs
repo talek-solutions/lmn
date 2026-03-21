@@ -1,4 +1,4 @@
-use lumen_core::response_template::field::collect_tracked_fields;
+use lmn_core::response_template::field::collect_tracked_fields;
 use serde_json::json;
 
 #[test]

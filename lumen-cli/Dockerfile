@@ -6,10 +6,10 @@ COPY Cargo.toml Cargo.lock ./
 COPY lumen-core ./lumen-core
 COPY lumen-cli ./lumen-cli
 
-RUN cargo build --release -p lumen
+RUN cargo build --release -p lmn
 
 FROM debian:bookworm-slim AS runtime
 
-COPY --from=builder /app/target/release/lumen /usr/local/bin/lumen
+COPY --from=builder /app/target/release/lmn /usr/local/bin/lmn
 
-ENTRYPOINT ["lumen"]
+ENTRYPOINT ["lmn"]

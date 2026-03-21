@@ -1,4 +1,4 @@
-use lumen_core::response_template::{
+use lmn_core::response_template::{
     extractor::{ExtractedValue, ExtractionResult},
     stats::ResponseStats,
 };

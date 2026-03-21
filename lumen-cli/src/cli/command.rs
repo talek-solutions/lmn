@@ -19,8 +19,8 @@ pub enum HttpMethod {
 }
 
 #[derive(Parser)]
-#[command(name = "lumen")]
-#[command(bin_name = "lumen")]
+#[command(name = "lmn")]
+#[command(bin_name = "lmn")]
 #[command(styles = CLAP_STYLING)]
 pub enum LoadTestRunCli {
     Run(RunArgs),

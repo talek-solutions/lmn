@@ -1,5 +1,5 @@
 use std::path::Path;
-use lumen_core::request_template::{parse_placeholder, Template};
+use lmn_core::request_template::{parse_placeholder, Template};
 
 #[test]
 fn parses_simple_placeholder() {

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use lumen_core::request_template::definition::{check_circular_refs, FloatDef, FloatStrategy, ObjectDef, TemplateDef, validate_all};
+use lmn_core::request_template::definition::{check_circular_refs, FloatDef, FloatStrategy, ObjectDef, TemplateDef, validate_all};
 use serde_json::json;
 
 fn float_def() -> TemplateDef {

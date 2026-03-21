@@ -1,5 +1,5 @@
 [package]
-name = "lumen"
+name = "lmn"
 version = "0.1.0"
 edition = "2024"
 description = "Fast HTTP load testing CLI with dynamic templates, thresholds, and load curves"
@@ -12,11 +12,11 @@ categories = ["command-line-utilities", "development-tools::testing"]
 readme = "../README.md"
 
 [[bin]]
-name = "lumen"
+name = "lmn"
 path = "src/main.rs"
 
 [dependencies]
-lumen-core = { path = "../lumen-core" }
+lmn-core = { path = "../lumen-core" }
 clap.workspace = true
 dotenvy = "0.15"
 clap-cargo.workspace = true

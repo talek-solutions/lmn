@@ -1,35 +1,35 @@
 use std::path::PathBuf;
 
 use crate::cli::command::{ConfigureRequestArgs, ConfigureResponseArgs, HttpMethod, OutputFormat, RunArgs};
-use lumen_core::command::configure_template::{ConfigureTemplateCommand, TemplateKind};
-use lumen_core::command::run::{ExecutionMode, RequestSpec, RunCommand, SamplingConfig};
-use lumen_core::http::BodyFormat;
-use lumen_core::command::Body;
-use lumen_core::load_curve::LoadCurve;
-use lumen_core::config::{ExecutionConfig, LumenConfig, parse_config};
-use lumen_core::threshold::Threshold;
+use lmn_core::command::configure_template::{ConfigureTemplateCommand, TemplateKind};
+use lmn_core::command::run::{ExecutionMode, RequestSpec, RunCommand, SamplingConfig};
+use lmn_core::http::BodyFormat;
+use lmn_core::command::Body;
+use lmn_core::load_curve::LoadCurve;
+use lmn_core::config::{ExecutionConfig, LumenConfig, parse_config};
+use lmn_core::threshold::Threshold;
 
-impl From<HttpMethod> for lumen_core::command::HttpMethod {
+impl From<HttpMethod> for lmn_core::command::HttpMethod {
     fn from(m: HttpMethod) -> Self {
         match m {
-            HttpMethod::Get    => lumen_core::command::HttpMethod::Get,
-            HttpMethod::Post   => lumen_core::command::HttpMethod::Post,
-            HttpMethod::Put    => lumen_core::command::HttpMethod::Put,
-            HttpMethod::Patch  => lumen_core::command::HttpMethod::Patch,
-            HttpMethod::Delete => lumen_core::command::HttpMethod::Delete,
+            HttpMethod::Get    => lmn_core::command::HttpMethod::Get,
+            HttpMethod::Post   => lmn_core::command::HttpMethod::Post,
+            HttpMethod::Put    => lmn_core::command::HttpMethod::Put,
+            HttpMethod::Patch  => lmn_core::command::HttpMethod::Patch,
+            HttpMethod::Delete => lmn_core::command::HttpMethod::Delete,
         }
     }
 }
 
 // ── method string parsing ─────────────────────────────────────────────────────
 
-fn parse_method_str(s: &str) -> Result<lumen_core::command::HttpMethod, String> {
+fn parse_method_str(s: &str) -> Result<lmn_core::command::HttpMethod, String> {
     match s.to_lowercase().as_str() {
-        "get"    => Ok(lumen_core::command::HttpMethod::Get),
-        "post"   => Ok(lumen_core::command::HttpMethod::Post),
-        "put"    => Ok(lumen_core::command::HttpMethod::Put),
-        "patch"  => Ok(lumen_core::command::HttpMethod::Patch),
-        "delete" => Ok(lumen_core::command::HttpMethod::Delete),
+        "get"    => Ok(lmn_core::command::HttpMethod::Get),
+        "post"   => Ok(lmn_core::command::HttpMethod::Post),
+        "put"    => Ok(lmn_core::command::HttpMethod::Put),
+        "patch"  => Ok(lmn_core::command::HttpMethod::Patch),
+        "delete" => Ok(lmn_core::command::HttpMethod::Delete),
         other => Err(format!(
             "unknown method '{other}' in config — expected one of: get, post, put, patch, delete"
         )),
@@ -60,9 +60,9 @@ fn parse_output_str(s: &str) -> Result<OutputFormat, String> {
 /// threshold rules — in that case the exit code is always 0 after a successful
 /// run.
 pub struct RunArgsResolved {
-    pub request: lumen_core::command::run::RequestSpec,
-    pub execution: lumen_core::command::run::ExecutionMode,
-    pub sampling: lumen_core::command::run::SamplingConfig,
+    pub request: lmn_core::command::run::RequestSpec,
+    pub execution: lmn_core::command::run::ExecutionMode,
+    pub sampling: lmn_core::command::run::SamplingConfig,
     /// Threshold rules sourced from the config file.
     /// `None` when no config was supplied or the config has no `thresholds` section.
     pub thresholds: Option<Vec<Threshold>>,
@@ -121,12 +121,12 @@ impl TryFrom<RunArgs> for RunArgsResolved {
         // flag (Some) vs. leaving it absent (None, filled by config or default).
 
         // ── method ────────────────────────────────────────────────────────────
-        let method: lumen_core::command::HttpMethod = if let Some(m) = args.method {
+        let method: lmn_core::command::HttpMethod = if let Some(m) = args.method {
             m.into()
         } else if let Some(s) = cfg.as_ref().and_then(|c| c.run.as_ref()?.method.as_deref()) {
             parse_method_str(s).map_err(|e| Box::<dyn std::error::Error>::from(e))?
         } else {
-            lumen_core::command::HttpMethod::Get
+            lmn_core::command::HttpMethod::Get
         };
 
         // ── output format ─────────────────────────────────────────────────────
@@ -283,8 +283,8 @@ impl TryFrom<RunArgs> for RunArgsResolved {
 
         // Resolve ${ENV_VAR} in header values, then wrap in SensitiveString so
         // secrets are redacted if the value ever appears in debug output.
-        use lumen_core::config::resolve_env_placeholders;
-        use lumen_core::config::secret::SensitiveString;
+        use lmn_core::config::resolve_env_placeholders;
+        use lmn_core::config::secret::SensitiveString;
         let headers: Vec<(String, SensitiveString)> = header_map
             .into_iter()
             .map(|(name, value)| {
@@ -358,7 +358,7 @@ pub fn resolve_alias(sub_dir: &'static str) -> impl Fn(String) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lumen_core::command::Command;
+    use lmn_core::command::Command;
 
     #[tokio::test]
     async fn execute_creates_file_from_body() {
@@ -453,7 +453,7 @@ mod tests {
     fn output_flag_absent_is_none() {
         use clap::Parser as _;
         let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
-            "lumen", "run", "--host", "http://localhost:3000",
+            "lmn", "run", "--host", "http://localhost:3000",
         ])
         .expect("parse failed");
         let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
@@ -466,7 +466,7 @@ mod tests {
     fn output_flag_accepts_json() {
         use clap::Parser as _;
         let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
-            "lumen", "run", "--host", "http://localhost:3000", "--output", "json",
+            "lmn", "run", "--host", "http://localhost:3000", "--output", "json",
         ])
         .expect("parse failed");
         let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
@@ -479,7 +479,7 @@ mod tests {
     fn output_file_is_none_by_default() {
         use clap::Parser as _;
         let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
-            "lumen", "run", "--host", "http://localhost:3000",
+            "lmn", "run", "--host", "http://localhost:3000",
         ])
         .expect("parse failed");
         let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
@@ -492,7 +492,7 @@ mod tests {
     fn config_flag_is_none_by_default() {
         use clap::Parser as _;
         let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
-            "lumen", "run", "--host", "http://localhost:3000",
+            "lmn", "run", "--host", "http://localhost:3000",
         ])
         .expect("parse failed");
         let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
@@ -505,7 +505,7 @@ mod tests {
     fn config_flag_accepts_path() {
         use clap::Parser as _;
         let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
-            "lumen", "run", "--host", "http://localhost:3000", "--config", "lumen.yaml",
+            "lmn", "run", "--host", "http://localhost:3000", "--config", "lumen.yaml",
         ])
         .expect("parse failed");
         let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
@@ -518,7 +518,7 @@ mod tests {
     fn config_short_flag_accepts_path() {
         use clap::Parser as _;
         let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
-            "lumen", "run", "--host", "http://localhost:3000", "-f", "ci.yaml",
+            "lmn", "run", "--host", "http://localhost:3000", "-f", "ci.yaml",
         ])
         .expect("parse failed");
         let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
@@ -640,7 +640,7 @@ mod tests {
 
         let result = RunArgsResolved::try_from(args).expect("should succeed");
         assert!(
-            matches!(result.request.method, lumen_core::command::HttpMethod::Post),
+            matches!(result.request.method, lmn_core::command::HttpMethod::Post),
             "expected Post from config"
         );
     }

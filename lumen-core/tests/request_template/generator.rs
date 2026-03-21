@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use lumen_core::request_template::{
+use lmn_core::request_template::{
     definition::{FloatDef, FloatStrategy, ObjectDef, TemplateDef},
     generator::GeneratorContext,
 };

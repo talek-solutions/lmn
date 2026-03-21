@@ -1,5 +1,5 @@
 [package]
-name = "lumen-core"
+name = "lmn-core"
 version = "0.1.0"
 edition = "2024"
 description = "Core engine for the Lumen HTTP load testing CLI"

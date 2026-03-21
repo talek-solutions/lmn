@@ -1,8 +1,8 @@
-use lumen_core::command::run::{RunMode, RunStats};
-use lumen_core::http::RequestResult;
-use lumen_core::response_template::stats::ResponseStats;
-use lumen_core::stats::{Distribution, LatencyDistribution};
-use lumen_core::threshold::ThresholdReport;
+use lmn_core::command::run::{RunMode, RunStats};
+use lmn_core::http::RequestResult;
+use lmn_core::response_template::stats::ResponseStats;
+use lmn_core::stats::{Distribution, LatencyDistribution};
+use lmn_core::threshold::ThresholdReport;
 use std::collections::BTreeMap;
 use std::time::Duration;
 
@@ -265,7 +265,7 @@ fn fmt_total_duration(d: Duration) -> String {
 
 #[cfg(test)]
 mod output_tests {
-    use lumen_core::stats::Distribution;
+    use lmn_core::stats::Distribution;
 
     #[test]
     fn distribution_quantile_p50_of_100() {

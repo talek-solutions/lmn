@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::path::PathBuf;
 
-use lumen_core::output::RunReport;
+use lmn_core::output::RunReport;
 
 /// Where the JSON output should be written.
 pub enum JsonDest {
@@ -44,7 +44,7 @@ pub fn write_json_output(params: WriteJsonOutputParams<'_>) -> Result<(), Box<dy
 mod tests {
     use std::collections::BTreeMap;
 
-    use lumen_core::output::{LatencyStats, RequestSummary, RunMeta, RunReport, SamplingInfo};
+    use lmn_core::output::{LatencyStats, RequestSummary, RunMeta, RunReport, SamplingInfo};
 
     use super::*;
 
