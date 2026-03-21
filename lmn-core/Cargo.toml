@@ -5,6 +5,7 @@ edition = "2024"
 description = "Core engine for the lmn HTTP load testing CLI"
 license = "Apache-2.0"
 repository = "https://github.com/talek-solutions/lmn"
+readme = "README.md"
 
 [dependencies]
 rand.workspace = true

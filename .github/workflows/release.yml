@@ -100,6 +100,32 @@ jobs:
           name: deb
           path: target/debian/lmn_*.deb
 
+  docker:
+    name: Docker
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v4.2.2
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/lmn:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/lmn:latest
+
   release:
     name: Publish Release
     needs: build

@@ -6,7 +6,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY lmn-core ./lmn-core
 COPY lmn-cli ./lmn-cli
 
-RUN cargo build --release -p lmn
+RUN cargo build --release --locked -p lmn
 
 FROM debian:bookworm-slim AS runtime
 
