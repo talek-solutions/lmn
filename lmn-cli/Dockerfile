@@ -3,8 +3,8 @@ FROM rust:slim AS builder
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
-COPY lumen-core ./lumen-core
-COPY lumen-cli ./lumen-cli
+COPY lmn-core ./lmn-core
+COPY lmn-cli ./lmn-cli
 
 RUN cargo build --release -p lmn
 

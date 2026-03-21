@@ -6,7 +6,7 @@ description = "Fast HTTP load testing CLI with dynamic templates, thresholds, an
 license = "Apache-2.0"
 repository = "https://github.com/talek-solutions/lumen"
 homepage = "https://github.com/talek-solutions/lumen"
-documentation = "https://github.com/talek-solutions/lumen/blob/master/lumen-cli/CLI.md"
+documentation = "https://github.com/talek-solutions/lumen/blob/master/lmn-cli/CLI.md"
 keywords = ["load-testing", "http", "benchmark", "performance", "cli"]
 categories = ["command-line-utilities", "development-tools::testing"]
 readme = "../README.md"
@@ -16,7 +16,7 @@ name = "lmn"
 path = "src/main.rs"
 
 [dependencies]
-lmn-core = { path = "../lumen-core" }
+lmn-core = { path = "../lmn-core" }
 clap.workspace = true
 dotenvy = "0.15"
 clap-cargo.workspace = true

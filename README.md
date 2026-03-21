@@ -63,7 +63,7 @@ cargo install --path lumen-cli
 **Docker:**
 
 ```bash
-docker build -f lumen-cli/Dockerfile -t lmn .
+docker build -f lmn-cli/Dockerfile -t lmn .
 docker run --rm lmn run -H http://host.docker.internal:3000/api
 ```
 
@@ -160,7 +160,7 @@ lmn configure-request -A my-order -T ./template.json
 lmn run -H https://api.example.com/orders -M post -A my-order
 ```
 
-See [`lumen-core/TEMPLATES.md`](lumen-core/TEMPLATES.md) for the full placeholder reference.
+See [`lmn-core/TEMPLATES.md`](lmn-core/TEMPLATES.md) for the full placeholder reference.
 
 ---
 
@@ -242,7 +242,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://my-collector:4318
 lmn run -H https://api.example.com
 ```
 
-Start a local Tempo + Grafana stack from `lumen-cli/`:
+Start a local Tempo + Grafana stack from `lmn-cli/`:
 
 ```bash
 cd lumen-cli && docker compose up -d
@@ -268,8 +268,8 @@ lmn run -H https://httpbin.org/get --output-file run.json
 
 ## Reference
 
-- [`lumen-cli/CLI.md`](lumen-cli/CLI.md) — full flag and config reference
-- [`lumen-core/TEMPLATES.md`](lumen-core/TEMPLATES.md) — template placeholder reference
+- [`lmn-cli/CLI.md`](lmn-cli/CLI.md) — full flag and config reference
+- [`lmn-core/TEMPLATES.md`](lmn-core/TEMPLATES.md) — template placeholder reference
 - [`examples/`](examples/) — ready-to-use configs, templates, and load curves
 
 ---
@@ -278,8 +278,8 @@ lmn run -H https://httpbin.org/get --output-file run.json
 
 ```
 lumen/
-├── lumen-core/     # engine, templates, HTTP, thresholds (library crate)
-└── lumen-cli/      # CLI entry point, OTel setup (binary crate)
+├── lmn-core/     # engine, templates, HTTP, thresholds (library crate)
+└── lmn-cli/      # CLI entry point, OTel setup (binary crate)
 ```
 
 ```bash
