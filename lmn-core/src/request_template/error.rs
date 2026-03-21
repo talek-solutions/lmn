@@ -18,14 +18,20 @@ impl std::fmt::Display for TemplateError {
             Self::Io(e) => write!(f, "failed to read template file: {e}"),
             Self::InvalidJson(e) => write!(f, "template is not valid JSON: {e}"),
             Self::UnknownPlaceholder(name) => {
-                write!(f, "placeholder '{{{{{name}}}}}' is not defined in the template")
+                write!(
+                    f,
+                    "placeholder '{{{{{name}}}}}' is not defined in the template"
+                )
             }
             Self::CircularReference(cycle) => {
                 write!(f, "circular reference: {}", cycle.join(" -> "))
             }
             Self::InvalidConstraint(msg) => write!(f, "invalid constraint: {msg}"),
             Self::MissingDefinition(name) => {
-                write!(f, "placeholder '{name}' referenced in composition but not defined")
+                write!(
+                    f,
+                    "placeholder '{name}' referenced in composition but not defined"
+                )
             }
             Self::MissingEnvVar(name) => {
                 write!(f, "ENV var {name} not set")

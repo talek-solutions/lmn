@@ -7,10 +7,10 @@ use cli::output::{PrintStatsParams, print_stats};
 use lmn_core::command::{Command, Commands, ConfigureTemplateCommand};
 use lmn_core::monitoring::SpanName;
 use lmn_core::output::{RunReport, RunReportParams};
-use lmn_core::threshold::{evaluate, EvaluateParams};
+use lmn_core::threshold::{EvaluateParams, evaluate};
 use opentelemetry::trace::TracerProvider as _;
-use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use tracing_subscriber::Registry;
 use tracing_subscriber::layer::SubscriberExt;
 
@@ -26,9 +26,7 @@ fn main() {
         .build()
         .expect("failed to build OTLP exporter");
 
-    let resource = Resource::builder()
-        .with_service_name("lmn")
-        .build();
+    let resource = Resource::builder().with_service_name("lmn").build();
 
     let provider = SdkTracerProvider::builder()
         .with_batch_exporter(exporter)
@@ -52,40 +50,40 @@ fn main() {
 
         // Resolve run args (merges --config file values with CLI flags).
         let cmd = match cli_args {
-            LoadTestRunCli::Run(args) => {
-                match cli::adapter::RunArgsResolved::try_from(args) {
-                    Ok(resolved) => {
-                        let output_format = resolved.output;
-                        let output_file = resolved.output_file.clone();
-                        let reservoir_size = resolved.sampling.result_buffer;
-                        let thresholds = resolved.thresholds.clone();
-                        let run_cmd = resolved.into_run_command();
-                        (Commands::Run(run_cmd), thresholds, output_format, output_file, reservoir_size)
-                    }
-                    Err(e) => {
-                        eprintln!("error: {e}");
-                        return 1;
-                    }
+            LoadTestRunCli::Run(args) => match cli::adapter::RunArgsResolved::try_from(args) {
+                Ok(resolved) => {
+                    let output_format = resolved.output;
+                    let output_file = resolved.output_file.clone();
+                    let reservoir_size = resolved.sampling.result_buffer;
+                    let thresholds = resolved.thresholds.clone();
+                    let run_cmd = resolved.into_run_command();
+                    (
+                        Commands::Run(run_cmd),
+                        thresholds,
+                        output_format,
+                        output_file,
+                        reservoir_size,
+                    )
                 }
-            }
-            LoadTestRunCli::ConfigureRequest(args) => {
-                (
-                    Commands::ConfigureRequest(ConfigureTemplateCommand::from(args)),
-                    None,
-                    OutputFormat::Table,
-                    None,
-                    100_000,
-                )
-            }
-            LoadTestRunCli::ConfigureResponse(args) => {
-                (
-                    Commands::ConfigureResponse(ConfigureTemplateCommand::from(args)),
-                    None,
-                    OutputFormat::Table,
-                    None,
-                    100_000,
-                )
-            }
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    return 1;
+                }
+            },
+            LoadTestRunCli::ConfigureRequest(args) => (
+                Commands::ConfigureRequest(ConfigureTemplateCommand::from(args)),
+                None,
+                OutputFormat::Table,
+                None,
+                100_000,
+            ),
+            LoadTestRunCli::ConfigureResponse(args) => (
+                Commands::ConfigureResponse(ConfigureTemplateCommand::from(args)),
+                None,
+                OutputFormat::Table,
+                None,
+                100_000,
+            ),
         };
 
         let (commands, thresholds, output_format, output_file, reservoir_size) = cmd;
@@ -97,7 +95,11 @@ fn main() {
             Ok(Some(stats)) => {
                 let mut report = match stats.curve_stages.as_deref() {
                     Some(stages) => RunReport::from_params_with_curve(
-                        RunReportParams { stats: &stats, reservoir_size, run_start },
+                        RunReportParams {
+                            stats: &stats,
+                            reservoir_size,
+                            run_start,
+                        },
                         stages,
                     ),
                     None => RunReport::from_params(RunReportParams {

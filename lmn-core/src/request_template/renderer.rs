@@ -7,7 +7,7 @@ use tracing::instrument;
 use crate::request_template::definition::TemplateDef;
 use crate::request_template::error::TemplateError;
 use crate::request_template::generator::GeneratorContext;
-use crate::request_template::{parse_placeholder, ENV_PLACEHOLDER_PREFIX};
+use crate::request_template::{ENV_PLACEHOLDER_PREFIX, parse_placeholder};
 
 // ── resolve_string_placeholders ───────────────────────────────────────────────
 
@@ -87,9 +87,11 @@ pub fn render(template: &Value, ctx: &GeneratorContext, rng: &mut impl Rng) -> V
                 template.clone()
             }
         }
-        Value::Object(map) => {
-            Value::Object(map.iter().map(|(k, v)| (k.clone(), render(v, ctx, rng))).collect())
-        }
+        Value::Object(map) => Value::Object(
+            map.iter()
+                .map(|(k, v)| (k.clone(), render(v, ctx, rng)))
+                .collect(),
+        ),
         Value::Array(arr) => Value::Array(arr.iter().map(|v| render(v, ctx, rng)).collect()),
         _ => template.clone(),
     }
@@ -173,7 +175,10 @@ mod tests {
         let mut defs = HashMap::new();
         defs.insert(
             name.to_string(),
-            TemplateDef::Float(FloatDef { strategy: FloatStrategy::Exact(value), decimals: 2 }),
+            TemplateDef::Float(FloatDef {
+                strategy: FloatStrategy::Exact(value),
+                decimals: 2,
+            }),
         );
         GeneratorContext::new(defs)
     }
@@ -183,7 +188,9 @@ mod tests {
         let mut defs = HashMap::new();
         defs.insert(
             name.to_string(),
-            TemplateDef::String(StringDef { strategy: StringStrategy::Choice(choices) }),
+            TemplateDef::String(StringDef {
+                strategy: StringStrategy::Choice(choices),
+            }),
         );
         GeneratorContext::new(defs)
     }
@@ -191,7 +198,8 @@ mod tests {
     #[test]
     fn no_placeholder_returns_input_unchanged() {
         let ctx = GeneratorContext::new(HashMap::new());
-        let result = resolve_string_placeholders("plain-header-value", &ctx, &mut rand::thread_rng());
+        let result =
+            resolve_string_placeholders("plain-header-value", &ctx, &mut rand::thread_rng());
         assert_eq!(result, "plain-header-value");
     }
 
@@ -215,11 +223,15 @@ mod tests {
         let mut defs = HashMap::new();
         defs.insert(
             "a".to_string(),
-            TemplateDef::String(StringDef { strategy: StringStrategy::Choice(vec!["foo".to_string()]) }),
+            TemplateDef::String(StringDef {
+                strategy: StringStrategy::Choice(vec!["foo".to_string()]),
+            }),
         );
         defs.insert(
             "b".to_string(),
-            TemplateDef::String(StringDef { strategy: StringStrategy::Choice(vec!["bar".to_string()]) }),
+            TemplateDef::String(StringDef {
+                strategy: StringStrategy::Choice(vec!["bar".to_string()]),
+            }),
         );
         let ctx = GeneratorContext::new(defs);
         let result = resolve_string_placeholders("{{a}}-{{b}}", &ctx, &mut rand::thread_rng());
@@ -231,7 +243,8 @@ mod tests {
         // GeneratorContext::resolve for unknown names returns Value::Null
         // Value::Null.to_string() via serde_json is "null"
         let ctx = GeneratorContext::new(HashMap::new());
-        let result = resolve_string_placeholders("prefix-{{unknown}}-suffix", &ctx, &mut rand::thread_rng());
+        let result =
+            resolve_string_placeholders("prefix-{{unknown}}-suffix", &ctx, &mut rand::thread_rng());
         assert_eq!(result, "prefix-null-suffix");
     }
 
@@ -248,7 +261,10 @@ mod tests {
         // because ENV: placeholders are built-in and need no TemplateDef entry.
         let body = Value::Object({
             let mut m = serde_json::Map::new();
-            m.insert("token".to_string(), Value::String("{{ENV:MY_VAR}}".to_string()));
+            m.insert(
+                "token".to_string(),
+                Value::String("{{ENV:MY_VAR}}".to_string()),
+            );
             m
         });
         let defs = HashMap::new();

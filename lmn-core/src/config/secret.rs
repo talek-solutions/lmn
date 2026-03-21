@@ -71,9 +71,15 @@ pub fn resolve_env_placeholders(input: &str) -> Result<String, ConfigError> {
                         "env var placeholder '${...}' must not be empty".to_string(),
                     ));
                 }
-                if !var_name.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_') {
+                if !var_name
+                    .chars()
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+                {
                     // Find the first invalid character for a precise error message
-                    let bad = var_name.chars().find(|c| !c.is_ascii_uppercase() && !c.is_ascii_digit() && *c != '_').unwrap();
+                    let bad = var_name
+                        .chars()
+                        .find(|c| !c.is_ascii_uppercase() && !c.is_ascii_digit() && *c != '_')
+                        .unwrap();
                     return Err(ConfigError::ValidationError(format!(
                         "env var name '{var_name}' contains invalid character '{bad}' — \
                          only uppercase letters, digits, and underscores are allowed"
@@ -173,7 +179,10 @@ mod tests {
         let result = resolve_env_placeholders("Bearer ${LUMEN_TEST_DEFINITELY_NOT_SET_XYZ}");
         assert!(matches!(result, Err(ConfigError::ValidationError(_))));
         let msg = result.err().unwrap().to_string();
-        assert!(msg.contains("LUMEN_TEST_DEFINITELY_NOT_SET_XYZ"), "error should name the var: {msg}");
+        assert!(
+            msg.contains("LUMEN_TEST_DEFINITELY_NOT_SET_XYZ"),
+            "error should name the var: {msg}"
+        );
     }
 
     #[test]
@@ -181,7 +190,10 @@ mod tests {
         let result = resolve_env_placeholders("${lower_case}");
         assert!(matches!(result, Err(ConfigError::ValidationError(_))));
         let msg = result.err().unwrap().to_string();
-        assert!(msg.contains("invalid character"), "expected charset error, got: {msg}");
+        assert!(
+            msg.contains("invalid character"),
+            "expected charset error, got: {msg}"
+        );
     }
 
     #[test]
@@ -196,7 +208,10 @@ mod tests {
         let result = resolve_env_placeholders("${}");
         assert!(matches!(result, Err(ConfigError::ValidationError(_))));
         let msg = result.err().unwrap().to_string();
-        assert!(msg.contains("must not be empty"), "expected empty error, got: {msg}");
+        assert!(
+            msg.contains("must not be empty"),
+            "expected empty error, got: {msg}"
+        );
     }
 
     #[test]

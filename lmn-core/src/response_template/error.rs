@@ -13,7 +13,10 @@ impl std::fmt::Display for ResponseTemplateError {
             Self::Io(e) => write!(f, "failed to read response template file: {e}"),
             Self::InvalidJson(e) => write!(f, "response template is not valid JSON: {e}"),
             Self::InvalidFieldType(t) => {
-                write!(f, "unsupported response field type '{t}' — expected STRING or FLOAT")
+                write!(
+                    f,
+                    "unsupported response field type '{t}' — expected STRING or FLOAT"
+                )
             }
         }
     }

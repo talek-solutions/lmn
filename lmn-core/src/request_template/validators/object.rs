@@ -50,13 +50,17 @@ mod tests {
 
     #[test]
     fn validates_valid_composition() {
-        let comp = [("amount".to_string(), "{{price}}".to_string())].into_iter().collect();
+        let comp = [("amount".to_string(), "{{price}}".to_string())]
+            .into_iter()
+            .collect();
         assert!(ObjectValidator { composition: comp }.validate("x").is_ok());
     }
 
     #[test]
     fn rejects_non_placeholder_value() {
-        let comp = [("amount".to_string(), "price".to_string())].into_iter().collect();
+        let comp = [("amount".to_string(), "price".to_string())]
+            .into_iter()
+            .collect();
         assert!(ObjectValidator { composition: comp }.validate("x").is_err());
     }
 

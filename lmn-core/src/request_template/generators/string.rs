@@ -56,7 +56,9 @@ mod tests {
     #[test]
     fn choice_strategy_returns_one_of_choices() {
         let choices = vec!["foo".to_string(), "bar".to_string()];
-        let def = StringDef { strategy: StringStrategy::Choice(choices.clone()) };
+        let def = StringDef {
+            strategy: StringStrategy::Choice(choices.clone()),
+        };
         let val = def.generate(&mut rand::thread_rng());
         assert!(choices.contains(&val.as_str().unwrap().to_string()));
     }

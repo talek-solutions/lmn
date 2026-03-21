@@ -46,7 +46,10 @@ pub fn collect_tracked_fields(
 
 fn parse_field_type(s: &str) -> Result<Option<ResponseFieldType>, ResponseTemplateError> {
     let trimmed = s.trim();
-    let inner = match trimmed.strip_prefix("{{").and_then(|s| s.strip_suffix("}}")) {
+    let inner = match trimmed
+        .strip_prefix("{{")
+        .and_then(|s| s.strip_suffix("}}"))
+    {
         Some(inner) => inner,
         None => return Ok(None),
     };

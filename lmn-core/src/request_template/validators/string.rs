@@ -128,7 +128,10 @@ fn validate_length_spec(
         )));
     }
 
-    Ok(LengthSpec::Range { min: min_v, max: max_v })
+    Ok(LengthSpec::Range {
+        min: min_v,
+        max: max_v,
+    })
 }
 
 #[cfg(test)]
@@ -136,19 +139,35 @@ mod tests {
     use super::*;
     use crate::request_template::validators::Validator;
 
-    fn v(exact: Option<f64>, min: Option<f64>, max: Option<f64>, details: Option<RawStringDetails>) -> StringValidator {
-        StringValidator { exact, min, max, details }
+    fn v(
+        exact: Option<f64>,
+        min: Option<f64>,
+        max: Option<f64>,
+        details: Option<RawStringDetails>,
+    ) -> StringValidator {
+        StringValidator {
+            exact,
+            min,
+            max,
+            details,
+        }
     }
 
     #[test]
     fn validates_choice_list() {
-        let d = RawStringDetails { choice: Some(vec!["a".into(), "b".into()]), ..Default::default() };
+        let d = RawStringDetails {
+            choice: Some(vec!["a".into(), "b".into()]),
+            ..Default::default()
+        };
         assert!(v(None, None, None, Some(d)).validate("x").is_ok());
     }
 
     #[test]
     fn rejects_empty_choice_list() {
-        let d = RawStringDetails { choice: Some(vec![]), ..Default::default() };
+        let d = RawStringDetails {
+            choice: Some(vec![]),
+            ..Default::default()
+        };
         assert!(v(None, None, None, Some(d)).validate("x").is_err());
     }
 
@@ -174,17 +193,27 @@ mod tests {
 
     #[test]
     fn rejects_char_counts_exceeding_min_length() {
-        let d = RawStringDetails { uppercase_count: Some(5), lowercase_count: Some(5), ..Default::default() };
+        let d = RawStringDetails {
+            uppercase_count: Some(5),
+            lowercase_count: Some(5),
+            ..Default::default()
+        };
         assert!(v(Some(3.0), None, None, Some(d)).validate("x").is_err());
     }
 
     #[test]
     fn validate_length_spec_exact() {
-        assert!(matches!(validate_length_spec(Some(5.0), None, None, "x").unwrap(), LengthSpec::Exact(5)));
+        assert!(matches!(
+            validate_length_spec(Some(5.0), None, None, "x").unwrap(),
+            LengthSpec::Exact(5)
+        ));
     }
 
     #[test]
     fn validate_length_spec_range() {
-        assert!(matches!(validate_length_spec(None, Some(2.0), Some(8.0), "x").unwrap(), LengthSpec::Range { min: 2, max: 8 }));
+        assert!(matches!(
+            validate_length_spec(None, Some(2.0), Some(8.0), "x").unwrap(),
+            LengthSpec::Range { min: 2, max: 8 }
+        ));
     }
 }

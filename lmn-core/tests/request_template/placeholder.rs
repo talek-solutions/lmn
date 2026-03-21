@@ -1,5 +1,5 @@
+use lmn_core::request_template::{Template, parse_placeholder};
 use std::path::Path;
-use lmn_core::request_template::{parse_placeholder, Template};
 
 #[test]
 fn parses_simple_placeholder() {

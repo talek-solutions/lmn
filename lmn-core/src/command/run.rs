@@ -2,22 +2,22 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use tokio::sync::{mpsc, Semaphore};
+use tokio::sync::{Semaphore, mpsc};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use tracing::info_span;
 
-use crate::command::{Command, Body};
+use crate::command::{Body, Command};
 use crate::config::secret::SensitiveString;
 use crate::http::{Request, RequestConfig, RequestResult};
 use crate::load_curve::LoadCurve;
 use crate::load_curve::executor::{CurveExecutor, CurveExecutorParams};
 use crate::monitoring::SpanName;
 use crate::request_template::Template;
+use crate::response_template::ResponseTemplate;
 use crate::response_template::extractor;
 use crate::response_template::field::TrackedField;
 use crate::response_template::stats::ResponseStats;
-use crate::response_template::ResponseTemplate;
 use crate::sampling::{ReservoirAction, SamplingParams, SamplingState};
 
 // ── RunMode ───────────────────────────────────────────────────────────────────
@@ -80,7 +80,10 @@ pub struct SamplingConfig {
 /// Determines the execution strategy for a run.
 pub enum ExecutionMode {
     /// Classic semaphore-based fixed-count execution.
-    Fixed { request_count: usize, concurrency: usize },
+    Fixed {
+        request_count: usize,
+        concurrency: usize,
+    },
     /// Time-based dynamic VU execution driven by a `LoadCurve`.
     Curve(LoadCurve),
 }
@@ -96,12 +99,11 @@ pub struct RunCommand {
 impl Command for RunCommand {
     async fn execute(self) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
         match self.execution {
-            ExecutionMode::Fixed { request_count, concurrency } => {
-                execute_fixed(self.request, self.sampling, request_count, concurrency).await
-            }
-            ExecutionMode::Curve(curve) => {
-                execute_curve(self.request, self.sampling, curve).await
-            }
+            ExecutionMode::Fixed {
+                request_count,
+                concurrency,
+            } => execute_fixed(self.request, self.sampling, request_count, concurrency).await,
+            ExecutionMode::Curve(curve) => execute_curve(self.request, self.sampling, curve).await,
         }
     }
 }
@@ -162,7 +164,14 @@ async fn execute_fixed(
     total: usize,
     concurrency: usize,
 ) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
-    let RequestSpec { host, method, body, template_path, response_template_path, headers } = request_spec;
+    let RequestSpec {
+        host,
+        method,
+        body,
+        template_path,
+        response_template_path,
+        headers,
+    } = request_spec;
 
     // Pre-generate all template bodies before any requests fire
     let gen_start = Instant::now();
@@ -181,7 +190,9 @@ async fn execute_fixed(
     let token = CancellationToken::new();
     let cancel = token.clone();
     tokio::spawn(async move {
-        tokio::signal::ctrl_c().await.expect("failed to listen for ctrl_c");
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to listen for ctrl_c");
         eprintln!("\nShutdown signal received — waiting for in-flight requests to finish...");
         cancel.cancel();
     });
@@ -193,10 +204,11 @@ async fn execute_fixed(
 
     // Pre-convert headers once before the hot loop to avoid per-request allocation.
     let plain_headers: Arc<Vec<(String, String)>> = Arc::new(
-        request.headers
+        request
+            .headers
             .iter()
             .map(|(k, v)| (k.clone(), v.to_string()))
-            .collect()
+            .collect(),
     );
 
     let (all_results, sampling_state) = async {
@@ -204,9 +216,7 @@ async fn execute_fixed(
         let (tx, mut rx) = mpsc::channel::<RequestResult>(concurrency);
 
         for i in 0..total {
-            let resolved = request.resolve_body(
-                all_bodies.as_ref().map(|bs| bs[i].clone()),
-            );
+            let resolved = request.resolve_body(all_bodies.as_ref().map(|bs| bs[i].clone()));
 
             let client = request.client.clone();
             let url = request.host.as_str().to_string();
@@ -288,7 +298,14 @@ async fn execute_curve(
     sampling: SamplingConfig,
     curve: LoadCurve,
 ) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
-    let RequestSpec { host, method, body, template_path, response_template_path, headers } = request_spec;
+    let RequestSpec {
+        host,
+        method,
+        body,
+        template_path,
+        response_template_path,
+        headers,
+    } = request_spec;
     let curve_duration = curve.total_duration();
     let curve_stages = curve.stages.clone();
 
@@ -304,7 +321,9 @@ async fn execute_curve(
     let cancellation_token = CancellationToken::new();
     let cancel = cancellation_token.clone();
     tokio::spawn(async move {
-        tokio::signal::ctrl_c().await.expect("failed to listen for ctrl_c");
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to listen for ctrl_c");
         eprintln!("\nShutdown signal received — cancelling curve execution...");
         cancel.cancel();
     });
@@ -324,7 +343,8 @@ async fn execute_curve(
 
     let curve_result = executor.execute().await;
 
-    let response_stats = compute_response_stats(&curve_result.results, &request_config.tracked_fields);
+    let response_stats =
+        compute_response_stats(&curve_result.results, &request_config.tracked_fields);
 
     Ok(Some(RunStats {
         elapsed: started_at.elapsed(),
@@ -387,8 +407,10 @@ mod tests {
     #[test]
     fn curve_stages_none_for_fixed_mode() {
         let stats = make_stats_fixed();
-        assert!(stats.curve_stages.is_none(),
-            "fixed-mode RunStats must have curve_stages == None");
+        assert!(
+            stats.curve_stages.is_none(),
+            "fixed-mode RunStats must have curve_stages == None"
+        );
     }
 
     // ── curve_stages_some_for_curve_mode ──────────────────────────────────────
@@ -396,12 +418,22 @@ mod tests {
     #[test]
     fn curve_stages_some_for_curve_mode() {
         let stages = vec![
-            Stage { duration: Duration::from_secs(5), target_vus: 50, ramp: RampType::Linear },
-            Stage { duration: Duration::from_secs(5), target_vus: 100, ramp: RampType::Step },
+            Stage {
+                duration: Duration::from_secs(5),
+                target_vus: 50,
+                ramp: RampType::Linear,
+            },
+            Stage {
+                duration: Duration::from_secs(5),
+                target_vus: 100,
+                ramp: RampType::Step,
+            },
         ];
         let stats = make_stats_curve(stages.clone());
 
-        let stored = stats.curve_stages.expect("curve_stages must be Some in curve mode");
+        let stored = stats
+            .curve_stages
+            .expect("curve_stages must be Some in curve mode");
         assert_eq!(stored.len(), 2);
         assert_eq!(stored[0].target_vus, 50);
         assert_eq!(stored[0].ramp, RampType::Linear);
@@ -441,9 +473,11 @@ mod tests {
 
     #[test]
     fn run_mode_curve_variant() {
-        let stages = vec![
-            Stage { duration: Duration::from_secs(5), target_vus: 10, ramp: RampType::Linear },
-        ];
+        let stages = vec![Stage {
+            duration: Duration::from_secs(5),
+            target_vus: 10,
+            ramp: RampType::Linear,
+        }];
         let stats = make_stats_curve(stages);
         assert_eq!(stats.mode, RunMode::Curve);
     }

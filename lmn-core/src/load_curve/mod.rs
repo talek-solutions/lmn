@@ -187,7 +187,9 @@ impl TryFrom<crate::config::ExecutionConfig> for LoadCurve {
     type Error = String;
 
     fn try_from(cfg: crate::config::ExecutionConfig) -> Result<Self, Self::Error> {
-        let stages = cfg.stages.ok_or("execution.stages is required for curve mode")?;
+        let stages = cfg
+            .stages
+            .ok_or("execution.stages is required for curve mode")?;
         let curve = LoadCurve { stages };
         curve.validate()?;
         Ok(curve)
@@ -308,7 +310,10 @@ mod tests {
     fn duration_string_parsing() {
         assert_eq!(parse_duration_str("30s").unwrap(), Duration::from_secs(30));
         assert_eq!(parse_duration_str("2m").unwrap(), Duration::from_secs(120));
-        assert_eq!(parse_duration_str("1m30s").unwrap(), Duration::from_secs(90));
+        assert_eq!(
+            parse_duration_str("1m30s").unwrap(),
+            Duration::from_secs(90)
+        );
     }
 
     #[test]
@@ -327,7 +332,11 @@ mod tests {
     #[test]
     fn validate_rejects_too_many_stages() {
         let stages = (0..MAX_STAGES + 1)
-            .map(|_| Stage { duration: Duration::from_secs(1), target_vus: 1, ramp: RampType::Linear })
+            .map(|_| Stage {
+                duration: Duration::from_secs(1),
+                target_vus: 1,
+                ramp: RampType::Linear,
+            })
             .collect();
         let curve = LoadCurve { stages };
         assert!(curve.validate().is_err());
@@ -351,8 +360,16 @@ mod tests {
     fn try_from_execution_config_valid_stages() {
         let cfg = crate::config::ExecutionConfig {
             stages: Some(vec![
-                Stage { duration: Duration::from_secs(10), target_vus: 5, ramp: RampType::Linear },
-                Stage { duration: Duration::from_secs(20), target_vus: 10, ramp: RampType::Step },
+                Stage {
+                    duration: Duration::from_secs(10),
+                    target_vus: 5,
+                    ramp: RampType::Linear,
+                },
+                Stage {
+                    duration: Duration::from_secs(20),
+                    target_vus: 10,
+                    ramp: RampType::Step,
+                },
             ]),
             request_count: None,
             concurrency: None,
@@ -373,7 +390,10 @@ mod tests {
         let result = LoadCurve::try_from(cfg);
         assert!(result.is_err());
         let msg = result.unwrap_err();
-        assert!(msg.contains("at least one stage"), "expected validation error, got: {msg}");
+        assert!(
+            msg.contains("at least one stage"),
+            "expected validation error, got: {msg}"
+        );
     }
 
     #[test]
@@ -386,7 +406,10 @@ mod tests {
         let result = LoadCurve::try_from(cfg);
         assert!(result.is_err());
         let msg = result.unwrap_err();
-        assert!(msg.contains("execution.stages is required"), "expected missing stages error, got: {msg}");
+        assert!(
+            msg.contains("execution.stages is required"),
+            "expected missing stages error, got: {msg}"
+        );
     }
 
     // Multi-stage linear interpolation: second stage ramps from first stage's target

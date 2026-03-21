@@ -103,12 +103,18 @@ mod tests {
     use super::*;
 
     fn float_def() -> TemplateDef {
-        TemplateDef::Float(FloatDef { strategy: FloatStrategy::Exact(1.0), decimals: 0 })
+        TemplateDef::Float(FloatDef {
+            strategy: FloatStrategy::Exact(1.0),
+            decimals: 0,
+        })
     }
 
     fn object_def(refs: &[(&str, &str)]) -> TemplateDef {
         TemplateDef::Object(ObjectDef {
-            composition: refs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            composition: refs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
         })
     }
 

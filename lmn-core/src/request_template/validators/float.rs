@@ -54,7 +54,10 @@ impl Validator for FloatValidator {
                     "'{name}': float min ({min_v}) > max ({max_v})"
                 )));
             }
-            FloatStrategy::Range { min: min_v, max: max_v }
+            FloatStrategy::Range {
+                min: min_v,
+                max: max_v,
+            }
         };
 
         Ok(TemplateDef::Float(FloatDef { strategy, decimals }))
@@ -67,7 +70,12 @@ mod tests {
     use crate::request_template::validators::Validator;
 
     fn v(exact: Option<f64>, min: Option<f64>, max: Option<f64>) -> FloatValidator {
-        FloatValidator { exact, min, max, details: None }
+        FloatValidator {
+            exact,
+            min,
+            max,
+            details: None,
+        }
     }
 
     #[test]

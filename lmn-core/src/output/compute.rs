@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 use crate::http::RequestResult;
 use crate::load_curve::{RampType, Stage};
 use crate::response_template::stats::ResponseStats;
-use crate::stats::LatencyDistribution;
 use crate::stats::Distribution;
+use crate::stats::LatencyDistribution;
 
 use super::report::{FloatFieldSummary, LatencyStats, ResponseStatsReport, StageReport};
 
@@ -151,8 +151,11 @@ pub fn response_stats_report(rs: &ResponseStats) -> ResponseStatsReport {
         .collect();
 
     // mismatch_counts: promote HashMap → BTreeMap
-    let mismatch_counts: BTreeMap<String, usize> =
-        rs.mismatch_counts.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    let mismatch_counts: BTreeMap<String, usize> = rs
+        .mismatch_counts
+        .iter()
+        .map(|(k, v)| (k.clone(), *v))
+        .collect();
 
     ResponseStatsReport {
         responses_parsed: rs.total_responses,
@@ -196,7 +199,10 @@ pub fn per_stage_reports(
             let subset: Vec<&RequestResult> = results
                 .iter()
                 .filter(|r| {
-                    let elapsed = r.completed_at.checked_duration_since(run_start).unwrap_or(Duration::ZERO);
+                    let elapsed = r
+                        .completed_at
+                        .checked_duration_since(run_start)
+                        .unwrap_or(Duration::ZERO);
                     elapsed >= win_start && elapsed < win_end
                 })
                 .collect();
@@ -244,9 +250,8 @@ mod tests {
     #[test]
     fn latency_stats_correct_for_known_input() {
         // 100 results: durations 1ms to 100ms
-        let results: Vec<RequestResult> = (1..=100)
-            .map(|i| make_result(i, true, Some(200)))
-            .collect();
+        let results: Vec<RequestResult> =
+            (1..=100).map(|i| make_result(i, true, Some(200))).collect();
         let stats = latency_stats(&results);
         assert_eq!(stats.min_ms, 1.0);
         assert_eq!(stats.max_ms, 100.0);
@@ -349,7 +354,10 @@ mod tests {
         for i in 0..3 {
             rs.record(ExtractionResult {
                 values: vec![
-                    ("status".to_string(), ExtractedValue::String("ok".to_string())),
+                    (
+                        "status".to_string(),
+                        ExtractedValue::String("ok".to_string()),
+                    ),
                     ("score".to_string(), ExtractedValue::Float((i + 1) as f64)),
                 ],
                 mismatches: vec![],
@@ -426,7 +434,8 @@ mod tests {
     fn response_stats_report_empty_float_field_omitted() {
         let mut rs = ResponseStats::new();
         // Manually insert an empty float field
-        rs.float_fields.insert("empty".to_string(), FloatFieldStats { values: vec![] });
+        rs.float_fields
+            .insert("empty".to_string(), FloatFieldStats { values: vec![] });
         let report = response_stats_report(&rs);
         assert!(!report.float_fields.contains_key("empty"));
     }

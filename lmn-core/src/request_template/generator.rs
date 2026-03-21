@@ -16,11 +16,17 @@ pub struct GeneratorContext {
 
 impl GeneratorContext {
     pub fn new(defs: HashMap<String, TemplateDef>) -> Self {
-        Self { defs, once_values: HashMap::new() }
+        Self {
+            defs,
+            once_values: HashMap::new(),
+        }
     }
 
     pub fn with_once_values(self, once_values: HashMap<String, Value>) -> Self {
-        Self { once_values, ..self }
+        Self {
+            once_values,
+            ..self
+        }
     }
 
     /// Resolves a placeholder by name, returning a pre-computed `:once` value
@@ -66,7 +72,10 @@ mod tests {
     use crate::request_template::definition::{FloatDef, FloatStrategy, ObjectDef, TemplateDef};
 
     fn float_exact(v: f64) -> TemplateDef {
-        TemplateDef::Float(FloatDef { strategy: FloatStrategy::Exact(v), decimals: 0 })
+        TemplateDef::Float(FloatDef {
+            strategy: FloatStrategy::Exact(v),
+            decimals: 0,
+        })
     }
 
     #[test]
@@ -91,7 +100,9 @@ mod tests {
         defs.insert("price".to_string(), float_exact(42.0));
         let ctx = GeneratorContext::new(defs);
         let obj = ObjectDef {
-            composition: [("amount".to_string(), "price".to_string())].into_iter().collect(),
+            composition: [("amount".to_string(), "price".to_string())]
+                .into_iter()
+                .collect(),
         };
         let val = ctx.generate_object(&obj, &mut rand::thread_rng());
         assert!(val["amount"].is_number());

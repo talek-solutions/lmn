@@ -35,7 +35,6 @@ pub struct ConfigureTemplateCommand {
     pub kind: TemplateKind,
 }
 
-
 impl Command for ConfigureTemplateCommand {
     async fn execute(self) -> Result<Option<RunStats>, Box<dyn Error>> {
         let content: String = match (self.body, self.template_path) {
@@ -73,7 +72,8 @@ fn create_file(sub_dir: &str, file_name: String, content: String) -> Result<(), 
     }
 
     let mut file = File::create(&file_path).map_err(|_| ConfigError::Fs(file_name.clone()))?;
-    file.write_all(content.as_bytes()).map_err(|_| ConfigError::Fs(file_name))
+    file.write_all(content.as_bytes())
+        .map_err(|_| ConfigError::Fs(file_name))
 }
 
 #[cfg(test)]
@@ -93,7 +93,9 @@ mod tests {
     #[test]
     fn create_file_writes_content() {
         let file_name = "__test_create_file_writes.json".to_string();
-        let path = PathBuf::from(TEMPLATE_ROOT_DIR).join("requests").join(&file_name);
+        let path = PathBuf::from(TEMPLATE_ROOT_DIR)
+            .join("requests")
+            .join(&file_name);
         let _ = std::fs::remove_file(&path);
 
         let result = create_file("requests", file_name.clone(), r#"{"ok":true}"#.to_string());
@@ -105,7 +107,9 @@ mod tests {
     #[test]
     fn create_file_rejects_duplicate() {
         let file_name = "__test_create_file_duplicate.json".to_string();
-        let path = PathBuf::from(TEMPLATE_ROOT_DIR).join("requests").join(&file_name);
+        let path = PathBuf::from(TEMPLATE_ROOT_DIR)
+            .join("requests")
+            .join(&file_name);
         let _ = std::fs::remove_file(&path);
 
         create_file("requests", file_name.clone(), "{}".to_string()).unwrap();

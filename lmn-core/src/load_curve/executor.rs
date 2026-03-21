@@ -52,18 +52,24 @@ impl CurveExecutor {
     /// usage. Returns a `CurveExecutionResult` when the curve completes or a
     /// cancellation signal is received.
     pub async fn execute(self) -> CurveExecutionResult {
-        let CurveExecutorParams { curve, request_config, template, cancellation_token, sampling } =
-            self.params;
+        let CurveExecutorParams {
+            curve,
+            request_config,
+            template,
+            cancellation_token,
+            sampling,
+        } = self.params;
 
         let total_duration = curve.total_duration();
         let started_at = Instant::now();
 
         // Pre-convert headers once before spawning any VUs to avoid per-VU allocation.
         let plain_headers: Arc<Vec<(String, String)>> = Arc::new(
-            request_config.headers
+            request_config
+                .headers
                 .iter()
                 .map(|(k, v)| (k.clone(), v.to_string()))
-                .collect()
+                .collect(),
         );
 
         // Unbounded channel; VUs push results as they complete without risk of blocking.
@@ -192,7 +198,13 @@ struct VuParams {
 
 fn spawn_vu(params: VuParams) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let VuParams { request_config, plain_headers, template, cancellation_token, result_tx } = params;
+        let VuParams {
+            request_config,
+            plain_headers,
+            template,
+            cancellation_token,
+            result_tx,
+        } = params;
 
         loop {
             // Generate body on demand for this request

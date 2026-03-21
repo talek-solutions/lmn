@@ -34,16 +34,17 @@ struct ThresholdEnvelope {
 /// - `value` must be finite
 /// - For `error_rate`, `value` must be in [0.0, 1.0]
 pub fn parse_thresholds(json_or_yaml: &str) -> Result<Vec<Threshold>, ThresholdError> {
-    let envelope: ThresholdEnvelope = serde_json::from_str(json_or_yaml)
-        .or_else(|json_err| {
-            serde_yml::from_str(json_or_yaml)
-                .map_err(|_yaml_err| ThresholdError::ParseError(json_err.to_string()))
-        })?;
+    let envelope: ThresholdEnvelope = serde_json::from_str(json_or_yaml).or_else(|json_err| {
+        serde_yml::from_str(json_or_yaml)
+            .map_err(|_yaml_err| ThresholdError::ParseError(json_err.to_string()))
+    })?;
 
     validate_thresholds(envelope.thresholds)
 }
 
-pub(crate) fn validate_thresholds(thresholds: Vec<Threshold>) -> Result<Vec<Threshold>, ThresholdError> {
+pub(crate) fn validate_thresholds(
+    thresholds: Vec<Threshold>,
+) -> Result<Vec<Threshold>, ThresholdError> {
     for t in &thresholds {
         if !t.value.is_finite() {
             return Err(ThresholdError::ValidationError(format!(
@@ -112,7 +113,8 @@ mod tests {
 
     #[test]
     fn parse_error_rate_above_1_returns_error() {
-        let json = r#"{ "thresholds": [{ "metric": "error_rate", "operator": "lte", "value": 1.5 }] }"#;
+        let json =
+            r#"{ "thresholds": [{ "metric": "error_rate", "operator": "lte", "value": 1.5 }] }"#;
         let result = parse_thresholds(json);
         assert!(matches!(result, Err(ThresholdError::ValidationError(_))));
     }

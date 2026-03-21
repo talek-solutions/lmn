@@ -58,13 +58,19 @@ mod tests {
     use crate::response_template::extractor::{ExtractedValue, ExtractionResult};
 
     fn empty_result() -> ExtractionResult {
-        ExtractionResult { values: vec![], mismatches: vec![] }
+        ExtractionResult {
+            values: vec![],
+            mismatches: vec![],
+        }
     }
 
     fn mixed_result() -> ExtractionResult {
         ExtractionResult {
             values: vec![
-                ("status".to_string(), ExtractedValue::String("ok".to_string())),
+                (
+                    "status".to_string(),
+                    ExtractedValue::String("ok".to_string()),
+                ),
                 ("score".to_string(), ExtractedValue::Float(9.5)),
             ],
             mismatches: vec!["missing".to_string()],

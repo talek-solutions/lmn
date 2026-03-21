@@ -1,8 +1,8 @@
 pub mod definition;
 pub mod error;
 pub mod generator;
-pub mod renderer;
 mod generators;
+pub mod renderer;
 mod validators;
 
 use std::collections::HashMap;
@@ -38,7 +38,10 @@ pub fn parse_placeholder(s: &str) -> Option<PlaceholderRef> {
     if name.is_empty() {
         return None;
     }
-    Some(PlaceholderRef { name: name.to_string(), once })
+    Some(PlaceholderRef {
+        name: name.to_string(),
+        once,
+    })
 }
 
 // ── ENV placeholder helpers ───────────────────────────────────────────────────
@@ -140,7 +143,10 @@ impl Template {
         let mut all_once_values = once_values;
         all_once_values.extend(env_values);
 
-        Ok(Template { body, context: ctx.with_once_values(all_once_values) })
+        Ok(Template {
+            body,
+            context: ctx.with_once_values(all_once_values),
+        })
     }
 
     /// Pre-generates `n` request bodies, each with independently rendered placeholders.
@@ -196,13 +202,15 @@ mod tests {
 
     #[test]
     fn parse_fails_on_circular_reference() {
-        let f = write_temp(r#"{
+        let f = write_temp(
+            r#"{
             "field": "{{a}}",
             "_lmn_metadata_templates": {
                 "a": { "type": "object", "composition": { "x": "{{b}}" } },
                 "b": { "type": "object", "composition": { "y": "{{a}}" } }
             }
-        }"#);
+        }"#,
+        );
         assert!(Template::parse(f.path()).is_err());
     }
 
@@ -219,9 +227,12 @@ mod tests {
         let template = Template::parse(f.path()).unwrap();
         let result = template.generate_one();
         // Must parse as valid JSON
-        let parsed: serde_json::Value = serde_json::from_str(&result)
-            .expect("generate_one must return valid JSON");
-        assert_eq!(parsed["field"], serde_json::Value::String("static".to_string()));
+        let parsed: serde_json::Value =
+            serde_json::from_str(&result).expect("generate_one must return valid JSON");
+        assert_eq!(
+            parsed["field"],
+            serde_json::Value::String("static".to_string())
+        );
         assert_eq!(parsed["value"], serde_json::json!(42));
     }
 
@@ -242,7 +253,10 @@ mod tests {
         let f = write_temp(r#"{"token": "{{ENV:LUMEN_TEST_TOKEN}}"}"#);
         let template = Template::parse(f.path()).unwrap();
         let result = template.generate_one();
-        assert!(result.contains("secret123"), "expected 'secret123' in output, got: {result}");
+        assert!(
+            result.contains("secret123"),
+            "expected 'secret123' in output, got: {result}"
+        );
     }
 
     #[test]
@@ -251,7 +265,10 @@ mod tests {
         unsafe { std::env::remove_var("LUMEN_NONEXISTENT_12345") };
         let f = write_temp(r#"{"token": "{{ENV:LUMEN_NONEXISTENT_12345}}"}"#);
         let result = Template::parse(f.path());
-        assert!(result.is_err(), "expected parse to fail for missing env var");
+        assert!(
+            result.is_err(),
+            "expected parse to fail for missing env var"
+        );
         assert!(
             matches!(result.err(), Some(TemplateError::MissingEnvVar(_))),
             "expected MissingEnvVar error variant"
@@ -262,7 +279,8 @@ mod tests {
     fn parse_env_placeholder_no_def_required() {
         // Template with ENV: placeholder and empty _lmn_metadata_templates should succeed
         unsafe { std::env::set_var("LUMEN_TEST_TOKEN", "anyvalue") };
-        let f = write_temp(r#"{"token": "{{ENV:LUMEN_TEST_TOKEN}}", "_lmn_metadata_templates": {}}"#);
+        let f =
+            write_temp(r#"{"token": "{{ENV:LUMEN_TEST_TOKEN}}", "_lmn_metadata_templates": {}}"#);
         assert!(Template::parse(f.path()).is_ok());
     }
 
@@ -287,7 +305,10 @@ mod tests {
         // {{ENV:}} has an empty variable name and must produce InvalidEnvVarName
         let f = write_temp(r#"{"token": "{{ENV:}}"}"#);
         let result = Template::parse(f.path());
-        assert!(result.is_err(), "expected parse to fail for empty ENV var name");
+        assert!(
+            result.is_err(),
+            "expected parse to fail for empty ENV var name"
+        );
         assert!(
             matches!(result.err(), Some(TemplateError::InvalidEnvVarName(_))),
             "expected InvalidEnvVarName error variant"

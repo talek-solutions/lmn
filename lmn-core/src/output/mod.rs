@@ -10,8 +10,10 @@ use std::time::Instant;
 
 use crate::command::run::{RunMode, RunStats};
 
-use compute::{error_rate, latency_stats, per_stage_reports, response_stats_report,
-              status_code_map, throughput};
+use compute::{
+    error_rate, latency_stats, per_stage_reports, response_stats_report, status_code_map,
+    throughput,
+};
 
 // ── RunReportParams ───────────────────────────────────────────────────────────
 
@@ -55,7 +57,11 @@ impl RunReport {
     /// response stats, per-stage breakdowns) are computed here via the compute
     /// module functions.
     pub fn from_params(params: RunReportParams<'_>) -> Self {
-        let RunReportParams { stats, reservoir_size, run_start: _ } = params;
+        let RunReportParams {
+            stats,
+            reservoir_size,
+            run_start: _,
+        } = params;
 
         let total = stats.total_requests;
         let failed = stats.total_failures;
@@ -238,21 +244,24 @@ mod tests {
             make_result(40, true, Some(200)),
         ];
 
-        let stats = make_run_stats(
-            RunMode::Curve,
-            results,
-            4,
-            1,
-            1.0,
-            1.0,
-        );
+        let stats = make_run_stats(RunMode::Curve, results, 4, 1, 1.0, 1.0);
 
         let stages = vec![
-            Stage { duration: Duration::from_secs(2), target_vus: 50, ramp: RampType::Linear },
-            Stage { duration: Duration::from_secs(2), target_vus: 100, ramp: RampType::Linear },
+            Stage {
+                duration: Duration::from_secs(2),
+                target_vus: 50,
+                ramp: RampType::Linear,
+            },
+            Stage {
+                duration: Duration::from_secs(2),
+                target_vus: 100,
+                ramp: RampType::Linear,
+            },
         ];
 
-        let curve = LoadCurve { stages: stages.clone() };
+        let curve = LoadCurve {
+            stages: stages.clone(),
+        };
         let _ = curve; // just to ensure it compiles
 
         let report = RunReport::from_params_with_curve(
@@ -292,7 +301,10 @@ mod tests {
             run_start: Instant::now(),
         });
 
-        assert!(report.sampling.sampled, "sampled must be true when min_sample_rate < 1.0");
+        assert!(
+            report.sampling.sampled,
+            "sampled must be true when min_sample_rate < 1.0"
+        );
         assert_eq!(report.sampling.final_sample_rate, 0.5);
         assert_eq!(report.sampling.min_sample_rate, 0.25);
         assert_eq!(report.sampling.reservoir_size, 50_000);
@@ -314,7 +326,10 @@ mod tests {
             run_start: Instant::now(),
         });
 
-        assert!(!report.sampling.sampled, "sampled must be false when min_sample_rate == 1.0");
+        assert!(
+            !report.sampling.sampled,
+            "sampled must be false when min_sample_rate == 1.0"
+        );
     }
 
     // ── run_report_serializes_to_valid_json ───────────────────────────────────

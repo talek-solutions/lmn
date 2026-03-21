@@ -25,7 +25,11 @@ pub struct PrintStatsParams<'a> {
 // ── print_stats ───────────────────────────────────────────────────────────────
 
 pub fn print_stats(params: PrintStatsParams<'_>) {
-    let PrintStatsParams { results, stats, threshold_report } = params;
+    let PrintStatsParams {
+        results,
+        stats,
+        threshold_report,
+    } = params;
 
     let total = stats.total_requests;
     let ok = total.saturating_sub(stats.total_failures);
@@ -48,7 +52,15 @@ pub fn print_stats(params: PrintStatsParams<'_>) {
 
     let lat_rows: Vec<(&str, String)> = {
         let mut rows = vec![("min", fmt_latency(min))];
-        for (p, label) in [(0.10, "p10"), (0.25, "p25"), (0.50, "p50"), (0.75, "p75"), (0.90, "p90"), (0.95, "p95"), (0.99, "p99")] {
+        for (p, label) in [
+            (0.10, "p10"),
+            (0.25, "p25"),
+            (0.50, "p50"),
+            (0.75, "p75"),
+            (0.90, "p90"),
+            (0.95, "p95"),
+            (0.99, "p99"),
+        ] {
             let ms = lat_dist.quantile_ms(p);
             rows.push((label, fmt_latency(Duration::from_secs_f64(ms / 1000.0))));
         }
@@ -72,7 +84,11 @@ pub fn print_stats(params: PrintStatsParams<'_>) {
     };
     let bar_max = code_counts.iter().map(|(_, n)| *n).max().unwrap_or(1);
     let bar_width = 28usize;
-    let count_width = code_counts.iter().map(|(_, n)| n.to_string().len()).max().unwrap_or(1);
+    let count_width = code_counts
+        .iter()
+        .map(|(_, n)| n.to_string().len())
+        .max()
+        .unwrap_or(1);
 
     let rule = "─".repeat(34);
 
@@ -174,7 +190,11 @@ fn print_response_stats(rs: &ResponseStats, rule: &str) {
         println!(" Response: {path} {rule}");
         let mut entries: Vec<_> = dist.iter().collect();
         entries.sort_by(|a, b| b.1.cmp(a.1));
-        let count_width = entries.iter().map(|(_, n)| n.to_string().len()).max().unwrap_or(1);
+        let count_width = entries
+            .iter()
+            .map(|(_, n)| n.to_string().len())
+            .max()
+            .unwrap_or(1);
         let bar_max = entries.iter().map(|(_, n)| **n).max().unwrap_or(1);
         let bar_width = 28usize;
         for (val, count) in &entries {

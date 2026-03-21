@@ -110,10 +110,7 @@ impl LatencyDistribution {
 
     /// Converts each `Duration` to milliseconds, then constructs a sorted `Distribution`.
     pub fn from_durations(durations: &[Duration]) -> Self {
-        let ms_values: Vec<f64> = durations
-            .iter()
-            .map(|d| d.as_secs_f64() * 1000.0)
-            .collect();
+        let ms_values: Vec<f64> = durations.iter().map(|d| d.as_secs_f64() * 1000.0).collect();
         Self(Distribution::from_unsorted(ms_values))
     }
 

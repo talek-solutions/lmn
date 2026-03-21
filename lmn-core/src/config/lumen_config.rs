@@ -82,8 +82,7 @@ pub struct LumenConfig {
 /// Returns `ConfigError::ValidationError` if threshold values are invalid
 /// (non-finite, or `error_rate` outside [0.0, 1.0]).
 pub fn parse_config(yaml: &str) -> Result<LumenConfig, ConfigError> {
-    let mut config: LumenConfig =
-        serde_yml::from_str(yaml).map_err(ConfigError::YamlParseError)?;
+    let mut config: LumenConfig = serde_yml::from_str(yaml).map_err(ConfigError::YamlParseError)?;
 
     // Validate thresholds if present — serde_yml bypasses the validation
     // in parse_thresholds(), so we run it explicitly here.
@@ -214,8 +213,14 @@ response_template: /templates/response.json
         assert_eq!(exec.concurrency, Some(25));
         assert!(exec.stages.is_none());
 
-        assert_eq!(config.request_template.as_deref(), Some("/templates/request.json"));
-        assert_eq!(config.response_template.as_deref(), Some("/templates/response.json"));
+        assert_eq!(
+            config.request_template.as_deref(),
+            Some("/templates/request.json")
+        );
+        assert_eq!(
+            config.response_template.as_deref(),
+            Some("/templates/response.json")
+        );
     }
 
     #[test]

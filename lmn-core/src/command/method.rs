@@ -10,10 +10,10 @@ pub enum HttpMethod {
 impl HttpMethod {
     pub fn as_str(self) -> &'static str {
         match self {
-            HttpMethod::Get    => "GET",
-            HttpMethod::Post   => "POST",
-            HttpMethod::Put    => "PUT",
-            HttpMethod::Patch  => "PATCH",
+            HttpMethod::Get => "GET",
+            HttpMethod::Post => "POST",
+            HttpMethod::Put => "PUT",
+            HttpMethod::Patch => "PATCH",
             HttpMethod::Delete => "DELETE",
         }
     }

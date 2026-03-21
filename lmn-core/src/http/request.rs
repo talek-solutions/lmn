@@ -1,6 +1,6 @@
 use std::sync::Arc;
-use std::time::Instant;
 use std::time::Duration;
+use std::time::Instant;
 
 use crate::command::{Body, HttpMethod};
 use crate::config::secret::SensitiveString;
@@ -92,7 +92,14 @@ pub struct Request {
 
 impl Request {
     pub fn new(client: reqwest::Client, url: String, method: HttpMethod) -> Self {
-        Self { client, url, method, body: None, headers: Vec::new(), capture_response: false }
+        Self {
+            client,
+            url,
+            method,
+            body: None,
+            headers: Vec::new(),
+            capture_response: false,
+        }
     }
 
     pub fn body(mut self, content: String, content_type: &'static str) -> Self {
@@ -116,10 +123,10 @@ impl Request {
     pub async fn execute(self) -> RequestResult {
         let start = Instant::now();
         let mut req = match self.method {
-            HttpMethod::Get    => self.client.get(&self.url),
-            HttpMethod::Post   => self.client.post(&self.url),
-            HttpMethod::Put    => self.client.put(&self.url),
-            HttpMethod::Patch  => self.client.patch(&self.url),
+            HttpMethod::Get => self.client.get(&self.url),
+            HttpMethod::Post => self.client.post(&self.url),
+            HttpMethod::Put => self.client.put(&self.url),
+            HttpMethod::Patch => self.client.patch(&self.url),
             HttpMethod::Delete => self.client.delete(&self.url),
         };
         if let Some((content, content_type)) = self.body {

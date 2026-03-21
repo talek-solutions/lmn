@@ -1,11 +1,14 @@
 use lmn_core::response_template::{
-    extractor::{extract, ExtractedValue},
+    extractor::{ExtractedValue, extract},
     field::{ResponseFieldType, TrackedField},
 };
 use serde_json::json;
 
 fn field(path: &[&str], field_type: ResponseFieldType) -> TrackedField {
-    TrackedField { path: path.iter().map(|s| s.to_string()).collect(), field_type }
+    TrackedField {
+        path: path.iter().map(|s| s.to_string()).collect(),
+        field_type,
+    }
 }
 
 #[test]
@@ -14,7 +17,9 @@ fn extracts_string_field() {
     let result = extract(&body, &[field(&["status"], ResponseFieldType::String)]);
     assert_eq!(result.values.len(), 1);
     assert!(result.mismatches.is_empty());
-    assert!(matches!(&result.values[0], (k, ExtractedValue::String(v)) if k == "status" && v == "ok"));
+    assert!(
+        matches!(&result.values[0], (k, ExtractedValue::String(v)) if k == "status" && v == "ok")
+    );
 }
 
 #[test]
@@ -22,14 +27,21 @@ fn extracts_float_field() {
     let body = json!({ "amount": 3.14 });
     let result = extract(&body, &[field(&["amount"], ResponseFieldType::Float)]);
     assert_eq!(result.values.len(), 1);
-    assert!(matches!(&result.values[0], (k, ExtractedValue::Float(v)) if k == "amount" && (*v - 3.14).abs() < f64::EPSILON));
+    assert!(
+        matches!(&result.values[0], (k, ExtractedValue::Float(v)) if k == "amount" && (*v - 3.14).abs() < f64::EPSILON)
+    );
 }
 
 #[test]
 fn extracts_nested_field() {
     let body = json!({ "error": { "code": "NOT_FOUND" } });
-    let result = extract(&body, &[field(&["error", "code"], ResponseFieldType::String)]);
-    assert!(matches!(&result.values[0], (k, ExtractedValue::String(v)) if k == "error.code" && v == "NOT_FOUND"));
+    let result = extract(
+        &body,
+        &[field(&["error", "code"], ResponseFieldType::String)],
+    );
+    assert!(
+        matches!(&result.values[0], (k, ExtractedValue::String(v)) if k == "error.code" && v == "NOT_FOUND")
+    );
 }
 
 #[test]

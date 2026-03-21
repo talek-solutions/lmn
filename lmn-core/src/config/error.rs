@@ -19,7 +19,7 @@ impl std::fmt::Display for ConfigError {
             Self::InvalidFormat(format) => write!(f, "Invalid format: {}", format),
             Self::TemplateAlreadyExists(name) => {
                 write!(f, "Template \"{}\" already exists", name)
-            },
+            }
             Self::TemplateNotFound(name) => write!(f, "Template \"{}\" not found", name),
             Self::YamlParseError(e) => write!(f, "YAML parse error: {}", e),
             Self::ValidationError(msg) => write!(f, "Config validation error: {}", msg),
@@ -35,7 +35,10 @@ mod tests {
 
     #[test]
     fn display_fs() {
-        assert_eq!(ConfigError::Fs("file.json".into()).to_string(), "FS Error: file.json");
+        assert_eq!(
+            ConfigError::Fs("file.json".into()).to_string(),
+            "FS Error: file.json"
+        );
     }
 
     #[test]
@@ -45,7 +48,10 @@ mod tests {
 
     #[test]
     fn display_invalid_format() {
-        assert_eq!(ConfigError::InvalidFormat("bad".into()).to_string(), "Invalid format: bad");
+        assert_eq!(
+            ConfigError::InvalidFormat("bad".into()).to_string(),
+            "Invalid format: bad"
+        );
     }
 
     #[test]

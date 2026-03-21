@@ -15,12 +15,30 @@ pub trait Validator {
 
 pub fn validate(raw: RawTemplateDef, name: &str) -> Result<TemplateDef, TemplateError> {
     match raw {
-        RawTemplateDef::String { exact, min, max, details } => {
-            StringValidator { exact, min, max, details }.validate(name)
+        RawTemplateDef::String {
+            exact,
+            min,
+            max,
+            details,
+        } => StringValidator {
+            exact,
+            min,
+            max,
+            details,
         }
-        RawTemplateDef::Float { exact, min, max, details } => {
-            FloatValidator { exact, min, max, details }.validate(name)
+        .validate(name),
+        RawTemplateDef::Float {
+            exact,
+            min,
+            max,
+            details,
+        } => FloatValidator {
+            exact,
+            min,
+            max,
+            details,
         }
+        .validate(name),
         RawTemplateDef::Object { composition } => ObjectValidator { composition }.validate(name),
     }
 }

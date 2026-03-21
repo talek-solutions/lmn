@@ -22,7 +22,9 @@ pub struct WriteJsonOutputParams<'a> {
 ///
 /// On file write failure the error is returned; the caller is responsible for
 /// printing to stderr and exiting with code 1.
-pub fn write_json_output(params: WriteJsonOutputParams<'_>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn write_json_output(
+    params: WriteJsonOutputParams<'_>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let json = serde_json::to_string_pretty(params.report)?;
 
     match params.dest {
@@ -99,7 +101,11 @@ mod tests {
             report: &value,
             dest: JsonDest::Stdout,
         });
-        assert!(result.is_ok(), "write_json_output(Stdout) returned error: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "write_json_output(Stdout) returned error: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -114,7 +120,11 @@ mod tests {
             report: &report,
             dest: JsonDest::File(path.clone()),
         });
-        assert!(result.is_ok(), "write_json_output returned error: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "write_json_output returned error: {:?}",
+            result.err()
+        );
 
         let contents = std::fs::read_to_string(&path).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&contents).unwrap();

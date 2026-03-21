@@ -18,7 +18,10 @@ fn float_result(path: &str, value: f64) -> ExtractionResult {
 }
 
 fn mismatch_result(path: &str) -> ExtractionResult {
-    ExtractionResult { values: vec![], mismatches: vec![path.to_string()] }
+    ExtractionResult {
+        values: vec![],
+        mismatches: vec![path.to_string()],
+    }
 }
 
 #[test]

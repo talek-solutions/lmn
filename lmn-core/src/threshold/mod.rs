@@ -75,10 +75,21 @@ mod tests {
     fn evaluate_all_pass() {
         let report = make_report_with_latency(50, 0.01);
         let thresholds = vec![
-            Threshold { metric: Metric::LatencyP99, operator: Operator::Lt, value: 500.0 },
-            Threshold { metric: Metric::ErrorRate, operator: Operator::Lte, value: 0.05 },
+            Threshold {
+                metric: Metric::LatencyP99,
+                operator: Operator::Lt,
+                value: 500.0,
+            },
+            Threshold {
+                metric: Metric::ErrorRate,
+                operator: Operator::Lte,
+                value: 0.05,
+            },
         ];
-        let result = evaluate(EvaluateParams { report: &report, thresholds: &thresholds });
+        let result = evaluate(EvaluateParams {
+            report: &report,
+            thresholds: &thresholds,
+        });
         assert_eq!(result.total, 2);
         assert_eq!(result.passed, 2);
         assert_eq!(result.failed, 0);
@@ -89,10 +100,21 @@ mod tests {
     fn evaluate_all_fail() {
         let report = make_report_with_latency(500, 0.5);
         let thresholds = vec![
-            Threshold { metric: Metric::LatencyP99, operator: Operator::Lt, value: 10.0 },
-            Threshold { metric: Metric::ErrorRate, operator: Operator::Lt, value: 0.01 },
+            Threshold {
+                metric: Metric::LatencyP99,
+                operator: Operator::Lt,
+                value: 10.0,
+            },
+            Threshold {
+                metric: Metric::ErrorRate,
+                operator: Operator::Lt,
+                value: 0.01,
+            },
         ];
-        let result = evaluate(EvaluateParams { report: &report, thresholds: &thresholds });
+        let result = evaluate(EvaluateParams {
+            report: &report,
+            thresholds: &thresholds,
+        });
         assert_eq!(result.total, 2);
         assert_eq!(result.passed, 0);
         assert_eq!(result.failed, 2);
@@ -104,11 +126,22 @@ mod tests {
         let report = make_report_with_latency(50, 0.5);
         let thresholds = vec![
             // passes: p99 < 500ms
-            Threshold { metric: Metric::LatencyP99, operator: Operator::Lt, value: 500.0 },
+            Threshold {
+                metric: Metric::LatencyP99,
+                operator: Operator::Lt,
+                value: 500.0,
+            },
             // fails: error_rate < 0.01 but actual is 0.5
-            Threshold { metric: Metric::ErrorRate, operator: Operator::Lt, value: 0.01 },
+            Threshold {
+                metric: Metric::ErrorRate,
+                operator: Operator::Lt,
+                value: 0.01,
+            },
         ];
-        let result = evaluate(EvaluateParams { report: &report, thresholds: &thresholds });
+        let result = evaluate(EvaluateParams {
+            report: &report,
+            thresholds: &thresholds,
+        });
         assert_eq!(result.total, 2);
         assert_eq!(result.passed, 1);
         assert_eq!(result.failed, 1);
@@ -119,7 +152,10 @@ mod tests {
     fn evaluate_empty_thresholds_returns_empty_report() {
         let report = make_report_with_latency(50, 0.01);
         let thresholds: Vec<Threshold> = vec![];
-        let result = evaluate(EvaluateParams { report: &report, thresholds: &thresholds });
+        let result = evaluate(EvaluateParams {
+            report: &report,
+            thresholds: &thresholds,
+        });
         assert_eq!(result.total, 0);
         assert_eq!(result.passed, 0);
         assert_eq!(result.failed, 0);

@@ -1,17 +1,20 @@
-use std::collections::HashMap;
 use lmn_core::request_template::{
     definition::{FloatDef, FloatStrategy, TemplateDef},
     generator::GeneratorContext,
     renderer::{collect_once_placeholder_names, render, validate_placeholders},
 };
 use serde_json::json;
+use std::collections::HashMap;
 
 fn ctx_with_float(name: &str, value: f64) -> GeneratorContext {
     let mut defs = HashMap::new();
-    defs.insert(name.to_string(), TemplateDef::Float(FloatDef {
-        strategy: FloatStrategy::Exact(value),
-        decimals: 0,
-    }));
+    defs.insert(
+        name.to_string(),
+        TemplateDef::Float(FloatDef {
+            strategy: FloatStrategy::Exact(value),
+            decimals: 0,
+        }),
+    );
     GeneratorContext::new(defs)
 }
 

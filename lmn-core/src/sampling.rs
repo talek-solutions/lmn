@@ -15,7 +15,10 @@ pub struct SamplingParams {
 
 impl Default for SamplingParams {
     fn default() -> Self {
-        Self { vu_threshold: 50, reservoir_size: 100_000 }
+        Self {
+            vu_threshold: 50,
+            reservoir_size: 100_000,
+        }
     }
 }
 
@@ -166,14 +169,20 @@ mod tests {
 
     #[test]
     fn rate_scales_proportionally() {
-        let mut s = SamplingState::new(SamplingParams { vu_threshold: 50, reservoir_size: 100_000 });
+        let mut s = SamplingState::new(SamplingParams {
+            vu_threshold: 50,
+            reservoir_size: 100_000,
+        });
         s.set_active_vus(200);
         assert!((s.sample_rate() - 0.25).abs() < f64::EPSILON);
     }
 
     #[test]
     fn zero_threshold_always_collects() {
-        let mut s = SamplingState::new(SamplingParams { vu_threshold: 0, reservoir_size: 100_000 });
+        let mut s = SamplingState::new(SamplingParams {
+            vu_threshold: 0,
+            reservoir_size: 100_000,
+        });
         s.set_active_vus(10_000);
         assert_eq!(s.sample_rate(), 1.0);
         // should_collect must always be true when rate == 1.0
@@ -187,7 +196,7 @@ mod tests {
         let mut s = default_state();
         s.set_active_vus(100); // rate = 0.5
         s.set_active_vus(200); // rate = 0.25
-        s.set_active_vus(50);  // rate = 1.0 — min must not increase
+        s.set_active_vus(50); // rate = 1.0 — min must not increase
         assert!((s.min_sample_rate() - 0.25).abs() < f64::EPSILON);
     }
 
@@ -241,15 +250,20 @@ mod tests {
         s.set_active_vus(100); // rate = 0.5
         let collected: usize = (0..10_000).filter(|_| s.should_collect()).count();
         // Expect ~5000; allow ±15% tolerance
-        assert!(collected > 4_000 && collected < 6_000,
-            "expected ~5000 collected, got {collected}");
+        assert!(
+            collected > 4_000 && collected < 6_000,
+            "expected ~5000 collected, got {collected}"
+        );
     }
 
     // ── reservoir_slot ────────────────────────────────────────────────────────
 
     #[test]
     fn reservoir_pushes_while_not_full() {
-        let mut s = SamplingState::new(SamplingParams { vu_threshold: 0, reservoir_size: 5 });
+        let mut s = SamplingState::new(SamplingParams {
+            vu_threshold: 0,
+            reservoir_size: 5,
+        });
         for i in 0..5 {
             match s.reservoir_slot(i) {
                 ReservoirAction::Push => {}
@@ -260,7 +274,10 @@ mod tests {
 
     #[test]
     fn reservoir_never_pushes_when_full() {
-        let mut s = SamplingState::new(SamplingParams { vu_threshold: 0, reservoir_size: 5 });
+        let mut s = SamplingState::new(SamplingParams {
+            vu_threshold: 0,
+            reservoir_size: 5,
+        });
         // Bring total_seen_for_reservoir up to 5 (all Pushed).
         for i in 0..5 {
             s.reservoir_slot(i);
@@ -276,14 +293,20 @@ mod tests {
 
     #[test]
     fn reservoir_replace_index_is_in_bounds() {
-        let mut s = SamplingState::new(SamplingParams { vu_threshold: 0, reservoir_size: 5 });
+        let mut s = SamplingState::new(SamplingParams {
+            vu_threshold: 0,
+            reservoir_size: 5,
+        });
         // Fill reservoir first.
         for i in 0..5 {
             s.reservoir_slot(i);
         }
         for _ in 0..200 {
             if let ReservoirAction::Replace(idx) = s.reservoir_slot(5) {
-                assert!(idx < 5, "Replace index {idx} out of bounds for reservoir_size=5");
+                assert!(
+                    idx < 5,
+                    "Replace index {idx} out of bounds for reservoir_size=5"
+                );
             }
         }
     }
@@ -292,7 +315,10 @@ mod tests {
     fn reservoir_discard_rate_decreases_over_time() {
         // With a very large total_seen relative to reservoir_size, most slots
         // should be Discard. This verifies the algorithm converges correctly.
-        let mut s = SamplingState::new(SamplingParams { vu_threshold: 0, reservoir_size: 10 });
+        let mut s = SamplingState::new(SamplingParams {
+            vu_threshold: 0,
+            reservoir_size: 10,
+        });
         // Fill reservoir.
         for i in 0..10 {
             s.reservoir_slot(i);
@@ -308,8 +334,10 @@ mod tests {
                 ReservoirAction::Push => panic!("unexpected Push"),
             }
         }
-        assert!(discards > replaces,
-            "expected more discards than replaces at high total_seen; replaces={replaces}, discards={discards}");
+        assert!(
+            discards > replaces,
+            "expected more discards than replaces at high total_seen; replaces={replaces}, discards={discards}"
+        );
     }
 
     // ── sampling reflects history ─────────────────────────────────────────────
@@ -318,13 +346,13 @@ mod tests {
     fn is_sampling_reflects_history() {
         // min_sample_rate stays < 1.0 even if VUs later drop back below threshold.
         let mut s = default_state();
-        s.set_active_vus(10);  // rate = 1.0
+        s.set_active_vus(10); // rate = 1.0
         assert_eq!(s.min_sample_rate(), 1.0);
 
         s.set_active_vus(100); // rate = 0.5
         assert!((s.min_sample_rate() - 0.5).abs() < f64::EPSILON);
 
-        s.set_active_vus(10);  // rate = 1.0 again — min must not reset
+        s.set_active_vus(10); // rate = 1.0 again — min must not reset
         assert!((s.min_sample_rate() - 0.5).abs() < f64::EPSILON);
     }
 }
