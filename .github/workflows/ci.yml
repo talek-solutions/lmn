@@ -70,4 +70,5 @@ jobs:
           toolchain: stable
       - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae  # v2
       - run: cargo publish --dry-run -p lmn-core
-      - run: cargo publish --dry-run -p lmn
+      # lmn depends on lmn-core via path + version; dry-run for lmn requires
+      # lmn-core to already be live on crates.io — skip until after first publish.
