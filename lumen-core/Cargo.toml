@@ -2,6 +2,9 @@
 name = "lumen-core"
 version = "0.1.0"
 edition = "2024"
+description = "Core engine for the Lumen HTTP load testing CLI"
+license = "Apache-2.0"
+repository = "https://github.com/talek-solutions/lumen"
 
 [dependencies]
 rand.workspace = true

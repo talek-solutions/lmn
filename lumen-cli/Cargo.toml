@@ -2,6 +2,14 @@
 name = "lumen"
 version = "0.1.0"
 edition = "2024"
+description = "Fast HTTP load testing CLI with dynamic templates, thresholds, and load curves"
+license = "Apache-2.0"
+repository = "https://github.com/talek-solutions/lumen"
+homepage = "https://github.com/talek-solutions/lumen"
+documentation = "https://github.com/talek-solutions/lumen/blob/master/lumen-cli/CLI.md"
+keywords = ["load-testing", "http", "benchmark", "performance", "cli"]
+categories = ["command-line-utilities", "development-tools::testing"]
+readme = "../README.md"
 
 [[bin]]
 name = "lumen"
