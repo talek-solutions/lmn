@@ -1,21 +1,23 @@
 use std::path::PathBuf;
 
-use crate::cli::command::{ConfigureRequestArgs, ConfigureResponseArgs, HttpMethod, OutputFormat, RunArgs};
+use crate::cli::command::{
+    ConfigureRequestArgs, ConfigureResponseArgs, HttpMethod, OutputFormat, RunArgs,
+};
+use lmn_core::command::Body;
 use lmn_core::command::configure_template::{ConfigureTemplateCommand, TemplateKind};
 use lmn_core::command::run::{ExecutionMode, RequestSpec, RunCommand, SamplingConfig};
-use lmn_core::http::BodyFormat;
-use lmn_core::command::Body;
-use lmn_core::load_curve::LoadCurve;
 use lmn_core::config::{ExecutionConfig, LumenConfig, parse_config};
+use lmn_core::http::BodyFormat;
+use lmn_core::load_curve::LoadCurve;
 use lmn_core::threshold::Threshold;
 
 impl From<HttpMethod> for lmn_core::command::HttpMethod {
     fn from(m: HttpMethod) -> Self {
         match m {
-            HttpMethod::Get    => lmn_core::command::HttpMethod::Get,
-            HttpMethod::Post   => lmn_core::command::HttpMethod::Post,
-            HttpMethod::Put    => lmn_core::command::HttpMethod::Put,
-            HttpMethod::Patch  => lmn_core::command::HttpMethod::Patch,
+            HttpMethod::Get => lmn_core::command::HttpMethod::Get,
+            HttpMethod::Post => lmn_core::command::HttpMethod::Post,
+            HttpMethod::Put => lmn_core::command::HttpMethod::Put,
+            HttpMethod::Patch => lmn_core::command::HttpMethod::Patch,
             HttpMethod::Delete => lmn_core::command::HttpMethod::Delete,
         }
     }
@@ -25,10 +27,10 @@ impl From<HttpMethod> for lmn_core::command::HttpMethod {
 
 fn parse_method_str(s: &str) -> Result<lmn_core::command::HttpMethod, String> {
     match s.to_lowercase().as_str() {
-        "get"    => Ok(lmn_core::command::HttpMethod::Get),
-        "post"   => Ok(lmn_core::command::HttpMethod::Post),
-        "put"    => Ok(lmn_core::command::HttpMethod::Put),
-        "patch"  => Ok(lmn_core::command::HttpMethod::Patch),
+        "get" => Ok(lmn_core::command::HttpMethod::Get),
+        "post" => Ok(lmn_core::command::HttpMethod::Post),
+        "put" => Ok(lmn_core::command::HttpMethod::Put),
+        "patch" => Ok(lmn_core::command::HttpMethod::Patch),
         "delete" => Ok(lmn_core::command::HttpMethod::Delete),
         other => Err(format!(
             "unknown method '{other}' in config — expected one of: get, post, put, patch, delete"
@@ -41,7 +43,7 @@ fn parse_method_str(s: &str) -> Result<lmn_core::command::HttpMethod, String> {
 fn parse_output_str(s: &str) -> Result<OutputFormat, String> {
     match s.to_lowercase().as_str() {
         "table" => Ok(OutputFormat::Table),
-        "json"  => Ok(OutputFormat::Json),
+        "json" => Ok(OutputFormat::Json),
         other => Err(format!(
             "unknown output format '{other}' in config — expected one of: table, json"
         )),
@@ -107,8 +109,9 @@ impl TryFrom<RunArgs> for RunArgsResolved {
                         bytes.len()
                     ));
                 }
-                let contents = String::from_utf8(bytes)
-                    .map_err(|e| format!("config file '{}' is not valid UTF-8: {e}", path.display()))?;
+                let contents = String::from_utf8(bytes).map_err(|e| {
+                    format!("config file '{}' is not valid UTF-8: {e}", path.display())
+                })?;
                 parse_config(&contents)
                     .map_err(|e| format!("failed to parse config '{}': {e}", path.display()))
             })
@@ -139,29 +142,35 @@ impl TryFrom<RunArgs> for RunArgsResolved {
         };
 
         // ── output_file: CLI Some wins; else config value; else None ──────────
-        let output_file: Option<PathBuf> = args.output_file
-            .or_else(|| {
-                cfg.as_ref()
-                    .and_then(|c| c.run.as_ref()?.output_file.as_deref().map(PathBuf::from))
-            });
+        let output_file: Option<PathBuf> = args.output_file.or_else(|| {
+            cfg.as_ref()
+                .and_then(|c| c.run.as_ref()?.output_file.as_deref().map(PathBuf::from))
+        });
 
         // ── sample_threshold ──────────────────────────────────────────────────
-        let sample_threshold: usize = args.sample_threshold
+        let sample_threshold: usize = args
+            .sample_threshold
             .or_else(|| cfg.as_ref().and_then(|c| c.run.as_ref()?.sample_threshold))
             .unwrap_or(50);
 
         // ── result_buffer ─────────────────────────────────────────────────────
-        let result_buffer: usize = args.result_buffer
+        let result_buffer: usize = args
+            .result_buffer
             .or_else(|| cfg.as_ref().and_then(|c| c.run.as_ref()?.result_buffer))
             .unwrap_or(100_000);
 
         // ── request_count / concurrency ───────────────────────────────────────
-        let request_count: usize = args.request_count
+        let request_count: usize = args
+            .request_count
             .map(|v| v as usize)
-            .or_else(|| cfg.as_ref().and_then(|c| c.execution.as_ref()?.request_count))
+            .or_else(|| {
+                cfg.as_ref()
+                    .and_then(|c| c.execution.as_ref()?.request_count)
+            })
             .unwrap_or(100);
 
-        let concurrency: usize = args.concurrency
+        let concurrency: usize = args
+            .concurrency
             .map(|v| v as usize)
             .or_else(|| cfg.as_ref().and_then(|c| c.execution.as_ref()?.concurrency))
             .unwrap_or(100);
@@ -180,33 +189,47 @@ impl TryFrom<RunArgs> for RunArgsResolved {
                     "load curve file '{}' exceeds 1 MB limit ({} bytes)",
                     path.display(),
                     bytes.len()
-                ).into());
+                )
+                .into());
             }
-            let content = String::from_utf8(bytes)
-                .map_err(|e| format!("load curve file '{}' is not valid UTF-8: {e}", path.display()))?;
-            let curve = content.parse::<LoadCurve>()
-                .map_err(|e| format!("failed to parse load curve file '{}': {e}", path.display()))?;
-            curve.validate()
+            let content = String::from_utf8(bytes).map_err(|e| {
+                format!(
+                    "load curve file '{}' is not valid UTF-8: {e}",
+                    path.display()
+                )
+            })?;
+            let curve = content.parse::<LoadCurve>().map_err(|e| {
+                format!("failed to parse load curve file '{}': {e}", path.display())
+            })?;
+            curve
+                .validate()
                 .map_err(|e| format!("invalid load curve '{}': {e}", path.display()))?;
             ExecutionMode::Curve(curve)
         } else if let Some(ref c) = cfg {
             let exec_cfg: Option<&ExecutionConfig> = c.execution.as_ref();
             if exec_cfg.and_then(|e| e.stages.as_ref()).is_some() {
                 let exec = exec_cfg.unwrap().clone();
-                let curve = LoadCurve::try_from(exec)
-                    .map_err(|e| Box::<dyn std::error::Error>::from(e))?;
+                let curve =
+                    LoadCurve::try_from(exec).map_err(|e| Box::<dyn std::error::Error>::from(e))?;
                 ExecutionMode::Curve(curve)
             } else {
-                ExecutionMode::Fixed { request_count, concurrency }
+                ExecutionMode::Fixed {
+                    request_count,
+                    concurrency,
+                }
             }
         } else {
-            ExecutionMode::Fixed { request_count, concurrency }
+            ExecutionMode::Fixed {
+                request_count,
+                concurrency,
+            }
         };
 
         let thresholds = cfg.as_ref().and_then(|c| c.thresholds.clone());
 
         // Resolve host: CLI flag > config run.host > error.
-        let host = args.host
+        let host = args
+            .host
             .or_else(|| cfg.as_ref().and_then(|c| c.run.as_ref()?.host.clone()))
             .ok_or_else(|| "host is required: set -H or run.host in config file")?;
 
@@ -249,28 +272,41 @@ impl TryFrom<RunArgs> for RunArgsResolved {
         const MAX_HEADER_VALUE_LEN: usize = 8192;
 
         if header_map.len() > MAX_HEADERS {
-            return Err(format!("too many headers: {}, maximum is {MAX_HEADERS}", header_map.len()).into());
+            return Err(format!(
+                "too many headers: {}, maximum is {MAX_HEADERS}",
+                header_map.len()
+            )
+            .into());
         }
         for (name, value) in &header_map {
             if name.len() > MAX_HEADER_NAME_LEN {
                 return Err(format!(
                     "header name '{}...' exceeds maximum length of {MAX_HEADER_NAME_LEN} bytes",
                     &name[..MAX_HEADER_NAME_LEN.min(name.len())]
-                ).into());
+                )
+                .into());
             }
             if value.len() > MAX_HEADER_VALUE_LEN {
                 return Err(format!(
                     "header '{name}' value exceeds maximum length of {MAX_HEADER_VALUE_LEN} bytes"
-                ).into());
+                )
+                .into());
             }
         }
 
         // Warn on raw secrets BEFORE resolution (check original values, not resolved ones)
         for (name, raw_value) in &header_map {
             let lower_name = name.to_lowercase();
-            if ["authorization", "x-api-key", "token", "secret", "password", "x-auth"]
-                .iter()
-                .any(|k| lower_name.contains(k))
+            if [
+                "authorization",
+                "x-api-key",
+                "token",
+                "secret",
+                "password",
+                "x-auth",
+            ]
+            .iter()
+            .any(|k| lower_name.contains(k))
                 && !raw_value.contains("${")
                 && raw_value.len() > 4
             {
@@ -322,9 +358,10 @@ impl TryFrom<RunArgs> for RunArgsResolved {
 impl From<ConfigureRequestArgs> for ConfigureTemplateCommand {
     fn from(args: ConfigureRequestArgs) -> Self {
         ConfigureTemplateCommand {
-            body: args
-                .body
-                .map(|s| Body::Formatted { content: s, format: BodyFormat::Json }),
+            body: args.body.map(|s| Body::Formatted {
+                content: s,
+                format: BodyFormat::Json,
+            }),
             template_path: args.template_path,
             alias: args.alias,
             kind: TemplateKind::Request,
@@ -335,9 +372,10 @@ impl From<ConfigureRequestArgs> for ConfigureTemplateCommand {
 impl From<ConfigureResponseArgs> for ConfigureTemplateCommand {
     fn from(args: ConfigureResponseArgs) -> Self {
         ConfigureTemplateCommand {
-            body: args
-                .body
-                .map(|s| Body::Formatted { content: s, format: BodyFormat::Json }),
+            body: args.body.map(|s| Body::Formatted {
+                content: s,
+                format: BodyFormat::Json,
+            }),
             template_path: args.template_path,
             alias: args.alias,
             kind: TemplateKind::Response,
@@ -367,7 +405,9 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         struct Cleanup(std::path::PathBuf);
         impl Drop for Cleanup {
-            fn drop(&mut self) { let _ = std::fs::remove_file(&self.0); }
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
         }
         let _cleanup = Cleanup(path.clone());
 
@@ -397,15 +437,19 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         struct Cleanup(std::path::PathBuf);
         impl Drop for Cleanup {
-            fn drop(&mut self) { let _ = std::fs::remove_file(&self.0); }
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
         }
         let _cleanup = Cleanup(path.clone());
 
-        let make_cmd = || ConfigureTemplateCommand::from(ConfigureRequestArgs {
-            alias: alias.to_string(),
-            body: Some("{}".to_string()),
-            template_path: None,
-        });
+        let make_cmd = || {
+            ConfigureTemplateCommand::from(ConfigureRequestArgs {
+                alias: alias.to_string(),
+                body: Some("{}".to_string()),
+                template_path: None,
+            })
+        };
         assert!(make_cmd().execute().await.is_ok());
         assert!(make_cmd().execute().await.is_err());
     }
@@ -453,7 +497,10 @@ mod tests {
     fn output_flag_absent_is_none() {
         use clap::Parser as _;
         let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
-            "lmn", "run", "--host", "http://localhost:3000",
+            "lmn",
+            "run",
+            "--host",
+            "http://localhost:3000",
         ])
         .expect("parse failed");
         let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
@@ -466,20 +513,31 @@ mod tests {
     fn output_flag_accepts_json() {
         use clap::Parser as _;
         let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
-            "lmn", "run", "--host", "http://localhost:3000", "--output", "json",
+            "lmn",
+            "run",
+            "--host",
+            "http://localhost:3000",
+            "--output",
+            "json",
         ])
         .expect("parse failed");
         let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
             panic!("expected Run variant");
         };
-        assert!(matches!(args.output, Some(crate::cli::command::OutputFormat::Json)));
+        assert!(matches!(
+            args.output,
+            Some(crate::cli::command::OutputFormat::Json)
+        ));
     }
 
     #[test]
     fn output_file_is_none_by_default() {
         use clap::Parser as _;
         let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
-            "lmn", "run", "--host", "http://localhost:3000",
+            "lmn",
+            "run",
+            "--host",
+            "http://localhost:3000",
         ])
         .expect("parse failed");
         let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
@@ -492,7 +550,10 @@ mod tests {
     fn config_flag_is_none_by_default() {
         use clap::Parser as _;
         let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
-            "lmn", "run", "--host", "http://localhost:3000",
+            "lmn",
+            "run",
+            "--host",
+            "http://localhost:3000",
         ])
         .expect("parse failed");
         let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
@@ -505,7 +566,12 @@ mod tests {
     fn config_flag_accepts_path() {
         use clap::Parser as _;
         let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
-            "lmn", "run", "--host", "http://localhost:3000", "--config", "lumen.yaml",
+            "lmn",
+            "run",
+            "--host",
+            "http://localhost:3000",
+            "--config",
+            "lumen.yaml",
         ])
         .expect("parse failed");
         let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
@@ -518,7 +584,12 @@ mod tests {
     fn config_short_flag_accepts_path() {
         use clap::Parser as _;
         let cli = crate::cli::command::LoadTestRunCli::try_parse_from([
-            "lmn", "run", "--host", "http://localhost:3000", "-f", "ci.yaml",
+            "lmn",
+            "run",
+            "--host",
+            "http://localhost:3000",
+            "-f",
+            "ci.yaml",
         ])
         .expect("parse failed");
         let crate::cli::command::LoadTestRunCli::Run(args) = cli else {
@@ -538,7 +609,8 @@ mod tests {
 
     #[test]
     fn try_from_run_args_with_nonexistent_curve_file_fails() {
-        let result = RunArgsResolved::try_from(make_run_args(Some(PathBuf::from("nonexistent-curve.json"))));
+        let result =
+            RunArgsResolved::try_from(make_run_args(Some(PathBuf::from("nonexistent-curve.json"))));
         assert!(result.is_err());
     }
 
@@ -592,14 +664,18 @@ mod tests {
         let result = RunArgsResolved::try_from(args);
         assert!(result.is_err());
         let msg = result.err().unwrap().to_string();
-        assert!(msg.contains("host is required"), "expected host error, got: {msg}");
+        assert!(
+            msg.contains("host is required"),
+            "expected host error, got: {msg}"
+        );
     }
 
     #[test]
     fn host_from_config_used_when_cli_host_absent() {
         use std::io::Write;
         let mut f = tempfile::NamedTempFile::new().unwrap();
-        f.write_all(b"run:\n  host: http://from-config:8080\n").unwrap();
+        f.write_all(b"run:\n  host: http://from-config:8080\n")
+            .unwrap();
 
         let mut args = make_run_args(None);
         args.host = None;
@@ -614,7 +690,8 @@ mod tests {
     fn cli_host_takes_precedence_over_config_host() {
         use std::io::Write;
         let mut f = tempfile::NamedTempFile::new().unwrap();
-        f.write_all(b"run:\n  host: http://from-config:8080\n").unwrap();
+        f.write_all(b"run:\n  host: http://from-config:8080\n")
+            .unwrap();
 
         let mut args = make_run_args(None);
         args.host = Some("http://from-cli:9090".to_string());
@@ -631,7 +708,8 @@ mod tests {
     fn method_from_config_used_when_cli_is_default() {
         use std::io::Write;
         let mut f = tempfile::NamedTempFile::new().unwrap();
-        f.write_all(b"run:\n  host: http://localhost:3000\n  method: post\n").unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\n  method: post\n")
+            .unwrap();
 
         let mut args = make_run_args(None);
         args.host = None;
@@ -649,7 +727,8 @@ mod tests {
     fn output_format_from_config_used_when_cli_is_default() {
         use std::io::Write;
         let mut f = tempfile::NamedTempFile::new().unwrap();
-        f.write_all(b"run:\n  host: http://localhost:3000\n  output: json\n").unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\n  output: json\n")
+            .unwrap();
 
         let mut args = make_run_args(None);
         args.host = None;
@@ -667,7 +746,8 @@ mod tests {
     fn output_file_from_config_used_when_cli_not_set() {
         use std::io::Write;
         let mut f = tempfile::NamedTempFile::new().unwrap();
-        f.write_all(b"run:\n  host: http://localhost:3000\n  output_file: /tmp/out.json\n").unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\n  output_file: /tmp/out.json\n")
+            .unwrap();
 
         let mut args = make_run_args(None);
         args.host = None;
@@ -685,7 +765,8 @@ mod tests {
     fn sample_threshold_from_config() {
         use std::io::Write;
         let mut f = tempfile::NamedTempFile::new().unwrap();
-        f.write_all(b"run:\n  host: http://localhost:3000\n  sample_threshold: 200\n").unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\n  sample_threshold: 200\n")
+            .unwrap();
 
         let mut args = make_run_args(None);
         args.host = None;
@@ -700,7 +781,8 @@ mod tests {
     fn result_buffer_from_config() {
         use std::io::Write;
         let mut f = tempfile::NamedTempFile::new().unwrap();
-        f.write_all(b"run:\n  host: http://localhost:3000\n  result_buffer: 50000\n").unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\n  result_buffer: 50000\n")
+            .unwrap();
 
         let mut args = make_run_args(None);
         args.host = None;
@@ -733,7 +815,8 @@ mod tests {
     fn invalid_method_string_in_config_returns_clear_error() {
         use std::io::Write;
         let mut f = tempfile::NamedTempFile::new().unwrap();
-        f.write_all(b"run:\n  host: http://localhost:3000\n  method: FOO\n").unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\n  method: FOO\n")
+            .unwrap();
 
         let mut args = make_run_args(None);
         args.host = None;
@@ -747,14 +830,18 @@ mod tests {
             msg.contains("unknown method 'foo'") || msg.contains("unknown method"),
             "expected method error, got: {msg}"
         );
-        assert!(msg.contains("get, post, put, patch, delete"), "error should list valid methods, got: {msg}");
+        assert!(
+            msg.contains("get, post, put, patch, delete"),
+            "error should list valid methods, got: {msg}"
+        );
     }
 
     #[test]
     fn invalid_output_string_in_config_returns_clear_error() {
         use std::io::Write;
         let mut f = tempfile::NamedTempFile::new().unwrap();
-        f.write_all(b"run:\n  host: http://localhost:3000\n  output: FOO\n").unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\n  output: FOO\n")
+            .unwrap();
 
         let mut args = make_run_args(None);
         args.host = None;
@@ -768,14 +855,20 @@ mod tests {
             msg.contains("unknown output format"),
             "expected output format error, got: {msg}"
         );
-        assert!(msg.contains("table, json"), "error should list valid formats, got: {msg}");
+        assert!(
+            msg.contains("table, json"),
+            "error should list valid formats, got: {msg}"
+        );
     }
 
     #[test]
     fn cli_header_flag_overrides_config_header() {
         use std::io::Write;
         let mut f = tempfile::NamedTempFile::new().unwrap();
-        f.write_all(b"run:\n  host: http://localhost:3000\n  headers:\n    Authorization: config-token\n").unwrap();
+        f.write_all(
+            b"run:\n  host: http://localhost:3000\n  headers:\n    Authorization: config-token\n",
+        )
+        .unwrap();
 
         let mut args = make_run_args(None);
         args.host = None;
@@ -783,22 +876,38 @@ mod tests {
         args.headers = vec!["Authorization: Bearer cli-token".to_string()];
 
         let result = RunArgsResolved::try_from(args).expect("should succeed");
-        let auth = result.request.headers.iter()
+        let auth = result
+            .request
+            .headers
+            .iter()
             .find(|(k, _)| k.eq_ignore_ascii_case("Authorization"))
             .map(|(_, v)| v.as_str());
-        assert_eq!(auth, Some("Bearer cli-token"), "CLI header should override config header");
+        assert_eq!(
+            auth,
+            Some("Bearer cli-token"),
+            "CLI header should override config header"
+        );
         // must be exactly one Authorization entry (no duplicates)
-        let count = result.request.headers.iter()
+        let count = result
+            .request
+            .headers
+            .iter()
             .filter(|(k, _)| k.eq_ignore_ascii_case("Authorization"))
             .count();
-        assert_eq!(count, 1, "expected exactly one Authorization header after override");
+        assert_eq!(
+            count, 1,
+            "expected exactly one Authorization header after override"
+        );
     }
 
     #[test]
     fn config_headers_used_when_no_cli_headers() {
         use std::io::Write;
         let mut f = tempfile::NamedTempFile::new().unwrap();
-        f.write_all(b"run:\n  host: http://localhost:3000\n  headers:\n    X-Custom: from-config\n").unwrap();
+        f.write_all(
+            b"run:\n  host: http://localhost:3000\n  headers:\n    X-Custom: from-config\n",
+        )
+        .unwrap();
 
         let mut args = make_run_args(None);
         args.host = None;
@@ -806,10 +915,17 @@ mod tests {
         // args.headers is already vec![] from make_run_args
 
         let result = RunArgsResolved::try_from(args).expect("should succeed");
-        let custom = result.request.headers.iter()
+        let custom = result
+            .request
+            .headers
+            .iter()
             .find(|(k, _)| k.eq_ignore_ascii_case("X-Custom"))
             .map(|(_, v)| v.as_str());
-        assert_eq!(custom, Some("from-config"), "config header should be present when no CLI headers");
+        assert_eq!(
+            custom,
+            Some("from-config"),
+            "config header should be present when no CLI headers"
+        );
     }
 
     #[test]
@@ -825,10 +941,17 @@ mod tests {
         args.config = Some(f.path().to_path_buf());
 
         let result = RunArgsResolved::try_from(args).expect("should succeed");
-        let token = result.request.headers.iter()
+        let token = result
+            .request
+            .headers
+            .iter()
             .find(|(k, _)| k.eq_ignore_ascii_case("X-Token"))
             .map(|(_, v)| v.as_str());
-        assert_eq!(token, Some("resolved-secret"), "env var in header value should be resolved");
+        assert_eq!(
+            token,
+            Some("resolved-secret"),
+            "env var in header value should be resolved"
+        );
     }
 
     #[test]
@@ -844,7 +967,13 @@ mod tests {
         let result = RunArgsResolved::try_from(args);
         assert!(result.is_err(), "expected error for too many headers");
         let msg = result.err().unwrap().to_string();
-        assert!(msg.contains("too many headers"), "expected 'too many headers' error, got: {msg}");
-        assert!(msg.contains("64"), "error should mention the limit, got: {msg}");
+        assert!(
+            msg.contains("too many headers"),
+            "expected 'too many headers' error, got: {msg}"
+        );
+        assert!(
+            msg.contains("64"),
+            "error should mention the limit, got: {msg}"
+        );
     }
 }
