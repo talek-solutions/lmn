@@ -97,7 +97,7 @@ pub fn render(template: &Value, ctx: &GeneratorContext, rng: &mut impl Rng) -> V
 
 /// Validates that every `{{name}}` placeholder in the body has a corresponding
 /// definition. Returns an error naming the first unknown placeholder found.
-#[instrument(name = "lumen.template.validate_placeholders", skip(body, defs), fields(def_count = defs.len()))]
+#[instrument(name = "lmn.template.validate_placeholders", skip(body, defs), fields(def_count = defs.len()))]
 pub fn validate_placeholders(
     body: &Value,
     defs: &HashMap<String, TemplateDef>,

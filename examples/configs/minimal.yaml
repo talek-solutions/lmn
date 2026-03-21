@@ -1,4 +1,4 @@
-# lumen minimal config
+# lmn minimal config
 # Provides a host. All values can be overridden by CLI flags.
 
 run:

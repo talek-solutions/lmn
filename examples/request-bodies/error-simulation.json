@@ -4,7 +4,7 @@
     "code": "{{error_code}}",
     "message": "{{error_message}}"
   },
-  "_lumen_metadata_templates": {
+  "_lmn_metadata_templates": {
     "error_code": {
       "type": "string",
       "details": {

@@ -14,7 +14,7 @@ use tracing::instrument;
 pub use error::TemplateError;
 use generator::GeneratorContext;
 
-const METADATA_KEY: &str = "_lumen_metadata_templates";
+const METADATA_KEY: &str = "_lmn_metadata_templates";
 pub(crate) const ENV_PLACEHOLDER_PREFIX: &str = "ENV:";
 
 // ── Placeholder parsing ───────────────────────────────────────────────────────
@@ -98,7 +98,7 @@ pub struct Template {
 impl Template {
     /// Reads, parses, and fully validates a template file.
     /// Fails fast on any invalid configuration before any requests are made.
-    #[instrument(name = "lumen.template.parse", fields(path = %path.display()))]
+    #[instrument(name = "lmn.template.parse", fields(path = %path.display()))]
     pub fn parse(path: &Path) -> Result<Self, TemplateError> {
         let content = std::fs::read_to_string(path)?;
         let mut root: serde_json::Map<String, Value> = serde_json::from_str(&content)?;
@@ -145,7 +145,7 @@ impl Template {
 
     /// Pre-generates `n` request bodies, each with independently rendered placeholders.
     /// `:once` placeholders share the same value across all `n` bodies.
-    #[instrument(name = "lumen.template.render", skip(self), fields(n))]
+    #[instrument(name = "lmn.template.render", skip(self), fields(n))]
     pub fn pre_generate(&self, n: usize) -> Vec<String> {
         let mut rng = rand::thread_rng();
         (0..n)
@@ -198,7 +198,7 @@ mod tests {
     fn parse_fails_on_circular_reference() {
         let f = write_temp(r#"{
             "field": "{{a}}",
-            "_lumen_metadata_templates": {
+            "_lmn_metadata_templates": {
                 "a": { "type": "object", "composition": { "x": "{{b}}" } },
                 "b": { "type": "object", "composition": { "y": "{{a}}" } }
             }
@@ -260,9 +260,9 @@ mod tests {
 
     #[test]
     fn parse_env_placeholder_no_def_required() {
-        // Template with ENV: placeholder and empty _lumen_metadata_templates should succeed
+        // Template with ENV: placeholder and empty _lmn_metadata_templates should succeed
         unsafe { std::env::set_var("LUMEN_TEST_TOKEN", "anyvalue") };
-        let f = write_temp(r#"{"token": "{{ENV:LUMEN_TEST_TOKEN}}", "_lumen_metadata_templates": {}}"#);
+        let f = write_temp(r#"{"token": "{{ENV:LUMEN_TEST_TOKEN}}", "_lmn_metadata_templates": {}}"#);
         assert!(Template::parse(f.path()).is_ok());
     }
 

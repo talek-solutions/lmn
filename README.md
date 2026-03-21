@@ -23,12 +23,12 @@ Most load testers answer "how fast is my API?" Lumen also answers "did this rele
 ```bash
 lmn run -H https://api.example.com/orders \
   --header "Authorization: Bearer ${API_TOKEN}" \
-  -f lumen.yaml
+  -f lmn.yaml
 # exits 0 if thresholds pass, 2 if they fail
 ```
 
 ```yaml
-# lumen.yaml
+# lmn.yaml
 execution:
   request_count: 1000
   concurrency: 50
@@ -57,7 +57,7 @@ cargo install lmn
 **From source:**
 
 ```bash
-cargo install --path lumen-cli
+cargo install --path lmn-cli
 ```
 
 **Docker:**
@@ -86,7 +86,7 @@ lmn run -H https://api.example.com/orders \
   --header "Authorization: Bearer ${API_TOKEN}"
 
 # Run from a YAML config file
-lmn run -f lumen.yaml
+lmn run -f lmn.yaml
 ```
 
 ---
@@ -131,7 +131,7 @@ Generate a unique request body per request from a JSON template:
   "userId": "{{user_id}}",
   "amount": "{{amount}}",
   "apiKey": "{{ENV:API_KEY}}",
-  "_lumen_metadata_templates": {
+  "_lmn_metadata_templates": {
     "user_id": {
       "type": "string",
       "details": { "choice": ["user-001", "user-002", "user-003"] }
@@ -169,7 +169,7 @@ See [`lmn-core/TEMPLATES.md`](lmn-core/TEMPLATES.md) for the full placeholder re
 Scale virtual users over time with a staged load curve:
 
 ```yaml
-# lumen.yaml
+# lmn.yaml
 run:
   host: https://api.example.com
   method: post
@@ -192,7 +192,7 @@ thresholds:
 ```
 
 ```bash
-lmn run -f lumen.yaml
+lmn run -f lmn.yaml
 ```
 
 ---
@@ -218,7 +218,7 @@ jobs:
         run: cargo install lmn
 
       - name: Run load test
-        run: lmn run -f lumen.yaml
+        run: lmn run -f lmn.yaml
         env:
           API_TOKEN: ${{ secrets.API_TOKEN }}
 ```
@@ -245,7 +245,7 @@ lmn run -H https://api.example.com
 Start a local Tempo + Grafana stack from `lmn-cli/`:
 
 ```bash
-cd lumen-cli && docker compose up -d
+cd lmn-cli && docker compose up -d
 # Grafana at http://localhost:3000 → Explore → Tempo
 ```
 
@@ -277,7 +277,7 @@ lmn run -H https://httpbin.org/get --output-file run.json
 ## Project Structure
 
 ```
-lumen/
+lmn/
 ├── lmn-core/     # engine, templates, HTTP, thresholds (library crate)
 └── lmn-cli/      # CLI entry point, OTel setup (binary crate)
 ```

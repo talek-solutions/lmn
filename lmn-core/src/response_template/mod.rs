@@ -16,7 +16,7 @@ pub struct ResponseTemplate {
 }
 
 impl ResponseTemplate {
-    #[instrument(name = "lumen.response_template.parse", fields(path = %path.display()))]
+    #[instrument(name = "lmn.response_template.parse", fields(path = %path.display()))]
     pub fn parse(path: &Path) -> Result<Self, ResponseTemplateError> {
         let content = std::fs::read_to_string(path)?;
         let root: Value = serde_json::from_str(&content)?;

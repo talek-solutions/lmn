@@ -56,7 +56,7 @@ pub fn validate_all(
 
 // ── Circular reference detection ──────────────────────────────────────────────
 
-#[instrument(name = "lumen.template.check_circular_refs", skip(defs), fields(def_count = defs.len()))]
+#[instrument(name = "lmn.template.check_circular_refs", skip(defs), fields(def_count = defs.len()))]
 pub fn check_circular_refs(defs: &HashMap<String, TemplateDef>) -> Result<(), TemplateError> {
     for def in defs.values() {
         if let TemplateDef::Object(obj) = def {

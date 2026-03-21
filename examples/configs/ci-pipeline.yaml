@@ -1,4 +1,4 @@
-# lumen CI pipeline config — curve mode example
+# lmn CI pipeline config — curve mode example
 # Designed for automated quality gates in CI using time-based VU scaling.
 # CLI flags (-H, etc.) take precedence and can override values per-run.
 

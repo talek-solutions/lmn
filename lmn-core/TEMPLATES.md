@@ -7,7 +7,7 @@ Templates let you define JSON request bodies with dynamic placeholders. Each req
 ## Usage
 
 ```
-lumen run -H <host> -M post -T path/to/template.json
+lmn run -H <host> -M post -T path/to/template.json
 ```
 
 `-T` / `--request-template` is mutually exclusive with `-B` / `--body`.
@@ -21,7 +21,7 @@ A template file is a standard JSON object with two parts:
 ```json
 {
   "<field>": "{{<placeholder>}}",
-  "_lumen_metadata_templates": {
+  "_lmn_metadata_templates": {
     "<placeholder>": { ... }
   }
 }
@@ -30,7 +30,7 @@ A template file is a standard JSON object with two parts:
 | Part | Purpose |
 |---|---|
 | Body fields | The JSON shape sent in each request. Values that look like `{{name}}` are substituted at generation time. Non-placeholder values are copied as-is. |
-| `_lumen_metadata_templates` | Defines how each placeholder generates its value. Stripped from the request body automatically. |
+| `_lmn_metadata_templates` | Defines how each placeholder generates its value. Stripped from the request body automatically. |
 
 ---
 
@@ -59,10 +59,10 @@ Injects the value of an environment variable at template parse time.
 
 **Behaviour:**
 
-- No `_lumen_metadata_templates` entry is required or allowed — `ENV:` placeholders are built-in.
+- No `_lmn_metadata_templates` entry is required or allowed — `ENV:` placeholders are built-in.
 - The env var is read once when the template is parsed, before any requests fire (fail-closed).
-- If the named env var is not set, lumen exits immediately with an error.
-- If the var name is empty (`{{ENV:}}`), lumen exits immediately with an error.
+- If the named env var is not set, lmn exits immediately with an error.
+- If the var name is empty (`{{ENV:}}`), lmn exits immediately with an error.
 - `{{ENV:VAR_NAME:once}}` is **not supported**. The `:once` suffix is reserved for regular generator placeholders. Use `{{ENV:VAR_NAME}}` — it is already resolved once at startup and the same value is reused across all requests in the run.
 
 ---
@@ -178,7 +178,7 @@ Composes other placeholders into a nested JSON object. Each field in `compositio
 {
   "name": "{{username:once}}",
   "payment": "{{money}}",
-  "_lumen_metadata_templates": {
+  "_lmn_metadata_templates": {
     "username": {
       "type": "string",
       "details": {
@@ -217,7 +217,7 @@ In this example `username` is fixed for the entire run (`:once`), while `payment
 All of the following are checked at startup before any request fires:
 
 - Template file exists and is valid JSON
-- Every `{{placeholder}}` in the body has a definition in `_lumen_metadata_templates`
+- Every `{{placeholder}}` in the body has a definition in `_lmn_metadata_templates`
 - Every `composition` reference points to a defined placeholder
 - No circular references between `object` compositions
 - All numeric constraints are coherent (`min ≤ max`, `uppercase_count + lowercase_count ≤ min_length`, etc.)
@@ -236,7 +236,7 @@ Response templates let you track specific fields from response bodies. You defin
 ## Usage
 
 ```
-lumen run -H <host> -M post -T path/to/template.json -S path/to/response-template.json
+lmn run -H <host> -M post -T path/to/template.json -S path/to/response-template.json
 ```
 
 `-S` / `--response-template` is optional and independent of `-T` / `--request-template`.
@@ -315,7 +315,7 @@ A mismatch occurs when:
 
 **CLI:**
 ```
-lumen run -H https://api.example.com/pay -M post -T request.json -S response.json
+lmn run -H https://api.example.com/pay -M post -T request.json -S response.json
 ```
 
 After the run, the statistics section will include:
@@ -328,17 +328,17 @@ After the run, the statistics section will include:
 
 ### Adding a new generator type
 
-1. Add a variant to `RawTemplateDef` in `lumen-core/src/request_template/definition.rs` with its raw serde fields
+1. Add a variant to `RawTemplateDef` in `lmn-core/src/request_template/definition.rs` with its raw serde fields
 2. Add a corresponding validated struct and variant to `TemplateDef`
 3. Implement validation in the `validate()` function
-4. Implement `Generate` for the new type in `lumen-core/src/request_template/generator.rs`
+4. Implement `Generate` for the new type in `lmn-core/src/request_template/generator.rs`
 5. Add a match arm in `GeneratorContext::generate_def`
 
 ### Adding a new body format (e.g. XML, form-data)
 
-The `BodyFormat` enum in `lumen-core/src/command/run.rs` is the extension point:
+The `BodyFormat` enum in `lmn-core/src/command/run.rs` is the extension point:
 
 1. Add a new variant to `BodyFormat`
 2. Add a corresponding CLI value to the format selector (when introduced)
 3. Add the `Content-Type` mapping in the `match format` arm inside `run_concurrent_requests`
-4. Add a `value_parser` for the new format in `lumen-cli/src/cli/command.rs` (e.g. XML validation)
+4. Add a `value_parser` for the new format in `lmn-cli/src/cli/command.rs` (e.g. XML validation)

@@ -23,7 +23,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://my-collector:4318
 Runs until you press Ctrl+C. Endless mode is the default — no `-R` flag needed.
 
 ```bash
-cargo run -p lumen -- run -H https://httpbin.org/get
+cargo run -p lmn -- run -H https://httpbin.org/get
 ```
 
 ---
@@ -33,7 +33,7 @@ cargo run -p lumen -- run -H https://httpbin.org/get
 Fires exactly 100 requests, then exits.
 
 ```bash
-cargo run -p lumen -- run -H https://httpbin.org/get -R 100
+cargo run -p lmn -- run -H https://httpbin.org/get -R 100
 ```
 
 ---
@@ -45,7 +45,7 @@ to set the VU count at which sampling activates, and `--result-buffer` to cap th
 in-memory reservoir size.
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://httpbin.org/get \
   -L examples/load-curves/ramp.json \
   --sample-threshold 50 \
@@ -57,7 +57,7 @@ cargo run -p lumen -- run \
 ## 4. POST with an inline body
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://httpbin.org/post \
   -M post \
   -B '{"name":"alice","email":"alice@example.com"}'
@@ -70,7 +70,7 @@ cargo run -p lumen -- run \
 1000 requests with 50 in-flight at a time.
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://httpbin.org/post \
   -M post \
   -R 1000 \
@@ -85,7 +85,7 @@ cargo run -p lumen -- run \
 Generates a unique body per request using the placeholder template.
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://httpbin.org/post \
   -M post \
   -R 500 \
@@ -96,11 +96,11 @@ cargo run -p lumen -- run \
 To store it as a reusable alias first:
 
 ```bash
-cargo run -p lumen -- configure-request \
+cargo run -p lmn -- configure-request \
   -A create-order \
   -T examples/request-bodies/string-and-float.json
 
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://httpbin.org/post \
   -M post \
   -R 500 \
@@ -116,7 +116,7 @@ httpbin echoes the request body back under a `json` key. The example response
 template extracts a nested field from it.
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://httpbin.org/post \
   -M post \
   -R 200 \
@@ -129,7 +129,7 @@ cargo run -p lumen -- run \
 ## 8. Full example
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://httpbin.org/post \
   -M post \
   -R 1000 \
@@ -146,7 +146,7 @@ cargo run -p lumen -- run \
 Gradually increases to 50 VUs over 30s, holds for 1 minute, then ramps back to 0.
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://httpbin.org/get \
   -L examples/load-curves/ramp.json
 ```
@@ -159,7 +159,7 @@ Runs at 20 VUs, instantly spikes to 100 for 10 seconds, then drops back to 20.
 Useful for verifying recovery after a burst event.
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://httpbin.org/post \
   -M post \
   -L examples/load-curves/spike.json
@@ -173,7 +173,7 @@ Steps through 10 → 50 → 100 VUs in 30-second increments to find the concurre
 level at which the service degrades.
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://httpbin.org/get \
   -L examples/load-curves/stepped.json
 ```
@@ -186,7 +186,7 @@ Combines a ramp curve with per-VU dynamic request body generation.
 `-R` and `-C` must not be used alongside `-L`.
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://httpbin.org/post \
   -M post \
   -T examples/request-bodies/string-and-float.json \
@@ -201,7 +201,7 @@ Emits a versioned JSON document instead of the ASCII table. Useful for piping in
 `jq` or any other tool that consumes structured data.
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://httpbin.org/get \
   -R 500 \
   --output json
@@ -210,7 +210,7 @@ cargo run -p lumen -- run \
 Extract a single metric with `jq`:
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://httpbin.org/get \
   -R 500 \
   --output json | jq '.requests.error_rate'
@@ -219,7 +219,7 @@ cargo run -p lumen -- run \
 Use it as a CI pass/fail gate:
 
 ```bash
-error_rate=$(cargo run -p lumen -- run \
+error_rate=$(cargo run -p lmn -- run \
   -H https://api.example.com/health \
   -R 1000 \
   --output json | jq '.requests.error_rate')
@@ -238,7 +238,7 @@ Writes the JSON report to `report.json` while the human-readable table still
 appears in the terminal. The file is always JSON regardless of `--output`.
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://httpbin.org/get \
   -R 1000 \
   --output-file report.json
@@ -251,7 +251,7 @@ cargo run -p lumen -- run \
 Produces JSON on stdout for piping and saves a copy to disk in one run.
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://httpbin.org/post \
   -M post \
   -R 1000 \
@@ -268,7 +268,7 @@ Runs a ramp curve and emits a JSON report. The `curve_stages` field in the outpu
 contains per-stage latency, throughput, and error rate.
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://httpbin.org/get \
   -L examples/load-curves/ramp.json \
   --output json | jq '.curve_stages[] | {index, target_vus, throughput_rps: .throughput_rps}'
@@ -277,7 +277,7 @@ cargo run -p lumen -- run \
 Save the full report for later comparison:
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://httpbin.org/get \
   -L examples/load-curves/stepped.json \
   --output-file stepped-report.json
@@ -292,7 +292,7 @@ can still override individual values — here `-R 200` overrides `request_count`
 from the config.
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -f examples/configs/ci-pipeline.yaml \
   -R 200
 ```
@@ -301,7 +301,7 @@ The process exits with code 0 when all thresholds pass, or code 2 when one or
 more fail. Use `$?` to check in shell scripts:
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -f examples/configs/ci-pipeline.yaml
 echo "exit code: $?"
 ```
@@ -314,7 +314,7 @@ Runs a fixed-count test driven entirely by the CI pipeline config, then fails
 the pipeline if any threshold is exceeded.
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -f examples/configs/ci-pipeline.yaml \
   --output json \
   --output-file ci-report.json
@@ -328,7 +328,7 @@ fi
 To combine a load curve with threshold enforcement:
 
 ```bash
-cargo run -p lumen -- run \
+cargo run -p lmn -- run \
   -H https://api.example.com \
   -f examples/configs/ci-pipeline.yaml \
   -L examples/load-curves/ramp.json \
