@@ -9,7 +9,7 @@ impl Generate for StringDef {
     fn generate(&self, rng: &mut impl Rng) -> Value {
         match &self.strategy {
             StringStrategy::Choice(choices) => {
-                let idx = rng.gen_range(0..choices.len());
+                let idx = rng.random_range(0..choices.len());
                 Value::String(choices[idx].clone())
             }
             StringStrategy::Generated(config) => Value::String(generate_string(config, rng)),
@@ -20,27 +20,27 @@ impl Generate for StringDef {
 fn generate_string(config: &StringGenConfig, rng: &mut impl Rng) -> String {
     let length = match config.length {
         LengthSpec::Exact(n) => n,
-        LengthSpec::Range { min, max } => rng.gen_range(min..=max),
+        LengthSpec::Range { min, max } => rng.random_range(min..=max),
     };
 
     let mut chars: Vec<char> = Vec::with_capacity(length);
 
     for _ in 0..config.uppercase_count {
-        chars.push(rng.gen_range(b'A'..=b'Z') as char);
+        chars.push(rng.random_range(b'A'..=b'Z') as char);
     }
     for _ in 0..config.lowercase_count {
-        chars.push(rng.gen_range(b'a'..=b'z') as char);
+        chars.push(rng.random_range(b'a'..=b'z') as char);
     }
 
     let remaining = length.saturating_sub(config.uppercase_count + config.lowercase_count);
     for _ in 0..remaining {
         if !config.special_chars.is_empty() {
-            let idx = rng.gen_range(0..config.special_chars.len());
+            let idx = rng.random_range(0..config.special_chars.len());
             chars.push(config.special_chars[idx]);
         } else {
             const ALPHANUM: &[u8] =
                 b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-            chars.push(ALPHANUM[rng.gen_range(0..ALPHANUM.len())] as char);
+            chars.push(ALPHANUM[rng.random_range(0..ALPHANUM.len())] as char);
         }
     }
 
@@ -59,7 +59,7 @@ mod tests {
         let def = StringDef {
             strategy: StringStrategy::Choice(choices.clone()),
         };
-        let val = def.generate(&mut rand::thread_rng());
+        let val = def.generate(&mut rand::rng());
         assert!(choices.contains(&val.as_str().unwrap().to_string()));
     }
 
@@ -73,7 +73,7 @@ mod tests {
                 special_chars: vec![],
             }),
         };
-        let val = def.generate(&mut rand::thread_rng());
+        let val = def.generate(&mut rand::rng());
         assert_eq!(val.as_str().unwrap().len(), 10);
     }
 
@@ -87,7 +87,7 @@ mod tests {
                 special_chars: vec![],
             }),
         };
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         for _ in 0..20 {
             let len = def.generate(&mut rng).as_str().unwrap().len();
             assert!((5..=10).contains(&len));

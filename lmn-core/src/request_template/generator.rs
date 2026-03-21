@@ -81,7 +81,7 @@ mod tests {
     #[test]
     fn generate_by_name_returns_null_for_unknown() {
         let ctx = GeneratorContext::new(HashMap::new());
-        let val = ctx.generate_by_name("unknown", &mut rand::thread_rng());
+        let val = ctx.generate_by_name("unknown", &mut rand::rng());
         assert_eq!(val, Value::Null);
     }
 
@@ -90,7 +90,7 @@ mod tests {
         let mut defs = HashMap::new();
         defs.insert("price".to_string(), float_exact(10.0));
         let ctx = GeneratorContext::new(defs);
-        let val = ctx.generate_by_name("price", &mut rand::thread_rng());
+        let val = ctx.generate_by_name("price", &mut rand::rng());
         assert!(val.is_number());
     }
 
@@ -104,7 +104,7 @@ mod tests {
                 .into_iter()
                 .collect(),
         };
-        let val = ctx.generate_object(&obj, &mut rand::thread_rng());
+        let val = ctx.generate_object(&obj, &mut rand::rng());
         assert!(val["amount"].is_number());
     }
 }

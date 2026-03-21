@@ -199,22 +199,21 @@ mod tests {
     #[test]
     fn no_placeholder_returns_input_unchanged() {
         let ctx = GeneratorContext::new(HashMap::new());
-        let result =
-            resolve_string_placeholders("plain-header-value", &ctx, &mut rand::thread_rng());
+        let result = resolve_string_placeholders("plain-header-value", &ctx, &mut rand::rng());
         assert_eq!(result, "plain-header-value");
     }
 
     #[test]
     fn resolves_choice_placeholder_without_quotes() {
         let ctx = make_ctx_with_choice("user_id", vec!["alice".to_string()]);
-        let result = resolve_string_placeholders("user-{{user_id}}", &ctx, &mut rand::thread_rng());
+        let result = resolve_string_placeholders("user-{{user_id}}", &ctx, &mut rand::rng());
         assert_eq!(result, "user-alice");
     }
 
     #[test]
     fn resolves_float_placeholder() {
         let ctx = make_ctx_with_float("amount", 9.99);
-        let result = resolve_string_placeholders("val={{amount}}", &ctx, &mut rand::thread_rng());
+        let result = resolve_string_placeholders("val={{amount}}", &ctx, &mut rand::rng());
         assert_eq!(result, "val=9.99");
     }
 
@@ -235,7 +234,7 @@ mod tests {
             }),
         );
         let ctx = GeneratorContext::new(defs);
-        let result = resolve_string_placeholders("{{a}}-{{b}}", &ctx, &mut rand::thread_rng());
+        let result = resolve_string_placeholders("{{a}}-{{b}}", &ctx, &mut rand::rng());
         assert_eq!(result, "foo-bar");
     }
 
@@ -245,14 +244,14 @@ mod tests {
         // Value::Null.to_string() via serde_json is "null"
         let ctx = GeneratorContext::new(HashMap::new());
         let result =
-            resolve_string_placeholders("prefix-{{unknown}}-suffix", &ctx, &mut rand::thread_rng());
+            resolve_string_placeholders("prefix-{{unknown}}-suffix", &ctx, &mut rand::rng());
         assert_eq!(result, "prefix-null-suffix");
     }
 
     #[test]
     fn unclosed_braces_preserved_literally() {
         let ctx = GeneratorContext::new(HashMap::new());
-        let result = resolve_string_placeholders("{{unclosed", &ctx, &mut rand::thread_rng());
+        let result = resolve_string_placeholders("{{unclosed", &ctx, &mut rand::rng());
         assert_eq!(result, "{{unclosed");
     }
 

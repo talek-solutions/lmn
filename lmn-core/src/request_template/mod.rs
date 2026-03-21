@@ -125,7 +125,7 @@ impl Template {
 
         // Pre-resolve :once placeholders — same value reused across all requests
         let ctx = GeneratorContext::new(defs);
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
 
         let once_values: HashMap<String, Value> = renderer::collect_once_placeholder_names(&body)
             .into_iter()
@@ -153,7 +153,7 @@ impl Template {
     /// `:once` placeholders share the same value across all `n` bodies.
     #[instrument(name = "lmn.template.render", skip(self), fields(n))]
     pub fn pre_generate(&self, n: usize) -> Vec<String> {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         (0..n)
             .map(|_| {
                 let rendered = renderer::render(&self.body, &self.context, &mut rng);
@@ -166,7 +166,7 @@ impl Template {
     /// Thread-safe: each call creates its own RNG state, so concurrent VU tasks
     /// can call this simultaneously without contention.
     pub fn generate_one(&self) -> String {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let rendered = renderer::render(&self.body, &self.context, &mut rng);
         serde_json::to_string(&rendered).expect("rendered Value is always valid JSON")
     }
