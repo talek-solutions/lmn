@@ -1,0 +1,1 @@
+--8<-- "lmn-core/TEMPLATES.md"
