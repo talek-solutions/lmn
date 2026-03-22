@@ -42,7 +42,7 @@ serde_json = "1"
 
 ### Minimal example — fixed load test
 
-```rust
+```rust,no_run
 use std::time::Instant;
 
 use lmn_core::command::{Command, Commands, HttpMethod};
@@ -85,7 +85,7 @@ async fn main() {
 
 Define time-based VU ramps using `LoadCurve`, which parses from JSON:
 
-```rust
+```rust,no_run
 use lmn_core::load_curve::LoadCurve;
 use lmn_core::command::run::ExecutionMode;
 
@@ -106,7 +106,7 @@ Stage `ramp` defaults to `"linear"` if omitted. Use `"step"` for an immediate ju
 
 Load a JSON template file with typed placeholder definitions:
 
-```rust
+```rust,no_run
 use lmn_core::request_template::Template;
 
 let template = Template::parse(Path::new("request.json")).unwrap();
@@ -149,7 +149,7 @@ See [Template Placeholders](https://talek-solutions.github.io/lmn/reference/temp
 
 ### Thresholds
 
-```rust
+```rust,no_run
 use lmn_core::threshold::{evaluate, EvaluateParams, parse_thresholds};
 
 let thresholds = parse_thresholds(r#"{
@@ -171,7 +171,7 @@ if !result.all_passed() {
 
 If you prefer YAML-based configuration, `lmn-core` exposes a full config parser:
 
-```rust
+```rust,no_run
 use lmn_core::config::parse_config;
 
 let config = parse_config(yaml_str).unwrap();
