@@ -62,7 +62,7 @@ jobs:
 
       - name: Build .deb
         if: ${{ matrix.target == 'x86_64-unknown-linux-gnu' }}
-        run: cargo deb -p lmn --no-build
+        run: cargo deb -p lmn --no-build --target x86_64-unknown-linux-gnu
 
       - name: Build (cross)
         if: ${{ matrix.use_cross }}
