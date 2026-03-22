@@ -1,6 +1,6 @@
 [package]
 name = "lmn"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 authors = ["Talek Solutions"]
 description = "Fast HTTP load testing CLI with dynamic templates, thresholds, and load curves"
@@ -17,7 +17,7 @@ name = "lmn"
 path = "src/main.rs"
 
 [dependencies]
-lmn-core = { path = "../lmn-core", version = "0.1.4" }
+lmn-core = { path = "../lmn-core", version = "0.1.5" }
 clap.workspace = true
 dotenvy = "0.15"
 clap-cargo.workspace = true

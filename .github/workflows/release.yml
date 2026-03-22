@@ -122,6 +122,7 @@ jobs:
         with:
           context: .
           push: true
+          provenance: false
           tags: |
             ghcr.io/${{ github.repository_owner }}/lmn:${{ github.ref_name }}
             ghcr.io/${{ github.repository_owner }}/lmn:latest
