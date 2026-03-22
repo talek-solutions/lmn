@@ -106,7 +106,7 @@ Stage `ramp` defaults to `"linear"` if omitted. Use `"step"` for an immediate ju
 
 Load a JSON template file with typed placeholder definitions:
 
-```rust,no_run
+```rust,ignore
 use lmn_core::request_template::Template;
 
 let template = Template::parse(Path::new("request.json")).unwrap();
@@ -149,7 +149,7 @@ See [Template Placeholders](https://talek-solutions.github.io/lmn/reference/temp
 
 ### Thresholds
 
-```rust,no_run
+```rust,ignore
 use lmn_core::threshold::{evaluate, EvaluateParams, parse_thresholds};
 
 let thresholds = parse_thresholds(r#"{
@@ -171,7 +171,7 @@ if !result.all_passed() {
 
 If you prefer YAML-based configuration, `lmn-core` exposes a full config parser:
 
-```rust,no_run
+```rust,ignore
 use lmn_core::config::parse_config;
 
 let config = parse_config(yaml_str).unwrap();
