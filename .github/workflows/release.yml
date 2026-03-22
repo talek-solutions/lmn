@@ -56,6 +56,14 @@ jobs:
         if: ${{ !matrix.use_cross }}
         run: cargo build --release --locked --target ${{ matrix.target }} -p lmn
 
+      - name: Install cargo-deb
+        if: ${{ matrix.target == 'x86_64-unknown-linux-gnu' }}
+        run: cargo install cargo-deb
+
+      - name: Build .deb
+        if: ${{ matrix.target == 'x86_64-unknown-linux-gnu' }}
+        run: cargo deb -p lmn --no-build
+
       - name: Build (cross)
         if: ${{ matrix.use_cross }}
         run: cross build --release --locked --target ${{ matrix.target }} -p lmn
@@ -85,6 +93,39 @@ jobs:
           name: ${{ matrix.target }}
           path: ${{ env.ARCHIVE }}
 
+      - name: Upload .deb artifact
+        if: ${{ matrix.target == 'x86_64-unknown-linux-gnu' }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+        with:
+          name: deb
+          path: target/debian/lmn_*.deb
+
+  docker:
+    name: Docker
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v4.2.2
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/lmn:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/lmn:latest
+
   release:
     name: Publish Release
     needs: build
@@ -106,5 +147,36 @@ jobs:
         with:
           files: |
             artifacts/lmn-*
+            artifacts/lmn_*
             artifacts/checksums.txt
           generate_release_notes: true
+
+#  brew:
+#    name: Update Homebrew formula
+#    needs: release
+#    runs-on: ubuntu-latest
+#    steps:
+#      - name: Get macOS ARM64 SHA256
+#        run: |
+#          VERSION=${{ github.ref_name }}
+#          SHA=$(curl -sL "https://github.com/talek-solutions/lmn/releases/download/${VERSION}/checksums.txt" \
+#            | grep aarch64-apple-darwin | awk '{print $1}')
+#          echo "SHA=$SHA" >> $GITHUB_ENV
+#          echo "VERSION=${VERSION#v}" >> $GITHUB_ENV
+#
+#      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v4.2.2
+#        with:
+#          repository: talek-solutions/homebrew-lmn
+#          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+#
+#      - name: Update formula
+#        run: |
+#          sed -i "s/version \".*\"/version \"${{ env.VERSION }}\"/" Formula/lmn.rb
+#          sed -i "s/sha256 \".*\"/sha256 \"${{ env.SHA }}\"/" Formula/lmn.rb
+#
+#      - name: Commit and push
+#        run: |
+#          git config user.name "github-actions"
+#          git config user.email "actions@github.com"
+#          git commit -am "chore: bump lmn to ${{ github.ref_name }}"
+#          git push

@@ -1,6 +1,6 @@
 [package]
 name = "lmn"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 description = "Fast HTTP load testing CLI with dynamic templates, thresholds, and load curves"
 license = "Apache-2.0"
@@ -16,7 +16,7 @@ name = "lmn"
 path = "src/main.rs"
 
 [dependencies]
-lmn-core = { path = "../lmn-core", version = "0.1.2" }
+lmn-core = { path = "../lmn-core", version = "0.1.3" }
 clap.workspace = true
 dotenvy = "0.15"
 clap-cargo.workspace = true
@@ -31,3 +31,11 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[package.metadata.deb]
+depends = "$auto"
+section = "utils"
+assets = [
+    ["target/release/lmn", "usr/bin/", "755"],
+    ["../README.md", "usr/share/doc/lmn/README.md", "644"],
+]
