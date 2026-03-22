@@ -7,8 +7,12 @@
 
 ## Debian / Ubuntu
 
-!!! note "Work in progress"
-    `.deb` packages are coming soon.
+```bash
+curl -LO https://github.com/talek-solutions/lmn/releases/download/v{{ version }}/lmn_{{ version }}-1_amd64.deb
+curl -LO https://github.com/talek-solutions/lmn/releases/download/v{{ version }}/checksums.txt
+sha256sum --check --ignore-missing checksums.txt
+sudo dpkg -i lmn_{{ version }}-1_amd64.deb
+```
 
 ## cargo install
 

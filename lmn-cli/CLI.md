@@ -1,5 +1,7 @@
 # CLI Reference
 
+> For guides, recipes, and getting started, see [docs.lmn.dev](https://docs.lmn.dev).
+
 ## Subcommands
 
 - [`run`](#run) — Execute a load test
@@ -227,8 +229,6 @@ lmn run -H http://localhost:3000/api --header 'Authorization: Bearer ${API_TOKEN
 ```
 
 ---
-
-#---
 
 ## Load Curve JSON Format
 

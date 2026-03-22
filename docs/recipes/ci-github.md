@@ -24,6 +24,8 @@ jobs:
   load-test:
     name: Threshold-gated load test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     # Only run if the triggering deploy succeeded
     if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}

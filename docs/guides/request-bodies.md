@@ -88,6 +88,34 @@ Use `{{ENV:VAR_NAME}}` to inject environment variables at startup — no definit
     `{{ENV:VAR_NAME}}` values are resolved once at template load time and are never logged or included in output.
 {% endraw %}
 
+## Tracking response fields
+
+Use a response template (`-S`) alongside your request template to extract and aggregate fields from response bodies. The most common use: find out what error codes your API returns under load.
+
+Create `response.json` mirroring the shape of your API's response:
+
+```json
+{
+  "error": {
+    "code": "{{STRING}}"
+  }
+}
+```
+
+Run with both:
+
+```bash
+lmn run -H https://api.example.com/orders -M post \
+  -T ./template.json \
+  -S ./response.json
+```
+
+After the run, lmn prints a frequency distribution of every distinct value it observed at `error.code` across all responses. This makes silent application errors — business logic failures that return HTTP `200` — visible under load.
+
+Use `{{FLOAT}}` to extract and aggregate numeric fields (e.g. response times, amounts, scores reported by the API itself).
+
+See the [Track error codes recipe](../recipes/response-template.md) for a copy-paste example, and [Template Placeholders](../reference/template-placeholders.md) for the full reference.
+
 ## Full placeholder reference
 
 See [Template Placeholders](../reference/template-placeholders.md) for all types, fields, constraints, and validation rules.

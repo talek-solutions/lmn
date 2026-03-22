@@ -83,6 +83,7 @@ nav:
     - CI gate — GitLab CI: recipes/ci-gitlab.md
     - Traffic ramp-up: recipes/load-curve.md
     - CI artifact output: recipes/ci-artifact.md
+    - Track error codes in responses: recipes/response-template.md
   - Reference:
     - CLI Reference: reference/cli.md
     - Config File Reference: reference/config.md

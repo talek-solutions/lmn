@@ -17,3 +17,4 @@ Copy-paste solutions for specific tasks — no explanation, just the answer. For
 | [CI gate: GitLab CI](ci-gitlab.md) | Same, for GitLab pipelines |
 | [Traffic ramp-up](load-curve.md) | Staged virtual users over time |
 | [CI artifact output](ci-artifact.md) | Write JSON results for dashboards and artifact storage |
+| [Track error codes in responses](response-template.md) | Extract and aggregate API error codes from response bodies |

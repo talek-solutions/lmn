@@ -12,8 +12,10 @@
   <a href="https://github.com/talek-solutions/lmn/actions/workflows/ci.yml"><img src="https://github.com/talek-solutions/lmn/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://crates.io/crates/lmn"><img src="https://img.shields.io/crates/v/lmn.svg" alt="crates.io" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License" /></a>
-  <a href="https://talek-solutions.github.io/lmn"><img src="https://img.shields.io/badge/docs-online-blue.svg" alt="Docs" /></a>
+  <a href="https://docs.lmn.dev"><img src="https://img.shields.io/badge/docs-docs.lmn.dev-blue.svg" alt="Docs" /></a>
 </p>
+
+> Full documentation at [docs.lmn.dev](https://docs.lmn.dev)
 
 ---
 
@@ -47,26 +49,17 @@ thresholds:
 
 ## Installation
 
-**Homebrew / pre-built binary** *(coming soon)*
-
-**From crates.io:**
-
 ```bash
 cargo install lmn
 ```
 
-**From source:**
+**Docker (zero-install):**
 
 ```bash
-cargo install --path lmn-cli
+docker run --rm ghcr.io/talek-solutions/lmn:latest run -H http://host.docker.internal:3000/api
 ```
 
-**Docker:**
-
-```bash
-docker build -f lmn-cli/Dockerfile -t lmn .
-docker run --rm lmn run -H http://host.docker.internal:3000/api
-```
+Homebrew and pre-built binaries: see [Installation docs](https://docs.lmn.dev/getting-started/installation/).
 
 ---
 
@@ -79,158 +72,23 @@ lmn run -H https://httpbin.org/get
 # POST with an inline JSON body
 lmn run -H https://httpbin.org/post -M post -B '{"name":"alice"}'
 
-# 1000 requests, 50 concurrent
-lmn run -H https://httpbin.org/post -M post -R 1000 -C 50 -B '{"item":"widget"}'
-
-# Authenticated request using an env var
-lmn run -H https://api.example.com/orders \
-  --header "Authorization: Bearer ${API_TOKEN}"
-
 # Run from a YAML config file
 lmn run -f lmn.yaml
 ```
 
----
-
-## Authentication and Headers
-
-Attach headers to every request with `--header` (repeatable):
-
-```bash
-lmn run -H https://api.example.com \
-  --header "Authorization: Bearer ${API_TOKEN}" \
-  --header "X-Tenant-ID: acme"
-```
-
-Use `${ENV_VAR}` in header values to avoid hardcoding secrets. A `.env` file in the working directory is loaded automatically at startup.
-
-```bash
-# .env
-API_TOKEN=my-secret-token
-```
-
-Headers can also live in the config file:
-
-```yaml
-run:
-  host: https://api.example.com
-  headers:
-    Authorization: "Bearer ${API_TOKEN}"
-    X-Tenant-ID: "acme"
-```
-
-CLI `--header` takes precedence over config `headers:` on the same key.
+See the [Quickstart guide](https://docs.lmn.dev/getting-started/quickstart/) for a full walkthrough.
 
 ---
 
-## Dynamic Request Bodies
+## Features
 
-Generate a unique request body per request from a JSON template:
-
-```json
-{
-  "userId": "{{user_id}}",
-  "amount": "{{amount}}",
-  "apiKey": "{{ENV:API_KEY}}",
-  "_lmn_metadata_templates": {
-    "user_id": {
-      "type": "string",
-      "details": { "choice": ["user-001", "user-002", "user-003"] }
-    },
-    "amount": {
-      "type": "float",
-      "min": 1, "max": 500,
-      "details": { "decimals": 2 }
-    }
-  }
-}
-```
-
-- `{{placeholder}}` — generates a fresh value per request
-- `{{placeholder:once}}` — generates once, reused across all requests
-- `{{ENV:VAR_NAME}}` — resolved from environment at startup, no definition needed
-
-```bash
-lmn run -H https://api.example.com/orders -M post -T ./template.json
-```
-
-Store a template as a reusable alias:
-
-```bash
-lmn configure-request -A my-order -T ./template.json
-lmn run -H https://api.example.com/orders -M post -A my-order
-```
-
-See [`lmn-core/TEMPLATES.md`](lmn-core/TEMPLATES.md) for the full placeholder reference.
-
----
-
-## Load Curves
-
-Scale virtual users over time with a staged load curve:
-
-```yaml
-# lmn.yaml
-run:
-  host: https://api.example.com
-  method: post
-
-execution:
-  stages:
-    - duration: 30s
-      target_vus: 5
-    - duration: 2m
-      target_vus: 50
-      ramp: linear
-    - duration: 30s
-      target_vus: 0
-      ramp: linear
-
-thresholds:
-  - metric: latency_p95
-    operator: lt
-    value: 2000.0
-```
-
-```bash
-lmn run -f lmn.yaml
-```
-
----
-
-## CI Integration
-
-Use exit code `2` (threshold failure) to gate deployments:
-
-```yaml
-# .github/workflows/load-test.yml
-name: Load Test
-
-on:
-  pull_request:
-
-jobs:
-  load-test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install lmn
-        run: cargo install lmn
-
-      - name: Run load test
-        run: lmn run -f lmn.yaml
-        env:
-          API_TOKEN: ${{ secrets.API_TOKEN }}
-```
-
-Exit codes:
-
-| Code | Meaning |
-|------|---------|
-| `0` | Run completed, all thresholds passed |
-| `1` | Error — invalid config, unreachable host |
-| `2` | Run completed, one or more thresholds failed |
+- **[Dynamic request bodies](https://docs.lmn.dev/guides/request-bodies/)** — per-request random data from typed JSON templates
+- **[Threshold-gated CI](https://docs.lmn.dev/guides/thresholds-ci/)** — exit code `2` on p99/error-rate/throughput failures; wires into any pipeline
+- **[Load curves](https://docs.lmn.dev/guides/load-curves/)** — staged virtual user ramp-up with linear or step profiles
+- **[Auth & headers](https://docs.lmn.dev/guides/headers-auth/)** — `${ENV_VAR}` secret injection, `.env` auto-load, repeatable headers
+- **[Response tracking](https://docs.lmn.dev/recipes/response-template/)** — extract and aggregate fields from response bodies (e.g. API error codes)
+- **[JSON output](https://docs.lmn.dev/reference/json-output/)** — machine-readable report for dashboards and CI artifacts
+- **Config files** — full YAML config with CLI flag precedence
 
 ---
 
@@ -252,26 +110,11 @@ docker compose up -d
 
 ---
 
-## Output
-
-```bash
-# ASCII table (default)
-lmn run -H https://httpbin.org/get
-
-# JSON to stdout
-lmn run -H https://httpbin.org/get --output json
-
-# ASCII table + JSON artifact
-lmn run -H https://httpbin.org/get --output-file run.json
-```
-
----
-
 ## Reference
 
-- [`lmn-cli/CLI.md`](lmn-cli/CLI.md) — full flag and config reference
-- [`lmn-core/TEMPLATES.md`](lmn-core/TEMPLATES.md) — template placeholder reference
-- [`examples/`](examples/) — ready-to-use configs, templates, and load curves
+- [CLI reference](https://docs.lmn.dev/reference/cli/) — full flag and config reference
+- [Template placeholders](https://docs.lmn.dev/reference/template-placeholders/) — request and response template reference
+- [JSON output schema](https://docs.lmn.dev/reference/json-output/) — machine-readable report structure
 
 ---
 
