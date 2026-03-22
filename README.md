@@ -12,10 +12,10 @@
   <a href="https://github.com/talek-solutions/lmn/actions/workflows/ci.yml"><img src="https://github.com/talek-solutions/lmn/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://crates.io/crates/lmn"><img src="https://img.shields.io/crates/v/lmn.svg" alt="crates.io" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License" /></a>
-  <a href="https://docs.lmn.dev"><img src="https://img.shields.io/badge/docs-docs.lmn.dev-blue.svg" alt="Docs" /></a>
+  <a href="https://talek-solutions.github.io/lmn/"><img src="https://img.shields.io/badge/docs-docs.lmn.dev-blue.svg" alt="Docs" /></a>
 </p>
 
-> Full documentation at [docs.lmn.dev](https://docs.lmn.dev)
+> Full documentation at [https://talek-solutions.github.io/lmn/](https://talek-solutions.github.io/lmn/)
 
 ---
 
