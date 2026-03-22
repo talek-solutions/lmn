@@ -4,7 +4,7 @@ Core engine for [lmn](https://github.com/talek-solutions/lmn) — a fast HTTP lo
 
 This crate provides the building blocks for running load tests programmatically: HTTP execution, dynamic request templating, load curve definitions, result sampling, threshold evaluation, and report generation. The `lmn` CLI is built entirely on top of this crate.
 
-> Full documentation at [https://talek-solutions.github.io/lmn](https://talek-solutions.github.io/lmn)
+> Full documentation at [https://lmn.talek.cloud](https://lmn.talek.cloud)
 
 ## Features
 
@@ -145,7 +145,7 @@ Environment variables are resolved at template load time:
 { "token": "{{ENV:API_TOKEN}}" }
 ```
 
-See [Template Placeholders](https://talek-solutions.github.io/lmn/reference/template-placeholders/) for the full reference.
+See [Template Placeholders](https://lmn.talek.cloud/reference/template-placeholders/) for the full reference.
 
 ### Thresholds
 
@@ -177,7 +177,7 @@ use lmn_core::config::parse_config;
 let config = parse_config(yaml_str).unwrap();
 ```
 
-See the [Config File Reference](https://talek-solutions.github.io/lmn/reference/config/) for the full YAML schema.
+See the [Config File Reference](https://lmn.talek.cloud/reference/config/) for the full YAML schema.
 
 ## License
 
