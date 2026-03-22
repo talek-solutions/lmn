@@ -1,6 +1,6 @@
 # CLI Reference
 
-> For guides, recipes, and getting started, see [docs.lmn.dev](https://docs.lmn.dev).
+> For guides, recipes, and getting started, see [docs.lmn.dev](https://talek-solutions.github.io/lmn).
 
 ## Subcommands
 

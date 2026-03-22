@@ -1,6 +1,6 @@
 site_name: Lumen
 site_description: Fast HTTP load testing CLI — dynamic templates, threshold-gated CI, and load curves.
-site_url: https://docs.lmn.dev
+site_url: https://talek-solutions.github.io/lmn
 repo_url: https://github.com/talek-solutions/lmn
 repo_name: talek-solutions/lmn
 edit_uri: edit/master/docs/

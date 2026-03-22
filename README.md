@@ -12,10 +12,10 @@
   <a href="https://github.com/talek-solutions/lmn/actions/workflows/ci.yml"><img src="https://github.com/talek-solutions/lmn/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://crates.io/crates/lmn"><img src="https://img.shields.io/crates/v/lmn.svg" alt="crates.io" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License" /></a>
-  <a href="https://talek-solutions.github.io/lmn/"><img src="https://img.shields.io/badge/docs-docs.lmn.dev-blue.svg" alt="Docs" /></a>
+  <a href="https://talek-solutions.github.io/lmn/"><img src="https://img.shields.io/badge/docs-online-blue.svg" alt="Docs" /></a>
 </p>
 
-> Full documentation at [https://talek-solutions.github.io/lmn/](https://talek-solutions.github.io/lmn/)
+> Full documentation at [talek-solutions.github.io/lmn](https://talek-solutions.github.io/lmn/)
 
 ---
 
@@ -59,7 +59,7 @@ cargo install lmn
 docker run --rm ghcr.io/talek-solutions/lmn:latest run -H http://host.docker.internal:3000/api
 ```
 
-Homebrew and pre-built binaries: see [Installation docs](https://docs.lmn.dev/getting-started/installation/).
+Homebrew and pre-built binaries: see [Installation docs](https://talek-solutions.github.io/lmn/getting-started/installation/).
 
 ---
 
@@ -76,18 +76,18 @@ lmn run -H https://httpbin.org/post -M post -B '{"name":"alice"}'
 lmn run -f lmn.yaml
 ```
 
-See the [Quickstart guide](https://docs.lmn.dev/getting-started/quickstart/) for a full walkthrough.
+See the [Quickstart guide](https://talek-solutions.github.io/lmn/getting-started/quickstart/) for a full walkthrough.
 
 ---
 
 ## Features
 
-- **[Dynamic request bodies](https://docs.lmn.dev/guides/request-bodies/)** — per-request random data from typed JSON templates
-- **[Threshold-gated CI](https://docs.lmn.dev/guides/thresholds-ci/)** — exit code `2` on p99/error-rate/throughput failures; wires into any pipeline
-- **[Load curves](https://docs.lmn.dev/guides/load-curves/)** — staged virtual user ramp-up with linear or step profiles
-- **[Auth & headers](https://docs.lmn.dev/guides/headers-auth/)** — `${ENV_VAR}` secret injection, `.env` auto-load, repeatable headers
-- **[Response tracking](https://docs.lmn.dev/recipes/response-template/)** — extract and aggregate fields from response bodies (e.g. API error codes)
-- **[JSON output](https://docs.lmn.dev/reference/json-output/)** — machine-readable report for dashboards and CI artifacts
+- **[Dynamic request bodies](https://talek-solutions.github.io/lmn/guides/request-bodies/)** — per-request random data from typed JSON templates
+- **[Threshold-gated CI](https://talek-solutions.github.io/lmn/guides/thresholds-ci/)** — exit code `2` on p99/error-rate/throughput failures; wires into any pipeline
+- **[Load curves](https://talek-solutions.github.io/lmn/guides/load-curves/)** — staged virtual user ramp-up with linear or step profiles
+- **[Auth & headers](https://talek-solutions.github.io/lmn/guides/headers-auth/)** — `${ENV_VAR}` secret injection, `.env` auto-load, repeatable headers
+- **[Response tracking](https://talek-solutions.github.io/lmn/recipes/response-template/)** — extract and aggregate fields from response bodies (e.g. API error codes)
+- **[JSON output](https://talek-solutions.github.io/lmn/reference/json-output/)** — machine-readable report for dashboards and CI artifacts
 - **Config files** — full YAML config with CLI flag precedence
 
 ---
@@ -112,9 +112,9 @@ docker compose up -d
 
 ## Reference
 
-- [CLI reference](https://docs.lmn.dev/reference/cli/) — full flag and config reference
-- [Template placeholders](https://docs.lmn.dev/reference/template-placeholders/) — request and response template reference
-- [JSON output schema](https://docs.lmn.dev/reference/json-output/) — machine-readable report structure
+- [CLI reference](https://talek-solutions.github.io/lmn/reference/cli/) — full flag and config reference
+- [Template placeholders](https://talek-solutions.github.io/lmn/reference/template-placeholders/) — request and response template reference
+- [JSON output schema](https://talek-solutions.github.io/lmn/reference/json-output/) — machine-readable report structure
 
 ---
 
