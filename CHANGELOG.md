@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7]
+
+### Changed
+- Restore publish pipeline
+- Drop Windows from release targets
+- Bump CI dependencies: `actions/setup-python`, `docker/login-action`, `docker/build-push-action`
+
+## [0.1.5]
+
+### Changed
+- Improve documentation structure and content
+- Set custom domain `lmn.talek.cloud` for docs site
+- Fix cargo-deb release pipeline
+
+## [0.1.4]
+
+### Changed
+- Update docs URLs to `lmn.talek.cloud`
+
 ## [0.1.3]
 
 ### Added
