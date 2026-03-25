@@ -35,10 +35,10 @@ jobs:
             os: macos-14
             use_cross: false
             archive: tar.gz
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            use_cross: false
-            archive: zip
+#          - target: x86_64-pc-windows-msvc
+#            os: windows-latest
+#            use_cross: false
+#            archive: zip
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v4.2.2
@@ -79,19 +79,19 @@ jobs:
           rm lmn
           echo "ARCHIVE=$ARCHIVE" >> $GITHUB_ENV
 
-      - name: Package (windows)
-        if: ${{ matrix.archive == 'zip' }}
-        shell: pwsh
-        run: |
-          $binary = "target/${{ matrix.target }}/release/lmn.exe"
-          $archive = "lmn-${{ github.ref_name }}-${{ matrix.target }}.zip"
-          Compress-Archive -Path $binary, LICENSE, README.md -DestinationPath $archive
-          "ARCHIVE=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
-        with:
-          name: ${{ matrix.target }}
-          path: ${{ env.ARCHIVE }}
+#      - name: Package (windows)
+#        if: ${{ matrix.archive == 'zip' }}
+#        shell: pwsh
+#        run: |
+#          $binary = "target/${{ matrix.target }}/release/lmn.exe"
+#          $archive = "lmn-${{ github.ref_name }}-${{ matrix.target }}.zip"
+#          Compress-Archive -Path $binary, LICENSE, README.md -DestinationPath $archive
+#          "ARCHIVE=$archive" | Out-File -FilePath $env:GITHUB_ENV -Append
+#
+#      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f  # v7.0.0
+#        with:
+#          name: ${{ matrix.target }}
+#          path: ${{ env.ARCHIVE }}
 
       - name: Upload .deb artifact
         if: ${{ matrix.target == 'x86_64-unknown-linux-gnu' }}
