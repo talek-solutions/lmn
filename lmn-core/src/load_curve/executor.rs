@@ -233,7 +233,7 @@ fn spawn_vu(params: VuParams) -> JoinHandle<()> {
                     req = req.read_response();
                 }
                 if !headers.is_empty() {
-                    req = req.headers((*headers).clone());
+                    req = req.headers(headers);
                 }
                 req.execute().await
             };

@@ -86,7 +86,7 @@ pub struct Request {
     url: String,
     method: HttpMethod,
     body: Option<(String, &'static str)>,
-    headers: Vec<(String, String)>,
+    headers: Option<Arc<Vec<(String, String)>>>,
     capture_response: bool,
 }
 
@@ -97,7 +97,7 @@ impl Request {
             url,
             method,
             body: None,
-            headers: Vec::new(),
+            headers: None,
             capture_response: false,
         }
     }
@@ -110,8 +110,8 @@ impl Request {
     /// Attach a list of custom HTTP headers.
     /// These are applied after the auto-set `Content-Type`, so a user-supplied
     /// `Content-Type` header will override the auto-set one.
-    pub fn headers(mut self, headers: Vec<(String, String)>) -> Self {
-        self.headers = headers;
+    pub fn headers(mut self, headers: Arc<Vec<(String, String)>>) -> Self {
+        self.headers = Some(headers);
         self
     }
 
@@ -133,9 +133,12 @@ impl Request {
             req = req.header("Content-Type", content_type).body(content);
         }
         // Apply user-supplied headers AFTER body/Content-Type so they take precedence.
-        for (name, value) in self.headers {
-            req = req.header(name, value);
+        if let Some(headers) = self.headers {
+            for (name, value) in headers.iter() {
+                req = req.header(name, value);
+            }
         }
+        
         match req.send().await {
             Ok(resp) => {
                 let status = resp.status();

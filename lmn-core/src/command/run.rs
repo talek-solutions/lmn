@@ -239,7 +239,7 @@ async fn execute_fixed(
                             req = req.read_response();
                         }
                         if !headers.is_empty() {
-                            req = req.headers((*headers).clone());
+                            req = req.headers(headers);
                         }
                         let _ = tx.send(req.execute().await).await;
                     });
