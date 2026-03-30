@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use tracing::info_span;
 
-use crate::command::{Body, Command};
+use crate::command::{Body, Command, HttpMethod};
 use crate::config::secret::SensitiveString;
 use crate::http::{Request, RequestConfig, RequestResult};
 use crate::load_curve::LoadCurve;
@@ -215,23 +215,31 @@ async fn execute_fixed(
         let sem = Arc::new(Semaphore::new(concurrency));
         let (tx, mut rx) = mpsc::channel::<RequestResult>(concurrency);
 
+        let method = Arc::new(request.method);
+
         for i in 0..total {
             let resolved = request.resolve_body(all_bodies.as_ref().map(|bs| bs[i].clone()));
 
             let client = request.client.clone();
-            let url = request.host.as_str().to_string();
-            let method = request.method;
             let capture_body = request.tracked_fields.is_some();
             let headers = Arc::clone(&plain_headers);
+            let url = Arc::clone(&request.host).to_string();
+            let method_clone = Arc::clone(&method);
+
             let tx = tx.clone();
 
             tokio::select! {
                 _ = token.cancelled() => break,
                 permit = sem.clone().acquire_owned() => {
                     let permit = permit.unwrap();
+
                     tokio::spawn(async move {
                         let _permit = permit;
-                        let mut req = Request::new(client, url, method);
+                        let mut req = Request::new(
+                            client,
+                            url,
+                            *method_clone
+                        );
                         if let Some((content, content_type)) = resolved {
                             req = req.body(content, content_type);
                         }
