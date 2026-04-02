@@ -2,6 +2,7 @@
 
 pub mod command;
 pub mod config;
+pub mod execution;
 pub mod http;
 pub mod load_curve;
 pub mod monitoring;

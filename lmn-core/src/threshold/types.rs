@@ -142,7 +142,7 @@ pub struct EvaluateParams<'a> {
 mod tests {
     use std::time::Duration;
 
-    use crate::command::run::{RunMode, RunStats};
+    use crate::execution::{RunMode, RunStats};
     use crate::http::RequestResult;
     use crate::output::{RunReport, RunReportParams};
 

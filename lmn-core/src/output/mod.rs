@@ -8,7 +8,7 @@ pub use report::{
 
 use std::time::Instant;
 
-use crate::command::run::{RunMode, RunStats};
+use crate::execution::{RunMode, RunStats};
 
 use compute::{
     error_rate, latency_stats, per_stage_reports, response_stats_report, status_code_map,
@@ -75,8 +75,8 @@ impl RunReport {
         let run = RunMeta {
             mode: mode_str,
             elapsed_ms: stats.elapsed.as_secs_f64() * 1000.0,
-            curve_duration_ms: stats.curve_duration.map(|d| d.as_secs_f64() * 1000.0),
-            template_generation_ms: stats.template_duration.map(|d| d.as_secs_f64() * 1000.0),
+            curve_duration_ms: stats.curve_duration.map(|d: std::time::Duration| d.as_secs_f64() * 1000.0),
+            template_generation_ms: stats.template_duration.map(|d: std::time::Duration| d.as_secs_f64() * 1000.0),
         };
 
         let requests = RequestSummary {
@@ -160,7 +160,7 @@ impl RunReport {
 mod tests {
     use std::time::{Duration, Instant};
 
-    use crate::command::run::{RunMode, RunStats};
+    use crate::execution::{RunMode, RunStats};
     use crate::http::RequestResult;
     use crate::load_curve::{LoadCurve, RampType, Stage};
     use crate::output::{RunReport, RunReportParams};

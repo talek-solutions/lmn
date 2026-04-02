@@ -5,7 +5,8 @@ use crate::cli::command::{
 };
 use lmn_core::command::Body;
 use lmn_core::command::configure_template::{ConfigureTemplateCommand, TemplateKind};
-use lmn_core::command::run::{ExecutionMode, RequestSpec, RunCommand, SamplingConfig};
+use lmn_core::command::run::RunCommand;
+use lmn_core::execution::{ExecutionMode, RequestSpec, SamplingConfig};
 use lmn_core::config::{ExecutionConfig, LumenConfig, parse_config};
 use lmn_core::http::BodyFormat;
 use lmn_core::load_curve::LoadCurve;
@@ -62,9 +63,9 @@ fn parse_output_str(s: &str) -> Result<OutputFormat, String> {
 /// threshold rules — in that case the exit code is always 0 after a successful
 /// run.
 pub struct RunArgsResolved {
-    pub request: lmn_core::command::run::RequestSpec,
-    pub execution: lmn_core::command::run::ExecutionMode,
-    pub sampling: lmn_core::command::run::SamplingConfig,
+    pub request: RequestSpec,
+    pub execution: ExecutionMode,
+    pub sampling: SamplingConfig,
     /// Threshold rules sourced from the config file.
     /// `None` when no config was supplied or the config has no `thresholds` section.
     pub thresholds: Option<Vec<Threshold>>,

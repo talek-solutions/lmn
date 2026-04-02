@@ -1,4 +1,4 @@
-use lmn_core::command::run::{RunMode, RunStats};
+use lmn_core::execution::{RunMode, RunStats};
 use lmn_core::http::RequestResult;
 use lmn_core::response_template::stats::ResponseStats;
 use lmn_core::stats::{Distribution, LatencyDistribution};
@@ -108,7 +108,7 @@ pub fn print_stats(params: PrintStatsParams<'_>) {
     }
     println!("  throughput {throughput:.1} req/s");
     if stats.min_sample_rate < 1.0 {
-        let inverse = (1.0 / stats.min_sample_rate).round() as usize;
+        let inverse = (1.0_f64 / stats.min_sample_rate).round() as usize;
         println!("  sampling  ~1-in-{inverse} (latency percentiles are approximate)");
     }
     println!();

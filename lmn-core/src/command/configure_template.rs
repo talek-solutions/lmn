@@ -1,4 +1,4 @@
-use crate::command::run::RunStats;
+use crate::execution::RunStats;
 use crate::command::{Body, Command};
 use crate::config::error::ConfigError;
 use std::error::Error;
