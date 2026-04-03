@@ -41,7 +41,7 @@ pub fn evaluate(params: EvaluateParams<'_>) -> ThresholdReport {
 mod tests {
     use std::time::Duration;
 
-    use crate::execution::{RunMode, RunStats};
+    use crate::execution::{RunMode, RunStats, SamplingStats};
     use crate::http::RequestResult;
     use crate::output::{RunReport, RunReportParams};
 
@@ -53,16 +53,17 @@ mod tests {
         let result = RequestResult::new(Duration::from_millis(latency_ms), true, Some(200), None);
         let stats = RunStats {
             elapsed: Duration::from_secs(10),
-            template_duration: None,
-            response_stats: None,
-            results: vec![result],
             mode: RunMode::Fixed,
-            curve_duration: None,
-            curve_stages: None,
-            total_requests: total,
-            total_failures: failed,
-            sample_rate: 1.0,
-            min_sample_rate: 1.0,
+            request_results: vec![result],
+            sampling_stats: SamplingStats {
+                total_requests: total,
+                total_failures: failed,
+                sample_rate: 1.0,
+                min_sample_rate: 1.0,
+            },
+            template_stats: None,
+            response_stats: None,
+            curve_stats: None,
         };
         RunReport::from_params(RunReportParams {
             stats: &stats,

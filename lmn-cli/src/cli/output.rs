@@ -31,9 +31,9 @@ pub fn print_stats(params: PrintStatsParams<'_>) {
         threshold_report,
     } = params;
 
-    let total = stats.total_requests;
-    let ok = total.saturating_sub(stats.total_failures);
-    let fail = stats.total_failures;
+    let total = stats.sampling_stats.total_requests;
+    let ok = total.saturating_sub(stats.sampling_stats.total_failures);
+    let fail = stats.sampling_stats.total_failures;
     let throughput = if stats.elapsed.as_secs_f64() > 0.0 {
         total as f64 / stats.elapsed.as_secs_f64()
     } else {
@@ -100,15 +100,15 @@ pub fn print_stats(params: PrintStatsParams<'_>) {
     }
     println!("  requests   {total}  ({ok} ok · {fail} failed)");
     println!("  duration   {}", fmt_total_duration(stats.elapsed));
-    if let Some(cd) = stats.curve_duration {
-        println!("  curve      {}", fmt_total_duration(cd));
+    if let Some(ref cs) = stats.curve_stats {
+        println!("  curve      {}", fmt_total_duration(cs.duration));
     }
-    if let Some(td) = stats.template_duration {
-        println!("  template   {}", fmt_total_duration(td));
+    if let Some(ref ts) = stats.template_stats {
+        println!("  template   {}", fmt_total_duration(ts.generation_duration));
     }
     println!("  throughput {throughput:.1} req/s");
-    if stats.min_sample_rate < 1.0 {
-        let inverse = (1.0_f64 / stats.min_sample_rate).round() as usize;
+    if stats.sampling_stats.min_sample_rate < 1.0 {
+        let inverse = (1.0_f64 / stats.sampling_stats.min_sample_rate).round() as usize;
         println!("  sampling  ~1-in-{inverse} (latency percentiles are approximate)");
     }
     println!();

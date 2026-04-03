@@ -63,8 +63,8 @@ impl RunReport {
             run_start: _,
         } = params;
 
-        let total = stats.total_requests;
-        let failed = stats.total_failures;
+        let total = stats.sampling_stats.total_requests;
+        let failed = stats.sampling_stats.total_failures;
         let ok = total.saturating_sub(failed);
 
         let mode_str = match stats.mode {
@@ -75,8 +75,8 @@ impl RunReport {
         let run = RunMeta {
             mode: mode_str,
             elapsed_ms: stats.elapsed.as_secs_f64() * 1000.0,
-            curve_duration_ms: stats.curve_duration.map(|d: std::time::Duration| d.as_secs_f64() * 1000.0),
-            template_generation_ms: stats.template_duration.map(|d: std::time::Duration| d.as_secs_f64() * 1000.0),
+            curve_duration_ms: stats.curve_stats.as_ref().map(|cs| cs.duration.as_secs_f64() * 1000.0),
+            template_generation_ms: stats.template_stats.as_ref().map(|ts| ts.generation_duration.as_secs_f64() * 1000.0),
         };
 
         let requests = RequestSummary {
@@ -87,15 +87,15 @@ impl RunReport {
             throughput_rps: throughput(total, stats.elapsed),
         };
 
-        let latency = latency_stats(&stats.results);
-        let status_codes = status_code_map(&stats.results);
+        let latency = latency_stats(&stats.request_results);
+        let status_codes = status_code_map(&stats.request_results);
 
         let sampling = SamplingInfo {
-            sampled: stats.min_sample_rate < 1.0,
-            final_sample_rate: stats.sample_rate,
-            min_sample_rate: stats.min_sample_rate,
+            sampled: stats.sampling_stats.min_sample_rate < 1.0,
+            final_sample_rate: stats.sampling_stats.sample_rate,
+            min_sample_rate: stats.sampling_stats.min_sample_rate,
             reservoir_size,
-            results_collected: stats.results.len(),
+            results_collected: stats.request_results.len(),
         };
 
         let response_stats = stats.response_stats.as_ref().map(response_stats_report);
@@ -144,7 +144,7 @@ impl RunReport {
 
         if report.run.curve_duration_ms.is_some() {
             report.curve_stages = Some(per_stage_reports(
-                &params.stats.results,
+                &params.stats.request_results,
                 stages,
                 params.run_start,
             ));
@@ -160,7 +160,7 @@ impl RunReport {
 mod tests {
     use std::time::{Duration, Instant};
 
-    use crate::execution::{RunMode, RunStats};
+    use crate::execution::{CurveStats, RunMode, RunStats, SamplingStats};
     use crate::http::RequestResult;
     use crate::load_curve::{LoadCurve, RampType, Stage};
     use crate::output::{RunReport, RunReportParams};
@@ -175,20 +175,24 @@ mod tests {
     ) -> RunStats {
         RunStats {
             elapsed: Duration::from_secs(5),
-            template_duration: None,
-            response_stats: None,
-            results,
             mode,
-            curve_duration: if mode == RunMode::Curve {
-                Some(Duration::from_secs(5))
+            request_results: results,
+            sampling_stats: SamplingStats {
+                total_requests,
+                total_failures,
+                sample_rate,
+                min_sample_rate,
+            },
+            template_stats: None,
+            response_stats: None,
+            curve_stats: if mode == RunMode::Curve {
+                Some(CurveStats {
+                    duration: Duration::from_secs(5),
+                    stages: vec![],
+                })
             } else {
                 None
             },
-            curve_stages: None,
-            total_requests,
-            total_failures,
-            sample_rate,
-            min_sample_rate,
         }
     }
 

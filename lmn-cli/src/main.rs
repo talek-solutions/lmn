@@ -93,7 +93,7 @@ fn main() {
 
         let code = match result {
             Ok(Some(stats)) => {
-                let mut report = match stats.curve_stages.as_deref() {
+                let mut report = match stats.curve_stats.as_ref().map(|cs| cs.stages.as_slice()) {
                     Some(stages) => RunReport::from_params_with_curve(
                         RunReportParams {
                             stats: &stats,
@@ -140,7 +140,7 @@ fn main() {
                     OutputFormat::Table => {
                         // Table always goes to stdout regardless of --output-file.
                         print_stats(PrintStatsParams {
-                            results: &stats.results,
+                            results: &stats.request_results,
                             stats: &stats,
                             threshold_report: report.thresholds.as_ref(),
                         });

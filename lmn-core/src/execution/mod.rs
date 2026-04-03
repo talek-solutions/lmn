@@ -25,19 +25,11 @@ pub enum RunMode {
     Curve,
 }
 
-// ── RunStats ──────────────────────────────────────────────────────────────────
+// ── SamplingStats ─────────────────────────────────────────────────────────────
 
-pub struct RunStats {
-    pub elapsed: std::time::Duration,
-    pub template_duration: Option<std::time::Duration>,
-    pub response_stats: Option<ResponseStats>,
-    pub results: Vec<RequestResult>,
-    pub mode: RunMode,
-    /// Total curve duration (only meaningful when `mode == RunMode::Curve`).
-    pub curve_duration: Option<std::time::Duration>,
-    /// Curve stages captured from the `LoadCurve` after execution.
-    /// `Some` only when `mode == RunMode::Curve`.
-    pub curve_stages: Option<Vec<crate::load_curve::Stage>>,
+/// Aggregated sampling counters produced at the end of a run.
+#[derive(Debug, Clone)]
+pub struct SamplingStats {
     /// Actual (unsampled) total request count.
     pub total_requests: usize,
     /// Actual (unsampled) failure count.
@@ -46,6 +38,35 @@ pub struct RunStats {
     pub sample_rate: f64,
     /// Lowest sample rate observed at any point during the run.
     pub min_sample_rate: f64,
+}
+
+// ── TemplateStats ─────────────────────────────────────────────────────────────
+
+/// Timing information for request template generation.
+#[derive(Debug, Clone)]
+pub struct TemplateStats {
+    pub generation_duration: std::time::Duration,
+}
+
+// ── CurveStats ────────────────────────────────────────────────────────────────
+
+/// Curve-specific metadata captured at the end of a curve run.
+#[derive(Debug, Clone)]
+pub struct CurveStats {
+    pub duration: std::time::Duration,
+    pub stages: Vec<crate::load_curve::Stage>,
+}
+
+// ── RunStats ──────────────────────────────────────────────────────────────────
+
+pub struct RunStats {
+    pub elapsed: std::time::Duration,
+    pub mode: RunMode,
+    pub request_results: Vec<RequestResult>,
+    pub sampling_stats: SamplingStats,
+    pub template_stats: Option<TemplateStats>,
+    pub response_stats: Option<ResponseStats>,
+    pub curve_stats: Option<CurveStats>,
 }
 
 // ── RequestSpec ───────────────────────────────────────────────────────────────

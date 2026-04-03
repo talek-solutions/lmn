@@ -5,7 +5,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::command::Command;
 use crate::execution::{
-    ExecutionMode, RequestSpec, RunMode, RunStats, SamplingConfig,
+    CurveStats, ExecutionMode, RequestSpec, RunMode, RunStats, SamplingConfig,
     build_request_config, compute_response_stats, resolve_tracked_fields,
 };
 use crate::execution::curve::{CurveExecutor, CurveExecutorParams};
@@ -91,16 +91,12 @@ async fn execute_fixed(
 
     Ok(Some(RunStats {
         elapsed: started_at.elapsed(),
-        template_duration: None,
-        response_stats,
-        results: result.results,
         mode: RunMode::Fixed,
-        curve_duration: None,
-        curve_stages: None,
-        total_requests: result.total_requests,
-        total_failures: result.total_failures,
-        sample_rate: result.sample_rate,
-        min_sample_rate: result.min_sample_rate,
+        request_results: result.results,
+        sampling_stats: result.sampling_stats,
+        template_stats: None,
+        response_stats,
+        curve_stats: None,
     }))
 }
 
@@ -120,8 +116,10 @@ async fn execute_curve(
         response_template_path,
         headers,
     } = request_spec;
-    let curve_duration = curve.total_duration();
-    let curve_stages = curve.stages.clone();
+    let curve_stats = CurveStats {
+        duration: curve.total_duration(),
+        stages: curve.stages.clone(),
+    };
 
     // Parse template for on-demand body generation (no pre-generation in curve mode)
     let template: Option<Arc<Template>> = template_path
@@ -162,16 +160,12 @@ async fn execute_curve(
 
     Ok(Some(RunStats {
         elapsed: started_at.elapsed(),
-        template_duration: None,
-        response_stats,
-        results: curve_result.results,
         mode: RunMode::Curve,
-        curve_duration: Some(curve_duration),
-        curve_stages: Some(curve_stages),
-        total_requests: curve_result.total_requests,
-        total_failures: curve_result.total_failures,
-        sample_rate: curve_result.sample_rate,
-        min_sample_rate: curve_result.min_sample_rate,
+        request_results: curve_result.results,
+        sampling_stats: curve_result.sampling_stats,
+        template_stats: None,
+        response_stats,
+        curve_stats: Some(curve_stats),
     }))
 }
 
@@ -181,38 +175,43 @@ async fn execute_curve(
 mod tests {
     use std::time::Duration;
 
-    use crate::execution::{RunMode, RunStats};
+    use crate::execution::{CurveStats, RunMode, RunStats, SamplingStats};
     use crate::load_curve::{RampType, Stage};
 
     fn make_stats_fixed() -> RunStats {
         RunStats {
             elapsed: Duration::from_secs(1),
-            template_duration: None,
-            response_stats: None,
-            results: vec![],
             mode: RunMode::Fixed,
-            curve_duration: None,
-            curve_stages: None,
-            total_requests: 10,
-            total_failures: 0,
-            sample_rate: 1.0,
-            min_sample_rate: 1.0,
+            request_results: vec![],
+            sampling_stats: SamplingStats {
+                total_requests: 10,
+                total_failures: 0,
+                sample_rate: 1.0,
+                min_sample_rate: 1.0,
+            },
+            template_stats: None,
+            response_stats: None,
+            curve_stats: None,
         }
     }
 
     fn make_stats_curve(stages: Vec<Stage>) -> RunStats {
         RunStats {
             elapsed: Duration::from_secs(10),
-            template_duration: None,
-            response_stats: None,
-            results: vec![],
             mode: RunMode::Curve,
-            curve_duration: Some(Duration::from_secs(10)),
-            curve_stages: Some(stages),
-            total_requests: 100,
-            total_failures: 2,
-            sample_rate: 1.0,
-            min_sample_rate: 1.0,
+            request_results: vec![],
+            sampling_stats: SamplingStats {
+                total_requests: 100,
+                total_failures: 2,
+                sample_rate: 1.0,
+                min_sample_rate: 1.0,
+            },
+            template_stats: None,
+            response_stats: None,
+            curve_stats: Some(CurveStats {
+                duration: Duration::from_secs(10),
+                stages,
+            }),
         }
     }
 
@@ -222,8 +221,8 @@ mod tests {
     fn curve_stages_none_for_fixed_mode() {
         let stats = make_stats_fixed();
         assert!(
-            stats.curve_stages.is_none(),
-            "fixed-mode RunStats must have curve_stages == None"
+            stats.curve_stats.is_none(),
+            "fixed-mode RunStats must have curve_stats == None"
         );
     }
 
@@ -246,8 +245,9 @@ mod tests {
         let stats = make_stats_curve(stages.clone());
 
         let stored = stats
-            .curve_stages
-            .expect("curve_stages must be Some in curve mode");
+            .curve_stats
+            .expect("curve_stats must be Some in curve mode")
+            .stages;
         assert_eq!(stored.len(), 2);
         assert_eq!(stored[0].target_vus, 50);
         assert_eq!(stored[0].ramp, RampType::Linear);
@@ -269,7 +269,7 @@ mod tests {
         let count = stages.len();
         let stats = make_stats_curve(stages);
         assert_eq!(
-            stats.curve_stages.unwrap().len(),
+            stats.curve_stats.unwrap().stages.len(),
             count,
             "stored stage count must equal original stage count"
         );

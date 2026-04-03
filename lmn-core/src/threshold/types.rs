@@ -142,7 +142,7 @@ pub struct EvaluateParams<'a> {
 mod tests {
     use std::time::Duration;
 
-    use crate::execution::{RunMode, RunStats};
+    use crate::execution::{RunMode, RunStats, SamplingStats};
     use crate::http::RequestResult;
     use crate::output::{RunReport, RunReportParams};
 
@@ -152,16 +152,17 @@ mod tests {
         let result = RequestResult::new(Duration::from_millis(99), true, Some(200), None);
         let stats = RunStats {
             elapsed: Duration::from_secs(10),
-            template_duration: None,
-            response_stats: None,
-            results: vec![result],
             mode: RunMode::Fixed,
-            curve_duration: None,
-            curve_stages: None,
-            total_requests: 100,
-            total_failures: 5,
-            sample_rate: 1.0,
-            min_sample_rate: 1.0,
+            request_results: vec![result],
+            sampling_stats: SamplingStats {
+                total_requests: 100,
+                total_failures: 5,
+                sample_rate: 1.0,
+                min_sample_rate: 1.0,
+            },
+            template_stats: None,
+            response_stats: None,
+            curve_stats: None,
         };
         RunReport::from_params(RunReportParams {
             stats: &stats,

@@ -5,6 +5,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use tracing::info_span;
 
+use crate::execution::SamplingStats;
 use crate::http::{Request, RequestConfig, RequestResult};
 use crate::monitoring::SpanName;
 use crate::request_template::Template;
@@ -25,13 +26,10 @@ pub struct FixedExecutorParams {
 // ── FixedExecutionResult ──────────────────────────────────────────────────────
 
 /// Result returned by `FixedExecutor::execute`. Carries the reservoir-bounded
-/// sample of results plus the four sampling counters for `RunStats`.
+/// sample of results plus the sampling counters for `RunStats`.
 pub struct FixedExecutionResult {
     pub results: Vec<RequestResult>,
-    pub total_requests: usize,
-    pub total_failures: usize,
-    pub sample_rate: f64,
-    pub min_sample_rate: f64,
+    pub sampling_stats: SamplingStats,
 }
 
 // ── FixedExecutor ─────────────────────────────────────────────────────────────
@@ -141,10 +139,12 @@ impl FixedExecutor {
 
         FixedExecutionResult {
             results: all_results,
-            total_requests: sampling_state.total_requests(),
-            total_failures: sampling_state.total_failures(),
-            sample_rate: sampling_state.sample_rate(),
-            min_sample_rate: sampling_state.min_sample_rate(),
+            sampling_stats: SamplingStats {
+                total_requests: sampling_state.total_requests(),
+                total_failures: sampling_state.total_failures(),
+                sample_rate: sampling_state.sample_rate(),
+                min_sample_rate: sampling_state.min_sample_rate(),
+            },
         }
     }
 }
@@ -161,15 +161,17 @@ mod tests {
     fn struct_shape_fixed_execution_result() {
         let result = FixedExecutionResult {
             results: vec![],
-            total_requests: 10,
-            total_failures: 1,
-            sample_rate: 1.0,
-            min_sample_rate: 0.8,
+            sampling_stats: SamplingStats {
+                total_requests: 10,
+                total_failures: 1,
+                sample_rate: 1.0,
+                min_sample_rate: 0.8,
+            },
         };
-        assert_eq!(result.total_requests, 10);
-        assert_eq!(result.total_failures, 1);
-        assert_eq!(result.sample_rate, 1.0);
-        assert_eq!(result.min_sample_rate, 0.8);
+        assert_eq!(result.sampling_stats.total_requests, 10);
+        assert_eq!(result.sampling_stats.total_failures, 1);
+        assert_eq!(result.sampling_stats.sample_rate, 1.0);
+        assert_eq!(result.sampling_stats.min_sample_rate, 0.8);
         assert!(result.results.is_empty());
     }
 

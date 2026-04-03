@@ -6,6 +6,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
 
+use crate::execution::SamplingStats;
 use crate::http::{Request, RequestConfig, RequestResult};
 use crate::load_curve::LoadCurve;
 use crate::request_template::Template;
@@ -25,13 +26,10 @@ pub struct CurveExecutorParams {
 // ── CurveExecutionResult ──────────────────────────────────────────────────────
 
 /// Result returned by `CurveExecutor::execute`. Carries the reservoir-bounded
-/// sample of results plus the four sampling counters for `RunStats`.
+/// sample of results plus the sampling counters for `RunStats`.
 pub struct CurveExecutionResult {
     pub results: Vec<RequestResult>,
-    pub total_requests: usize,
-    pub total_failures: usize,
-    pub sample_rate: f64,
-    pub min_sample_rate: f64,
+    pub sampling_stats: SamplingStats,
 }
 
 // ── CurveExecutor ─────────────────────────────────────────────────────────────
@@ -180,10 +178,12 @@ impl CurveExecutor {
 
         CurveExecutionResult {
             results,
-            total_requests: sampling.total_requests(),
-            total_failures: sampling.total_failures(),
-            sample_rate: sampling.sample_rate(),
-            min_sample_rate: sampling.min_sample_rate(),
+            sampling_stats: SamplingStats {
+                total_requests: sampling.total_requests(),
+                total_failures: sampling.total_failures(),
+                sample_rate: sampling.sample_rate(),
+                min_sample_rate: sampling.min_sample_rate(),
+            },
         }
     }
 }
