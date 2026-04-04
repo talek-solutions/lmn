@@ -11,28 +11,31 @@ use crate::request_template::generators::Generate;
 
 pub struct GeneratorContext {
     pub defs: HashMap<String, TemplateDef>,
-    pub once_values: HashMap<String, Value>,
+    /// Pre-resolved values — includes `:global` placeholder values and `ENV:` values.
+    /// When a placeholder name is present here, its value is returned as-is without
+    /// generating a fresh one.
+    pub resolved: HashMap<String, Value>,
 }
 
 impl GeneratorContext {
     pub fn new(defs: HashMap<String, TemplateDef>) -> Self {
         Self {
             defs,
-            once_values: HashMap::new(),
+            resolved: HashMap::new(),
         }
     }
 
-    pub fn with_once_values(self, once_values: HashMap<String, Value>) -> Self {
-        Self {
-            once_values,
-            ..self
-        }
+    /// Consumes `self` and returns a new context with the given pre-resolved values.
+    /// Used to attach `:global` and `ENV:` values resolved at template parse time.
+    pub fn with_resolved(mut self, resolved: HashMap<String, Value>) -> Self {
+        self.resolved.extend(resolved);
+        self
     }
 
-    /// Resolves a placeholder by name, returning a pre-computed `:once` value
-    /// if available, otherwise generating a fresh one.
+    /// Resolves a placeholder by name, returning a pre-resolved value (`:global` or
+    /// `ENV:`) if available, otherwise generating a fresh one.
     pub fn resolve(&self, name: &str, rng: &mut impl Rng) -> Value {
-        if let Some(v) = self.once_values.get(name) {
+        if let Some(v) = self.resolved.get(name) {
             return v.clone();
         }
         self.generate_by_name(name, rng)

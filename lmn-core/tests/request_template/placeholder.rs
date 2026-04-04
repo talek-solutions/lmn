@@ -5,14 +5,14 @@ use std::path::Path;
 fn parses_simple_placeholder() {
     let ph = parse_placeholder("{{name}}").unwrap();
     assert_eq!(ph.name, "name");
-    assert!(!ph.once);
+    assert!(!ph.global);
 }
 
 #[test]
-fn parses_once_placeholder() {
-    let ph = parse_placeholder("{{name:once}}").unwrap();
+fn parses_global_placeholder() {
+    let ph = parse_placeholder("{{name:global}}").unwrap();
     assert_eq!(ph.name, "name");
-    assert!(ph.once);
+    assert!(ph.global);
 }
 
 #[test]

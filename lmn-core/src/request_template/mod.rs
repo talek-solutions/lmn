@@ -13,6 +13,7 @@ use tracing::instrument;
 
 pub use error::TemplateError;
 use generator::GeneratorContext;
+use renderer::PlaceholderHandler;
 
 const METADATA_KEY: &str = "_lmn_metadata_templates";
 pub(crate) const ENV_PLACEHOLDER_PREFIX: &str = "ENV:";
@@ -21,17 +22,17 @@ pub(crate) const ENV_PLACEHOLDER_PREFIX: &str = "ENV:";
 
 pub struct PlaceholderRef {
     pub name: String,
-    pub once: bool,
+    pub global: bool,
 }
 
-/// Parses `{{name}}` or `{{name:once}}` from a string.
+/// Parses `{{name}}` or `{{name:global}}` from a string.
 /// Returns `None` if the string is not a placeholder.
 pub fn parse_placeholder(s: &str) -> Option<PlaceholderRef> {
     let inner = s.trim().strip_prefix("{{")?.strip_suffix("}}")?;
     if inner.is_empty() {
         return None;
     }
-    let (name, once) = match inner.strip_suffix(":once") {
+    let (name, global) = match inner.strip_suffix(":global") {
         Some(n) => (n, true),
         None => (inner, false),
     };
@@ -40,55 +41,8 @@ pub fn parse_placeholder(s: &str) -> Option<PlaceholderRef> {
     }
     Some(PlaceholderRef {
         name: name.to_string(),
-        once,
+        global,
     })
-}
-
-// ── ENV placeholder helpers ───────────────────────────────────────────────────
-
-/// Walks the body `Value` tree and collects the names of all placeholders
-/// whose name starts with `"ENV:"` (e.g. `"ENV:MY_TOKEN"`). Deduplicated.
-fn collect_env_placeholder_names(body: &Value) -> Vec<String> {
-    let mut names = Vec::new();
-    collect_env(body, &mut names);
-    names.sort();
-    names.dedup();
-    names
-}
-
-fn collect_env(value: &Value, names: &mut Vec<String>) {
-    match value {
-        Value::String(s) => {
-            if let Some(ph) = parse_placeholder(s)
-                && ph.name.starts_with(ENV_PLACEHOLDER_PREFIX)
-            {
-                names.push(ph.name);
-            }
-        }
-        Value::Object(map) => map.values().for_each(|v| collect_env(v, names)),
-        Value::Array(arr) => arr.iter().for_each(|v| collect_env(v, names)),
-        _ => {}
-    }
-}
-
-/// For each name like `"ENV:MY_TOKEN"`, reads the env var after the `ENV:` prefix.
-/// Returns `Err(TemplateError::MissingEnvVar)` if any variable is not set.
-/// Returns `Err(TemplateError::InvalidEnvVarName)` if the var name portion is empty.
-fn resolve_env_vars(names: &[String]) -> Result<HashMap<String, Value>, TemplateError> {
-    let mut map = HashMap::new();
-    for name in names {
-        let var_name = &name[ENV_PLACEHOLDER_PREFIX.len()..];
-        if var_name.is_empty() {
-            return Err(TemplateError::InvalidEnvVarName(name.to_string()));
-        }
-        match std::env::var(var_name) {
-            Ok(val) => {
-                map.insert(name.clone(), Value::String(val));
-            }
-            Err(_) => return Err(TemplateError::MissingEnvVar(var_name.to_string())),
-        }
-    }
-    Ok(map)
 }
 
 // ── Template ──────────────────────────────────────────────────────────────────
@@ -123,34 +77,19 @@ impl Template {
         // Object compositions must not form cycles
         definition::check_circular_refs(&defs)?;
 
-        // Pre-resolve :once placeholders — same value reused across all requests
+        // Pre-resolve all handler-owned placeholders in a single pass.
+        // Each handler walks the body, finds its placeholders, and returns
+        // a map of name → pre-computed Value. Results are merged in order.
         let ctx = GeneratorContext::new(defs);
-        let mut rng = rand::rng();
+        let global = renderer::GlobalPlaceholderHandler.resolve(&body, &ctx)?;
+        let env = renderer::EnvPlaceholderHandler.resolve(&body, &ctx)?;
+        let context = ctx.with_resolved(global).with_resolved(env);
 
-        let once_values: HashMap<String, Value> = renderer::collect_once_placeholder_names(&body)
-            .into_iter()
-            .map(|name| {
-                let val = ctx.generate_by_name(&name, &mut rng);
-                (name, val)
-            })
-            .collect();
-
-        // Resolve ENV: placeholders — read from environment at startup (fail-closed)
-        let env_names = collect_env_placeholder_names(&body);
-        let env_values = resolve_env_vars(&env_names)?;
-
-        // Merge env values into once_values
-        let mut all_once_values = once_values;
-        all_once_values.extend(env_values);
-
-        Ok(Template {
-            body,
-            context: ctx.with_once_values(all_once_values),
-        })
+        Ok(Template { body, context })
     }
 
     /// Pre-generates `n` request bodies, each with independently rendered placeholders.
-    /// `:once` placeholders share the same value across all `n` bodies.
+    /// `:global` placeholders share the same value across all `n` bodies.
     #[instrument(name = "lmn.template.render", skip(self), fields(n))]
     pub fn pre_generate(&self, n: usize) -> Vec<String> {
         let mut rng = rand::rng();
@@ -285,13 +224,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_env_placeholder_with_once_suffix_resolves_correctly() {
-        // {{ENV:LUMEN_TEST_ONCE_TOKEN:once}} — the :once suffix is parsed away by
-        // parse_placeholder, leaving name = "ENV:LUMEN_TEST_ONCE_TOKEN". The collect_once
-        // path must skip it (since there is no generator def), and the ENV resolution path
-        // must still resolve it correctly.
+    fn parse_env_placeholder_with_global_suffix_resolves_correctly() {
+        // {{ENV:LUMEN_TEST_ONCE_TOKEN:global}} — the :global suffix is parsed away by
+        // parse_placeholder, leaving name = "ENV:LUMEN_TEST_ONCE_TOKEN". The global
+        // handler must skip it (since there is no generator def), and the ENV resolution
+        // path must still resolve it correctly.
         unsafe { std::env::set_var("LUMEN_TEST_ONCE_TOKEN", "once_secret_value") };
-        let f = write_temp(r#"{"token": "{{ENV:LUMEN_TEST_ONCE_TOKEN:once}}"}"#);
+        let f = write_temp(r#"{"token": "{{ENV:LUMEN_TEST_ONCE_TOKEN:global}}"}"#);
         let template = Template::parse(f.path()).unwrap();
         let result = template.generate_one();
         assert!(

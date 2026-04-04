@@ -7,7 +7,126 @@ use tracing::instrument;
 use crate::request_template::definition::TemplateDef;
 use crate::request_template::error::TemplateError;
 use crate::request_template::generator::GeneratorContext;
-use crate::request_template::{ENV_PLACEHOLDER_PREFIX, parse_placeholder};
+use crate::request_template::{ENV_PLACEHOLDER_PREFIX, parse_placeholder, PlaceholderRef};
+
+// ── PlaceholderHandler trait ──────────────────────────────────────────────────
+
+/// A strategy for pre-resolving a class of placeholders before any requests fire.
+///
+/// Implementors declare which placeholders they handle via [`matches`] and
+/// compute a map of `name → Value` via [`resolve`]. The default
+/// [`collect_names`] and [`walk`] methods traverse the body tree using `matches`
+/// to find relevant placeholder names.
+pub trait PlaceholderHandler {
+    /// Returns `true` if this handler is responsible for the given placeholder.
+    fn matches(&self, ph: &PlaceholderRef) -> bool;
+
+    /// Walks `body`, collects all matching placeholder names, and resolves them
+    /// to their pre-computed values. Called once at template parse time.
+    fn resolve(
+        &self,
+        body: &Value,
+        ctx: &GeneratorContext,
+    ) -> Result<HashMap<String, Value>, TemplateError>;
+
+    /// Collects all placeholder names in `body` that this handler matches.
+    /// Deduplicated and sorted for determinism.
+    fn collect_names(&self, body: &Value) -> Vec<String> {
+        let mut names = Vec::new();
+        self.walk(body, &mut names);
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    /// Recursively walks `value`, pushing matching placeholder names into `names`.
+    fn walk(&self, value: &Value, names: &mut Vec<String>) {
+        match value {
+            Value::String(s) => {
+                if let Some(ph) = parse_placeholder(s) {
+                    if self.matches(&ph) {
+                        names.push(ph.name);
+                    }
+                }
+            }
+            Value::Object(map) => map.values().for_each(|v| self.walk(v, names)),
+            Value::Array(arr) => arr.iter().for_each(|v| self.walk(v, names)),
+            _ => {}
+        }
+    }
+}
+
+// ── GlobalPlaceholderHandler ──────────────────────────────────────────────────
+
+/// Handles `:global` placeholders — non-ENV placeholders that carry the
+/// `:global` suffix. Their value is generated once at startup and reused
+/// across all requests in the run.
+#[derive(Debug)]
+pub struct GlobalPlaceholderHandler;
+
+impl PlaceholderHandler for GlobalPlaceholderHandler {
+    fn matches(&self, ph: &PlaceholderRef) -> bool {
+        ph.global && !ph.name.starts_with(ENV_PLACEHOLDER_PREFIX)
+    }
+
+    fn resolve(
+        &self,
+        body: &Value,
+        ctx: &GeneratorContext,
+    ) -> Result<HashMap<String, Value>, TemplateError> {
+        let names = self.collect_names(body);
+        let mut rng = rand::rng();
+        Ok(names
+            .into_iter()
+            .map(|n| {
+                let val = ctx.generate_by_name(&n, &mut rng);
+                (n, val)
+            })
+            .collect())
+    }
+}
+
+// ── EnvPlaceholderHandler ─────────────────────────────────────────────────────
+
+/// Handles `ENV:` placeholders — reads named environment variables at template
+/// parse time (fail-closed: missing vars are an error).
+#[derive(Debug)]
+pub struct EnvPlaceholderHandler;
+
+impl PlaceholderHandler for EnvPlaceholderHandler {
+    fn matches(&self, ph: &PlaceholderRef) -> bool {
+        ph.name.starts_with(ENV_PLACEHOLDER_PREFIX)
+    }
+
+    fn resolve(
+        &self,
+        body: &Value,
+        _ctx: &GeneratorContext,
+    ) -> Result<HashMap<String, Value>, TemplateError> {
+        let names = self.collect_names(body);
+        resolve_env_vars(&names)
+    }
+}
+
+/// For each name like `"ENV:MY_TOKEN"`, reads the env var after the `ENV:` prefix.
+/// Returns `Err(TemplateError::MissingEnvVar)` if any variable is not set.
+/// Returns `Err(TemplateError::InvalidEnvVarName)` if the var name portion is empty.
+fn resolve_env_vars(names: &[String]) -> Result<HashMap<String, Value>, TemplateError> {
+    let mut map = HashMap::new();
+    for name in names {
+        let var_name = &name[ENV_PLACEHOLDER_PREFIX.len()..];
+        if var_name.is_empty() {
+            return Err(TemplateError::InvalidEnvVarName(name.to_string()));
+        }
+        match std::env::var(var_name) {
+            Ok(val) => {
+                map.insert(name.clone(), Value::String(val));
+            }
+            Err(_) => return Err(TemplateError::MissingEnvVar(var_name.to_string())),
+        }
+    }
+    Ok(map)
+}
 
 // ── resolve_string_placeholders ───────────────────────────────────────────────
 
@@ -115,31 +234,6 @@ pub fn validate_placeholders(
         }
         Ok(())
     })
-}
-
-/// Collects the names of all `:once` placeholders in the body (deduplicated).
-pub fn collect_once_placeholder_names(body: &Value) -> Vec<String> {
-    let mut names = Vec::new();
-    collect_once(body, &mut names);
-    names.sort();
-    names.dedup();
-    names
-}
-
-fn collect_once(value: &Value, names: &mut Vec<String>) {
-    match value {
-        Value::String(s) => {
-            if let Some(ph) = parse_placeholder(s)
-                && ph.once
-                && !ph.name.starts_with(ENV_PLACEHOLDER_PREFIX)
-            {
-                names.push(ph.name);
-            }
-        }
-        Value::Object(map) => map.values().for_each(|v| collect_once(v, names)),
-        Value::Array(arr) => arr.iter().for_each(|v| collect_once(v, names)),
-        _ => {}
-    }
 }
 
 fn walk_strings<F>(value: &Value, f: &mut F) -> Result<(), TemplateError>
@@ -269,5 +363,22 @@ mod tests {
         });
         let defs = HashMap::new();
         assert!(validate_placeholders(&body, &defs).is_ok());
+    }
+
+    #[test]
+    fn global_handler_finds_global_placeholders() {
+        use serde_json::json;
+        let body = json!({ "a": "{{x:global}}", "b": "{{y}}", "c": "{{x:global}}" });
+        let handler = GlobalPlaceholderHandler;
+        let names = handler.collect_names(&body);
+        assert_eq!(names, vec!["x"]);
+    }
+
+    #[test]
+    fn global_handler_returns_empty_when_none() {
+        use serde_json::json;
+        let body = json!({ "a": "{{x}}", "b": "plain" });
+        let handler = GlobalPlaceholderHandler;
+        assert!(handler.collect_names(&body).is_empty());
     }
 }

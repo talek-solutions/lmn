@@ -13,8 +13,8 @@ fn float_exact(v: f64) -> TemplateDef {
 }
 
 #[test]
-fn resolve_returns_once_value_when_set() {
-    let ctx = GeneratorContext::new(HashMap::new()).with_once_values(
+fn resolve_returns_resolved_value_when_set() {
+    let ctx = GeneratorContext::new(HashMap::new()).with_resolved(
         [("x".to_string(), Value::String("fixed".to_string()))]
             .into_iter()
             .collect(),
@@ -24,7 +24,7 @@ fn resolve_returns_once_value_when_set() {
 }
 
 #[test]
-fn resolve_generates_fresh_when_no_once_value() {
+fn resolve_generates_fresh_when_no_resolved_value() {
     let mut defs = HashMap::new();
     defs.insert("price".to_string(), float_exact(99.0));
     let ctx = GeneratorContext::new(defs);

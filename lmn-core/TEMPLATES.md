@@ -39,7 +39,7 @@ A template file is a standard JSON object with two parts:
 | Syntax | Behaviour |
 |---|---|
 | `"{{name}}"` | Generate a fresh value for each request |
-| `"{{name:once}}"` | Generate once at startup — same value across all requests in the run |
+| `"{{name:global}}"` | Generate once at startup — same value across all requests in the run |
 
 Placeholders can appear anywhere a JSON string value can appear, including inside nested objects and arrays.
 
@@ -63,7 +63,7 @@ Injects the value of an environment variable at template parse time.
 - The env var is read once when the template is parsed, before any requests fire (fail-closed).
 - If the named env var is not set, lmn exits immediately with an error.
 - If the var name is empty (`{{ENV:}}`), lmn exits immediately with an error.
-- `{{ENV:VAR_NAME:once}}` is **not supported**. The `:once` suffix is reserved for regular generator placeholders. Use `{{ENV:VAR_NAME}}` — it is already resolved once at startup and the same value is reused across all requests in the run.
+- `{{ENV:VAR_NAME:global}}` is **not supported**. The `:global` suffix is reserved for regular generator placeholders. Use `{{ENV:VAR_NAME}}` — it is already resolved once at startup and the same value is reused across all requests in the run.
 
 ---
 
@@ -168,7 +168,7 @@ Composes other placeholders into a nested JSON object. Each field in `compositio
 
 **Constraints:** All referenced placeholders must be defined. Circular references are detected and rejected at startup.
 
-`:once` is supported inside `composition` values — the referenced placeholder's `:once` behaviour still applies.
+`:global` is supported inside `composition` values — the referenced placeholder's `:global` behaviour still applies.
 
 ---
 
@@ -176,7 +176,7 @@ Composes other placeholders into a nested JSON object. Each field in `compositio
 
 ```json
 {
-  "name": "{{username:once}}",
+  "name": "{{username:global}}",
   "payment": "{{money}}",
   "_lmn_metadata_templates": {
     "username": {
@@ -208,7 +208,7 @@ Composes other placeholders into a nested JSON object. Each field in `compositio
 }
 ```
 
-In this example `username` is fixed for the entire run (`:once`), while `payment.amount` and `payment.currency` vary per request.
+In this example `username` is fixed for the entire run (`:global`), while `payment.amount` and `payment.currency` vary per request.
 
 ---
 

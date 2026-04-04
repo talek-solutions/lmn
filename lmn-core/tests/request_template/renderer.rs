@@ -1,7 +1,7 @@
 use lmn_core::request_template::{
     definition::{FloatDef, FloatStrategy, TemplateDef},
     generator::GeneratorContext,
-    renderer::{collect_once_placeholder_names, render, validate_placeholders},
+    renderer::{GlobalPlaceholderHandler, PlaceholderHandler, render, validate_placeholders},
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -56,14 +56,16 @@ fn validate_placeholders_err_on_unknown_placeholder() {
 }
 
 #[test]
-fn collect_once_finds_once_placeholders() {
-    let body = json!({ "a": "{{x:once}}", "b": "{{y}}", "c": "{{x:once}}" });
-    let names = collect_once_placeholder_names(&body);
+fn global_handler_finds_global_placeholders() {
+    let body = json!({ "a": "{{x:global}}", "b": "{{y}}", "c": "{{x:global}}" });
+    let handler = GlobalPlaceholderHandler;
+    let names = handler.collect_names(&body);
     assert_eq!(names, vec!["x"]);
 }
 
 #[test]
-fn collect_once_returns_empty_when_none() {
+fn global_handler_returns_empty_when_none() {
     let body = json!({ "a": "{{x}}", "b": "plain" });
-    assert!(collect_once_placeholder_names(&body).is_empty());
+    let handler = GlobalPlaceholderHandler;
+    assert!(handler.collect_names(&body).is_empty());
 }

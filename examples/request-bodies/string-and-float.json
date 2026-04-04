@@ -1,6 +1,6 @@
 {
   "generatedNameField": "{{name_string}}",
-  "generatedLastNameField": "{{name_string:once}}",
+  "generatedLastNameField": "{{name_string:global}}",
   "generatedAmountField": "{{amount_number}}",
   "generatedMoneyField": "{{money_object}}",
   "_lmn_metadata_templates": {
