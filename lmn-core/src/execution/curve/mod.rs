@@ -7,10 +7,11 @@ use tokio_util::sync::CancellationToken;
 use tracing::debug;
 
 use crate::execution::SamplingStats;
-use crate::http::{Request, RequestConfig, RequestResult};
+use crate::http::{RequestConfig, RequestResult};
 use crate::load_curve::LoadCurve;
 use crate::request_template::Template;
 use crate::sampling::{ReservoirAction, SamplingParams, SamplingState};
+use crate::vu::Vu;
 
 // ── CurveExecutorParams ───────────────────────────────────────────────────────
 
@@ -103,13 +104,15 @@ impl CurveExecutor {
                             let to_add = target - current;
                             for _ in 0..to_add {
                                 let vu_token = CancellationToken::new();
-                                let handle = spawn_vu(VuParams {
+                                let handle = Vu {
                                     request_config: Arc::clone(&request_config),
                                     plain_headers: Arc::clone(&plain_headers),
                                     template: template.as_ref().map(Arc::clone),
                                     cancellation_token: vu_token.clone(),
                                     result_tx: tx.clone(),
-                                });
+                                    budget: None,
+                                }
+                                .spawn();
                                 vu_handles.push((handle, vu_token));
                             }
                         }
@@ -188,66 +191,3 @@ impl CurveExecutor {
     }
 }
 
-// ── VU task ───────────────────────────────────────────────────────────────────
-
-struct VuParams {
-    request_config: Arc<RequestConfig>,
-    /// Pre-converted header pairs shared across all VUs — avoids per-request allocation.
-    plain_headers: Arc<Vec<(String, String)>>,
-    template: Option<Arc<Template>>,
-    cancellation_token: CancellationToken,
-    result_tx: mpsc::UnboundedSender<RequestResult>,
-}
-
-fn spawn_vu(params: VuParams) -> JoinHandle<()> {
-    tokio::spawn(async move {
-        let VuParams {
-            request_config,
-            plain_headers,
-            template,
-            cancellation_token,
-            result_tx,
-        } = params;
-
-        loop {
-            // Generate body on demand for this request
-            let body = template.as_ref().map(|t| t.generate_one());
-
-            let resolved = request_config.resolve_body(body);
-
-            let client = request_config.client.clone();
-            let url = request_config.host.as_str().to_string();
-            let method = request_config.method;
-            let capture_body = request_config.tracked_fields.is_some();
-
-            // Clone the Arc cheaply; dereference to get a Vec clone only when needed.
-            let headers = Arc::clone(&plain_headers);
-
-            let result_fut = async {
-                let mut req = Request::new(client, url, method);
-                if let Some((content, content_type)) = resolved {
-                    req = req.body(content, content_type);
-                }
-                if capture_body {
-                    req = req.read_response();
-                }
-                if !headers.is_empty() {
-                    req = req.headers(headers);
-                }
-                req.execute().await
-            };
-
-            tokio::select! {
-                _ = cancellation_token.cancelled() => {
-                    break;
-                }
-                result = result_fut => {
-                    // Best-effort send — if receiver is gone, we stop
-                    if result_tx.send(result).is_err() {
-                        break;
-                    }
-                }
-            }
-        }
-    })
-}

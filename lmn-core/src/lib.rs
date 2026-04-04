@@ -12,3 +12,4 @@ pub mod response_template;
 pub mod sampling;
 pub mod stats;
 pub mod threshold;
+pub mod vu;

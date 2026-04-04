@@ -83,7 +83,7 @@ impl RequestResult {
 
 pub struct Request {
     client: reqwest::Client,
-    url: String,
+    url: Arc<String>,
     method: HttpMethod,
     body: Option<(String, &'static str)>,
     headers: Option<Arc<Vec<(String, String)>>>,
@@ -91,7 +91,7 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn new(client: reqwest::Client, url: String, method: HttpMethod) -> Self {
+    pub fn new(client: reqwest::Client, url: Arc<String>, method: HttpMethod) -> Self {
         Self {
             client,
             url,
@@ -123,11 +123,11 @@ impl Request {
     pub async fn execute(self) -> RequestResult {
         let start = Instant::now();
         let mut req = match self.method {
-            HttpMethod::Get => self.client.get(&self.url),
-            HttpMethod::Post => self.client.post(&self.url),
-            HttpMethod::Put => self.client.put(&self.url),
-            HttpMethod::Patch => self.client.patch(&self.url),
-            HttpMethod::Delete => self.client.delete(&self.url),
+            HttpMethod::Get => self.client.get(self.url.as_str()),
+            HttpMethod::Post => self.client.post(self.url.as_str()),
+            HttpMethod::Put => self.client.put(self.url.as_str()),
+            HttpMethod::Patch => self.client.patch(self.url.as_str()),
+            HttpMethod::Delete => self.client.delete(self.url.as_str()),
         };
         if let Some((content, content_type)) = self.body {
             req = req.header("Content-Type", content_type).body(content);

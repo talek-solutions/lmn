@@ -19,7 +19,7 @@ use crate::http::RequestResult;
 /// Indicates which execution strategy produced the run results.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunMode {
-    /// Classic semaphore-based fixed-count mode.
+    /// Worker-pool fixed-count mode: N long-lived VUs share an atomic request budget.
     Fixed,
     /// Time-based dynamic VU mode driven by a `LoadCurve`.
     Curve,
@@ -122,9 +122,14 @@ pub(crate) fn build_request_config(
     body: Option<Body>,
     tracked_fields: Option<Arc<Vec<TrackedField>>>,
     headers: Vec<(String, SensitiveString)>,
+    concurrency: usize,
 ) -> Arc<RequestConfig> {
+    let client = reqwest::Client::builder()
+        .pool_max_idle_per_host(concurrency)
+        .build()
+        .expect("failed to build HTTP client");
     Arc::new(RequestConfig {
-        client: reqwest::Client::new(),
+        client,
         host: Arc::new(host),
         method,
         body: Arc::new(body),

@@ -59,7 +59,7 @@ async fn execute_fixed(
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     let tracked_fields = resolve_tracked_fields(response_template_path)?;
-    let request_config = build_request_config(host, method, body, tracked_fields, headers);
+    let request_config = build_request_config(host, method, body, tracked_fields, headers, concurrency);
 
     let cancellation_token = CancellationToken::new();
     let cancel = cancellation_token.clone();
@@ -128,7 +128,8 @@ async fn execute_curve(
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     let tracked_fields = resolve_tracked_fields(response_template_path)?;
-    let request_config = build_request_config(host, method, body, tracked_fields, headers);
+    let peak_vus = curve.stages.iter().map(|s| s.target_vus as usize).max().unwrap_or(1);
+    let request_config = build_request_config(host, method, body, tracked_fields, headers, peak_vus);
 
     let cancellation_token = CancellationToken::new();
     let cancel = cancellation_token.clone();

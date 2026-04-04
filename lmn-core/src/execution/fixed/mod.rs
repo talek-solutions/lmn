@@ -1,15 +1,17 @@
 use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 
-use tokio::sync::{Semaphore, mpsc};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use tracing::info_span;
 
 use crate::execution::SamplingStats;
-use crate::http::{Request, RequestConfig, RequestResult};
+use crate::http::{RequestConfig, RequestResult};
 use crate::monitoring::SpanName;
 use crate::request_template::Template;
 use crate::sampling::{ReservoirAction, SamplingParams, SamplingState};
+use crate::vu::Vu;
 
 // ── FixedExecutorParams ───────────────────────────────────────────────────────
 
@@ -34,7 +36,9 @@ pub struct FixedExecutionResult {
 
 // ── FixedExecutor ─────────────────────────────────────────────────────────────
 
-/// Executes a fixed-count load test using a semaphore-bounded concurrency model.
+/// Executes a fixed-count load test using a worker-pool model: spawns exactly
+/// `concurrency` long-lived VU tasks that share an atomic request budget and
+/// self-terminate when the budget is exhausted.
 pub struct FixedExecutor {
     params: FixedExecutorParams,
 }
@@ -44,10 +48,10 @@ impl FixedExecutor {
         Self { params }
     }
 
-    /// Runs the fixed load test, dispatching exactly `total` requests at up to
-    /// `concurrency` in-flight at a time. Applies VU-threshold + reservoir
-    /// sampling to bound memory usage. Returns a `FixedExecutionResult` when
-    /// all requests complete or a cancellation signal is received.
+    /// Runs the fixed load test. Spawns `concurrency` VU tasks sharing a budget
+    /// of `total` requests. Applies VU-threshold + reservoir sampling to bound
+    /// memory usage. Returns a `FixedExecutionResult` when all requests complete
+    /// or a cancellation signal is received.
     pub async fn execute(self) -> FixedExecutionResult {
         let FixedExecutorParams {
             request_config,
@@ -58,7 +62,7 @@ impl FixedExecutor {
             sampling,
         } = self.params;
 
-        // Pre-convert headers once before the hot loop to avoid per-request allocation.
+        // Pre-convert headers once before spawning VUs to avoid per-request allocation.
         let plain_headers: Arc<Vec<(String, String)>> = Arc::new(
             request_config
                 .headers
@@ -68,57 +72,32 @@ impl FixedExecutor {
         );
 
         let (all_results, sampling_state) = async {
-            let sem = Arc::new(Semaphore::new(concurrency));
-            let (tx, mut rx) = mpsc::channel::<RequestResult>(concurrency);
+            let budget = Arc::new(AtomicUsize::new(total));
+            let (tx, mut rx) = mpsc::unbounded_channel::<RequestResult>();
 
-            let method = Arc::new(request_config.method);
-
-            for _ in 0..total {
-                // Generate body on demand for this request — no pre-generation.
-                let body = template.as_ref().map(|t| t.generate_one());
-                let resolved = request_config.resolve_body(body);
-
-                let client = request_config.client.clone();
-                let capture_body = request_config.tracked_fields.is_some();
-                let headers = Arc::clone(&plain_headers);
-                let url = Arc::clone(&request_config.host).to_string();
-                let method_clone = Arc::clone(&method);
-
-                let tx = tx.clone();
-
-                tokio::select! {
-                    _ = cancellation_token.cancelled() => break,
-                    permit = sem.clone().acquire_owned() => {
-                        let permit = permit.unwrap();
-
-                        tokio::spawn(async move {
-                            let _permit = permit;
-                            let mut req = Request::new(
-                                client,
-                                url,
-                                *method_clone
-                            );
-                            if let Some((content, content_type)) = resolved {
-                                req = req.body(content, content_type);
-                            }
-                            if capture_body {
-                                req = req.read_response();
-                            }
-                            if !headers.is_empty() {
-                                req = req.headers(headers);
-                            }
-                            let _ = tx.send(req.execute().await).await;
-                        });
+            // Spawn exactly `concurrency` VU tasks. Each claims requests from the
+            // shared budget and self-terminates when the budget is exhausted.
+            let vu_handles: Vec<_> = (0..concurrency)
+                .map(|_| {
+                    Vu {
+                        request_config: Arc::clone(&request_config),
+                        plain_headers: Arc::clone(&plain_headers),
+                        template: template.as_ref().map(Arc::clone),
+                        cancellation_token: cancellation_token.clone(),
+                        result_tx: tx.clone(),
+                        budget: Some(Arc::clone(&budget)),
                     }
-                }
-            }
+                    .spawn()
+                })
+                .collect();
 
-            // Close the last sender — rx drains once all tasks have finished.
+            // Drop the coordinator's sender so the channel closes once all VU
+            // senders are also dropped (they are, once each VU task exits).
             drop(tx);
 
             let reservoir_size = sampling.reservoir_size;
             let mut sampling_state = SamplingState::new(sampling);
-            // In fixed mode the VU count is constant — set it once before draining.
+            // VU count is constant for the duration of a fixed run.
             sampling_state.set_active_vus(concurrency);
 
             let mut results: Vec<RequestResult> = Vec::with_capacity(total.min(reservoir_size));
@@ -132,6 +111,13 @@ impl FixedExecutor {
                     }
                 }
             }
+
+            // VUs have exited (their senders dropped, closing the channel).
+            // Await handles to ensure all task resources are released.
+            for handle in vu_handles {
+                let _ = handle.await;
+            }
+
             (results, sampling_state)
         }
         .instrument(info_span!(SpanName::REQUESTS, total))
@@ -240,7 +226,6 @@ mod tests {
             },
         });
 
-        // Verify the executor was constructed — just check it compiles and holds state.
         assert_eq!(executor.params.total, 1);
         assert_eq!(executor.params.concurrency, 1);
     }
