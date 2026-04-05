@@ -52,7 +52,7 @@ impl FixedExecutor {
     /// Runs the fixed load test. Spawns `concurrency` VU tasks sharing a budget
     /// of `total` requests. Returns a `FixedExecutionResult` when all requests
     /// complete or a cancellation signal is received.
-    pub async fn execute(self) -> FixedExecutionResult {
+    pub async fn execute(self) -> Result<FixedExecutionResult, crate::execution::RunError> {
         let FixedExecutorParams {
             request_config,
             template,
@@ -141,7 +141,7 @@ impl FixedExecutor {
 
             // All VU senders are now dropped — channel is closed. Await the
             // drain task to get the accumulated result.
-            drain_handle.await.expect("drain task panicked")
+            Ok(drain_handle.await?)
         }
         .instrument(info_span!(SpanName::REQUESTS, total))
         .await

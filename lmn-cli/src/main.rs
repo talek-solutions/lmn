@@ -22,7 +22,10 @@ fn main() {
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_http()
         .build()
-        .expect("failed to build OTLP exporter");
+        .unwrap_or_else(|e| {
+            eprintln!("error: failed to build OTLP exporter: {e}");
+            std::process::exit(1);
+        });
 
     let resource = Resource::builder().with_service_name("lmn").build();
 
@@ -35,12 +38,18 @@ fn main() {
     let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
     let subscriber = Registry::default().with(telemetry);
     tracing::subscriber::set_global_default(subscriber)
-        .expect("failed to set global tracing subscriber");
+        .unwrap_or_else(|e| {
+            eprintln!("error: failed to set global tracing subscriber: {e}");
+            std::process::exit(1);
+        });
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
-        .expect("failed to create tokio runtime");
+        .unwrap_or_else(|e| {
+            eprintln!("error: failed to create tokio runtime: {e}");
+            std::process::exit(1);
+        });
 
     let exit_code = runtime.block_on(async {
         let root = tracing::span!(tracing::Level::INFO, SpanName::RUN);

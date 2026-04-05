@@ -15,8 +15,11 @@ pub struct LatencyHistogram {
 impl LatencyHistogram {
     /// Creates a new histogram covering 1µs to 1 hour at 3 significant digits.
     pub fn new() -> Self {
+        // Bounds are compile-time constants: low=1µs, high=1h, sig_figs=3.
+        // new_with_bounds only fails for invalid bounds (low==0, high<2*low, sig_figs>5),
+        // none of which can occur here.
         let inner = Histogram::<u64>::new_with_bounds(1, 3_600_000_000, 3)
-            .expect("valid HDR histogram bounds");
+            .unwrap_or_else(|_| unreachable!("HDR histogram bounds (1, 3_600_000_000, 3) are always valid"));
         Self { inner }
     }
 

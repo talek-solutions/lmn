@@ -65,7 +65,7 @@ impl CurveExecutor {
     /// Runs the load curve, spawning and cancelling VU tasks as the curve
     /// dictates. Returns a `CurveExecutionResult` when the curve completes or a
     /// cancellation signal is received.
-    pub async fn execute(self) -> CurveExecutionResult {
+    pub async fn execute(self) -> Result<CurveExecutionResult, crate::execution::RunError> {
         let CurveExecutorParams {
             curve,
             request_config,
@@ -131,7 +131,7 @@ impl CurveExecutor {
                 let elapsed = record
                     .completed_at
                     .checked_duration_since(run_start)
-                    .unwrap_or(Duration::ZERO);
+                    .unwrap_or_default();
                 let stage_idx = stage_index_at(&drain_stages, elapsed);
 
                 stage_stats[stage_idx].latency.record(record.duration);
@@ -231,6 +231,6 @@ impl CurveExecutor {
         drop(tx);
 
         // Await the drain task to get the fully accumulated result.
-        drain_handle.await.expect("drain task panicked")
+        Ok(drain_handle.await?)
     }
 }

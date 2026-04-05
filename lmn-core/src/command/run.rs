@@ -56,16 +56,18 @@ async fn execute_fixed(
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     let tracked_fields = resolve_tracked_fields(response_template_path)?;
-    let request_config = build_request_config(host, method, body, tracked_fields, headers, concurrency);
+    let request_config = build_request_config(host, method, body, tracked_fields, headers, concurrency)?;
 
     let cancellation_token = CancellationToken::new();
     let cancel = cancellation_token.clone();
     tokio::spawn(async move {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to listen for ctrl_c");
-        eprintln!("\nShutdown signal received — waiting for in-flight requests to finish...");
-        cancel.cancel();
+        match tokio::signal::ctrl_c().await {
+            Ok(()) => {
+                eprintln!("\nShutdown signal received — waiting for in-flight requests to finish...");
+                cancel.cancel();
+            }
+            Err(e) => eprintln!("warning: failed to listen for ctrl_c: {e}"),
+        }
     });
 
     let started_at = Instant::now();
@@ -78,7 +80,7 @@ async fn execute_fixed(
         cancellation_token,
     })
     .execute()
-    .await;
+    .await?;
 
     Ok(Some(RunStats {
         elapsed: started_at.elapsed(),
@@ -119,16 +121,18 @@ async fn execute_curve(
 
     let tracked_fields = resolve_tracked_fields(response_template_path)?;
     let peak_vus = curve.stages.iter().map(|s| s.target_vus as usize).max().unwrap_or(1);
-    let request_config = build_request_config(host, method, body, tracked_fields, headers, peak_vus);
+    let request_config = build_request_config(host, method, body, tracked_fields, headers, peak_vus)?;
 
     let cancellation_token = CancellationToken::new();
     let cancel = cancellation_token.clone();
     tokio::spawn(async move {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to listen for ctrl_c");
-        eprintln!("\nShutdown signal received — cancelling curve execution...");
-        cancel.cancel();
+        match tokio::signal::ctrl_c().await {
+            Ok(()) => {
+                eprintln!("\nShutdown signal received — cancelling curve execution...");
+                cancel.cancel();
+            }
+            Err(e) => eprintln!("warning: failed to listen for ctrl_c: {e}"),
+        }
     });
 
     let started_at = Instant::now();
@@ -140,7 +144,7 @@ async fn execute_curve(
         cancellation_token,
     });
 
-    let curve_result = executor.execute().await;
+    let curve_result = executor.execute().await?;
 
     Ok(Some(RunStats {
         elapsed: started_at.elapsed(),

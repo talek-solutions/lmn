@@ -195,7 +195,7 @@ impl TryFrom<RunArgs> for RunArgsResolved {
         } else if let Some(ref c) = cfg {
             let exec_cfg: Option<&ExecutionConfig> = c.execution.as_ref();
             if exec_cfg.and_then(|e| e.stages.as_ref()).is_some() {
-                let exec = exec_cfg.unwrap().clone();
+                let exec = exec_cfg.ok_or("execution config unexpectedly None")?.clone();
                 let curve =
                     LoadCurve::try_from(exec).map_err(Box::<dyn std::error::Error>::from)?;
                 ExecutionMode::Curve(curve)
@@ -245,7 +245,8 @@ impl TryFrom<RunArgs> for RunArgsResolved {
         // CLI headers override config headers (case-insensitive key match)
         for raw in &args.headers {
             // parse_header already validated the ': ' separator
-            let colon_pos = raw.find(": ").unwrap();
+            let colon_pos = raw.find(": ")
+                .ok_or_else(|| format!("invalid header '{raw}': missing ': ' separator"))?;
             let name = raw[..colon_pos].to_string();
             let value = raw[colon_pos + 2..].to_string();
             // Remove existing entry with same name (case-insensitive)

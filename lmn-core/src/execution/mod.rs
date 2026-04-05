@@ -1,5 +1,8 @@
 pub mod curve;
+pub mod error;
 pub mod fixed;
+
+pub use error::RunError;
 
 use std::sync::Arc;
 use std::path::PathBuf;
@@ -112,17 +115,16 @@ pub(crate) fn build_request_config(
     tracked_fields: Option<Arc<Vec<TrackedField>>>,
     headers: Vec<(String, SensitiveString)>,
     concurrency: usize,
-) -> Arc<RequestConfig> {
+) -> Result<Arc<RequestConfig>, RunError> {
     let client = reqwest::Client::builder()
         .pool_max_idle_per_host(concurrency)
-        .build()
-        .expect("failed to build HTTP client");
-    Arc::new(RequestConfig {
+        .build()?;
+    Ok(Arc::new(RequestConfig {
         client,
         host: Arc::new(host),
         method,
         body: Arc::new(body),
         tracked_fields,
         headers: Arc::new(headers),
-    })
+    }))
 }
