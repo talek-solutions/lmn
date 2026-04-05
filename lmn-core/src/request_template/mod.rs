@@ -5,7 +5,6 @@ mod generators;
 pub mod renderer;
 mod validators;
 
-use std::collections::HashMap;
 use std::path::Path;
 
 use serde_json::Value;
@@ -13,7 +12,7 @@ use tracing::instrument;
 
 pub use error::TemplateError;
 use generator::GeneratorContext;
-use renderer::PlaceholderHandler;
+use renderer::{EnvPlaceholderHandler, GlobalPlaceholderHandler, PlaceholderHandler, Segment};
 
 const METADATA_KEY: &str = "_lmn_metadata_templates";
 pub(crate) const ENV_PLACEHOLDER_PREFIX: &str = "ENV:";
@@ -48,7 +47,7 @@ pub fn parse_placeholder(s: &str) -> Option<PlaceholderRef> {
 // ── Template ──────────────────────────────────────────────────────────────────
 
 pub struct Template {
-    body: Value,
+    compiled: Vec<Segment>,
     context: GeneratorContext,
 }
 
@@ -65,7 +64,7 @@ impl Template {
             .remove(METADATA_KEY)
             .unwrap_or_else(|| Value::Object(serde_json::Map::new()));
 
-        let raw_defs: HashMap<String, definition::RawTemplateDef> =
+        let raw_defs: std::collections::HashMap<String, definition::RawTemplateDef> =
             serde_json::from_value(metadata)?;
         let defs = definition::validate_all(raw_defs)?;
 
@@ -77,15 +76,25 @@ impl Template {
         // Object compositions must not form cycles
         definition::check_circular_refs(&defs)?;
 
-        // Pre-resolve all handler-owned placeholders in a single pass.
-        // Each handler walks the body, finds its placeholders, and returns
-        // a map of name → pre-computed Value. Results are merged in order.
         let ctx = GeneratorContext::new(defs);
-        let global = renderer::GlobalPlaceholderHandler.resolve(&body, &ctx)?;
-        let env = renderer::EnvPlaceholderHandler.resolve(&body, &ctx)?;
-        let context = ctx.with_resolved(global).with_resolved(env);
 
-        Ok(Template { body, context })
+        // Pre-resolve :global placeholders — same value reused across all requests.
+        let global_resolved = GlobalPlaceholderHandler.resolve(&body, &ctx)?;
+
+        // Resolve ENV: placeholders — read from environment at startup (fail-closed).
+        let env_resolved = EnvPlaceholderHandler.resolve(&body, &ctx)?;
+
+        // Merge all pre-resolved values and compile the body into segments.
+        let mut all_resolved = global_resolved;
+        all_resolved.extend(env_resolved);
+
+        let compiled = renderer::compile(&body);
+        // body is dropped here — no longer needed after compile.
+
+        Ok(Template {
+            compiled,
+            context: ctx.with_resolved(all_resolved),
+        })
     }
 
     /// Generates a single request body on demand.
@@ -94,8 +103,7 @@ impl Template {
     #[instrument(name = "lmn.template.generate_one", skip(self))]
     pub fn generate_one(&self) -> Result<String, TemplateError> {
         let mut rng = rand::rng();
-        let rendered = renderer::render(&self.body, &self.context, &mut rng);
-        serde_json::to_string(&rendered).map_err(TemplateError::Serialization)
+        renderer::render_compiled(&self.compiled, &self.context, &mut rng)
     }
 }
 
@@ -147,13 +155,11 @@ mod tests {
         assert!(Template::parse(f.path()).is_ok());
     }
 
-    // 9. generate_one returns valid JSON string
     #[test]
     fn generate_one_returns_valid_json() {
         let f = write_temp(r#"{"field": "static", "value": 42}"#);
         let template = Template::parse(f.path()).unwrap();
         let result = template.generate_one().unwrap();
-        // Must parse as valid JSON
         let parsed: serde_json::Value =
             serde_json::from_str(&result).expect("generate_one must return valid JSON");
         assert_eq!(
@@ -165,7 +171,6 @@ mod tests {
 
     #[test]
     fn generate_one_is_independent_per_call() {
-        // Two calls should both produce valid JSON (no shared mutable state issues)
         let f = write_temp(r#"{"field": "static"}"#);
         let template = Template::parse(f.path()).unwrap();
         let a = template.generate_one().unwrap();
@@ -188,7 +193,6 @@ mod tests {
 
     #[test]
     fn parse_env_placeholder_missing_var_is_error() {
-        // Ensure the var is definitely not set
         unsafe { std::env::remove_var("LUMEN_NONEXISTENT_12345") };
         let f = write_temp(r#"{"token": "{{ENV:LUMEN_NONEXISTENT_12345}}"}"#);
         let result = Template::parse(f.path());
@@ -204,7 +208,6 @@ mod tests {
 
     #[test]
     fn parse_env_placeholder_no_def_required() {
-        // Template with ENV: placeholder and empty _lmn_metadata_templates should succeed
         unsafe { std::env::set_var("LUMEN_TEST_TOKEN", "anyvalue") };
         let f =
             write_temp(r#"{"token": "{{ENV:LUMEN_TEST_TOKEN}}", "_lmn_metadata_templates": {}}"#);
@@ -213,17 +216,16 @@ mod tests {
 
     #[test]
     fn parse_env_placeholder_with_global_suffix_resolves_correctly() {
-        // {{ENV:LUMEN_TEST_ONCE_TOKEN:global}} — the :global suffix is parsed away by
-        // parse_placeholder, leaving name = "ENV:LUMEN_TEST_ONCE_TOKEN". The global
-        // handler must skip it (since there is no generator def), and the ENV resolution
-        // path must still resolve it correctly.
-        unsafe { std::env::set_var("LUMEN_TEST_ONCE_TOKEN", "once_secret_value") };
-        let f = write_temp(r#"{"token": "{{ENV:LUMEN_TEST_ONCE_TOKEN:global}}"}"#);
+        // {{ENV:LUMEN_TEST_GLOBAL_TOKEN:global}} — the :global suffix is parsed away by
+        // parse_placeholder, leaving name = "ENV:LUMEN_TEST_GLOBAL_TOKEN". The global
+        // handler skips it (ENV: prefix), and the ENV resolution path resolves it correctly.
+        unsafe { std::env::set_var("LUMEN_TEST_GLOBAL_TOKEN", "global_secret_value") };
+        let f = write_temp(r#"{"token": "{{ENV:LUMEN_TEST_GLOBAL_TOKEN:global}}"}"#);
         let template = Template::parse(f.path()).unwrap();
         let result = template.generate_one().unwrap();
         assert!(
-            result.contains("once_secret_value"),
-            "expected 'once_secret_value' in output, got: {result}"
+            result.contains("global_secret_value"),
+            "expected 'global_secret_value' in output, got: {result}"
         );
     }
 
