@@ -1,58 +1,29 @@
 use std::collections::BTreeMap;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use crate::http::RequestResult;
+use crate::execution::StageStats;
+use crate::histogram::{LatencyHistogram, StatusCodeHistogram};
 use crate::load_curve::{RampType, Stage};
 use crate::response_template::stats::ResponseStats;
-use crate::stats::Distribution;
-use crate::stats::LatencyDistribution;
 
 use super::report::{FloatFieldSummary, LatencyStats, ResponseStatsReport, StageReport};
 
 // ── latency_stats ─────────────────────────────────────────────────────────────
 
-/// Constructs a `LatencyDistribution` from a `RequestResult` slice and snapshots
-/// the specific quantiles required by the output schema into a `LatencyStats` struct.
-///
-/// The quantile logic lives entirely in `LatencyDistribution`; this function only
-/// decides which quantiles to snapshot.
-pub fn latency_stats(results: &[RequestResult]) -> LatencyStats {
-    let dist = LatencyDistribution::from_results(results);
+/// Snapshots the standard latency percentiles from a `LatencyHistogram` into a
+/// `LatencyStats` struct for the output schema.
+pub fn latency_stats(hist: &LatencyHistogram) -> LatencyStats {
     LatencyStats {
-        min_ms: dist.min_ms(),
-        p10_ms: dist.quantile_ms(0.10),
-        p25_ms: dist.quantile_ms(0.25),
-        p50_ms: dist.quantile_ms(0.50),
-        p75_ms: dist.quantile_ms(0.75),
-        p90_ms: dist.quantile_ms(0.90),
-        p95_ms: dist.quantile_ms(0.95),
-        p99_ms: dist.quantile_ms(0.99),
-        max_ms: dist.max_ms(),
-        avg_ms: dist.mean_ms(),
-    }
-}
-
-// ── latency_stats_from_subset ─────────────────────────────────────────────────
-
-/// Same as `latency_stats` but operates on a pre-filtered subset of results.
-/// Used by per-stage computation to avoid re-constructing the full distribution.
-fn latency_stats_from_subset(subset: &[&RequestResult]) -> LatencyStats {
-    let ms_values: Vec<f64> = subset
-        .iter()
-        .map(|r| r.duration.as_secs_f64() * 1000.0)
-        .collect();
-    let dist = Distribution::from_unsorted(ms_values);
-    LatencyStats {
-        min_ms: dist.min(),
-        p10_ms: dist.quantile(0.10),
-        p25_ms: dist.quantile(0.25),
-        p50_ms: dist.quantile(0.50),
-        p75_ms: dist.quantile(0.75),
-        p90_ms: dist.quantile(0.90),
-        p95_ms: dist.quantile(0.95),
-        p99_ms: dist.quantile(0.99),
-        max_ms: dist.max(),
-        avg_ms: dist.mean(),
+        min_ms: hist.min_ms(),
+        p10_ms: hist.quantile_ms(0.10),
+        p25_ms: hist.quantile_ms(0.25),
+        p50_ms: hist.quantile_ms(0.50),
+        p75_ms: hist.quantile_ms(0.75),
+        p90_ms: hist.quantile_ms(0.90),
+        p95_ms: hist.quantile_ms(0.95),
+        p99_ms: hist.quantile_ms(0.99),
+        max_ms: hist.max_ms(),
+        avg_ms: hist.mean_ms(),
     }
 }
 
@@ -62,14 +33,13 @@ fn latency_stats_from_subset(subset: &[&RequestResult]) -> LatencyStats {
 ///
 /// `None` status (connection errors with no HTTP response) maps to the key `"error"`.
 /// Uses `BTreeMap` for stable JSON key ordering in the output schema.
-pub fn status_code_map(results: &[RequestResult]) -> BTreeMap<String, usize> {
+pub fn status_code_map(hist: &StatusCodeHistogram) -> BTreeMap<String, u64> {
     let mut map = BTreeMap::new();
-    for r in results {
-        let key = match r.status_code {
-            Some(code) => code.to_string(),
-            None => "error".to_string(),
-        };
-        *map.entry(key).or_insert(0usize) += 1;
+    for (code, count) in hist.counts() {
+        map.insert(code.to_string(), *count);
+    }
+    if hist.error_count() > 0 {
+        map.insert("error".to_string(), hist.error_count());
     }
     map
 }
@@ -105,34 +75,33 @@ pub fn error_rate(total_requests: usize, total_failures: usize) -> f64 {
 
 /// Converts `ResponseStats` into a serialization-ready `ResponseStatsReport`.
 ///
-/// - `string_distributions` and `mismatch_counts` are promoted from `HashMap` to
+/// - `string_fields` and `mismatch_counts` are promoted from `HashMap` to
 ///   `BTreeMap` for stable JSON key ordering.
-/// - Each `FloatFieldStats` accumulator is converted to a `Distribution` and the
-///   min/avg/p50/p95/p99/max summary is computed. Fields with no values are omitted.
+/// - Each `NumericHistogram` is converted to a `Distribution` and the
+///   min/avg/p50/p95/p99/max summary is computed. Empty histograms are omitted.
 pub fn response_stats_report(rs: &ResponseStats) -> ResponseStatsReport {
     // string_fields: promote HashMap → BTreeMap at both levels
-    let string_fields: BTreeMap<String, BTreeMap<String, usize>> = rs
-        .string_distributions
+    let string_fields: BTreeMap<String, BTreeMap<String, u64>> = rs
+        .string_fields
         .iter()
-        .map(|(k, dist)| {
-            let inner: BTreeMap<String, usize> =
-                dist.iter().map(|(v, c)| (v.clone(), *c)).collect();
+        .map(|(k, hist)| {
+            let inner: BTreeMap<String, u64> =
+                hist.entries().iter().map(|(v, c)| (v.clone(), *c)).collect();
             (k.clone(), inner)
         })
         .collect();
 
-    // float_fields: sort values, compute summary, promote to BTreeMap; skip empty fields
+    // float_fields: derive Distribution from NumericHistogram reservoir, compute summary
     let float_fields: BTreeMap<String, FloatFieldSummary> = rs
         .float_fields
         .iter()
-        .filter_map(|(k, ffs)| {
-            if ffs.values.is_empty() {
+        .filter_map(|(k, hist)| {
+            if hist.is_empty() {
                 return None;
             }
-            let dist = Distribution::from_unsorted(ffs.values.clone());
+            let dist = hist.distribution();
             let n = dist.len();
-            // Integer-index formula: (n * p / 100).min(n-1) matches the ASCII table
-            // renderer in lumen-cli/src/cli/output.rs. value_at() avoids the float round-trip.
+            // Integer-index formula: (n * p / 100).min(n-1) matches the ASCII table renderer
             let p50_idx = (n * 50 / 100).min(n - 1);
             let p95_idx = (n * 95 / 100).min(n - 1);
             let p99_idx = (n * 99 / 100).min(n - 1);
@@ -151,7 +120,7 @@ pub fn response_stats_report(rs: &ResponseStats) -> ResponseStatsReport {
         .collect();
 
     // mismatch_counts: promote HashMap → BTreeMap
-    let mismatch_counts: BTreeMap<String, usize> = rs
+    let mismatch_counts: BTreeMap<String, u64> = rs
         .mismatch_counts
         .iter()
         .map(|(k, v)| (k.clone(), *v))
@@ -167,52 +136,18 @@ pub fn response_stats_report(rs: &ResponseStats) -> ResponseStatsReport {
 
 // ── per_stage_reports ─────────────────────────────────────────────────────────
 
-/// Buckets results by `completed_at` into stage windows and builds per-stage metrics.
-///
-/// Each result is attributed to the stage whose wall-clock window contains the
-/// result's `completed_at` timestamp. The stage window is `[stage_start, stage_end)`.
-///
-/// Since the reservoir is a uniform random sample, per-stage percentiles are
-/// representative within the same caveats as global percentiles.
-pub fn per_stage_reports(
-    results: &[RequestResult],
-    stages: &[Stage],
-    run_start: Instant,
-) -> Vec<StageReport> {
-    // Pre-compute stage windows as (start_duration, end_duration) offsets from run_start
-    let mut windows: Vec<(Duration, Duration)> = Vec::with_capacity(stages.len());
-    let mut offset = Duration::ZERO;
-    for stage in stages {
-        let start = offset;
-        let end = offset + stage.duration;
-        windows.push((start, end));
-        offset = end;
-    }
-
+/// Builds per-stage metrics from the pre-collected `StageStats` histograms.
+pub fn per_stage_reports(stages: &[Stage], stage_stats: &[StageStats]) -> Vec<StageReport> {
     stages
         .iter()
         .enumerate()
         .map(|(i, stage)| {
-            let (win_start, win_end) = windows[i];
-
-            // Bucket results that completed within this stage's window
-            let subset: Vec<&RequestResult> = results
-                .iter()
-                .filter(|r| {
-                    let elapsed = r
-                        .completed_at
-                        .checked_duration_since(run_start)
-                        .unwrap_or(Duration::ZERO);
-                    elapsed >= win_start && elapsed < win_end
-                })
-                .collect();
-
-            let stage_total = subset.len();
-            let stage_failed = subset.iter().filter(|r| !r.success).count();
-            let stage_ok = stage_total - stage_failed;
-
-            let latency = latency_stats_from_subset(&subset);
+            let ss = &stage_stats[i];
+            let lat = latency_stats(&ss.latency);
             let stage_elapsed = stage.duration;
+            let stage_total = ss.total_requests as usize;
+            let stage_failed = ss.total_failures as usize;
+            let stage_ok = stage_total.saturating_sub(stage_failed);
 
             StageReport {
                 index: i,
@@ -227,7 +162,7 @@ pub fn per_stage_reports(
                 failed: stage_failed,
                 error_rate: error_rate(stage_total, stage_failed),
                 throughput_rps: throughput(stage_total, stage_elapsed),
-                latency,
+                latency: lat,
             }
         })
         .collect()
@@ -238,35 +173,31 @@ pub fn per_stage_reports(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::http::RequestResult;
-    use crate::response_template::stats::{FloatFieldStats, ResponseStats};
-
-    fn make_result(duration_ms: u64, success: bool, status: Option<u16>) -> RequestResult {
-        RequestResult::new(Duration::from_millis(duration_ms), success, status, None)
-    }
+    use crate::response_template::stats::ResponseStats;
+    use std::time::Duration;
 
     // ── latency_stats ─────────────────────────────────────────────────────────
 
     #[test]
     fn latency_stats_correct_for_known_input() {
-        // 100 results: durations 1ms to 100ms
-        let results: Vec<RequestResult> =
-            (1..=100).map(|i| make_result(i, true, Some(200))).collect();
-        let stats = latency_stats(&results);
-        assert_eq!(stats.min_ms, 1.0);
-        assert_eq!(stats.max_ms, 100.0);
-        // p50: idx = floor(100 * 0.5) = 50 → 51ms
-        assert_eq!(stats.p50_ms, 51.0);
-        // p99: idx = floor(100 * 0.99) = 99 → 100ms
-        assert_eq!(stats.p99_ms, 100.0);
+        let mut hist = LatencyHistogram::new();
+        for i in 1u64..=100 {
+            hist.record(Duration::from_millis(i));
+        }
+        let stats = latency_stats(&hist);
+        // HDR histogram has bounded precision — check values are in reasonable range
+        assert!(stats.min_ms >= 1.0 && stats.min_ms <= 2.0, "min_ms={}", stats.min_ms);
+        assert!(stats.max_ms >= 99.0 && stats.max_ms <= 101.0, "max_ms={}", stats.max_ms);
+        // p99 of 100 values (1ms-100ms) should be near 100ms
+        assert!(stats.p99_ms >= 98.0 && stats.p99_ms <= 101.0, "p99_ms={}", stats.p99_ms);
     }
 
     #[test]
     fn latency_stats_empty_input() {
-        let stats = latency_stats(&[]);
+        let hist = LatencyHistogram::new();
+        let stats = latency_stats(&hist);
+        // Empty HDR histogram returns 0 for all
         assert_eq!(stats.min_ms, 0.0);
-        assert_eq!(stats.p50_ms, 0.0);
-        assert_eq!(stats.p99_ms, 0.0);
         assert_eq!(stats.max_ms, 0.0);
         assert_eq!(stats.avg_ms, 0.0);
     }
@@ -275,14 +206,13 @@ mod tests {
 
     #[test]
     fn status_code_map_groups_correctly() {
-        let results = vec![
-            make_result(10, true, Some(200)),
-            make_result(10, true, Some(200)),
-            make_result(10, false, Some(404)),
-            make_result(10, false, None),
-            make_result(10, false, None),
-        ];
-        let map = status_code_map(&results);
+        let mut hist = StatusCodeHistogram::new();
+        hist.record(Some(200));
+        hist.record(Some(200));
+        hist.record(Some(404));
+        hist.record(None);
+        hist.record(None);
+        let map = status_code_map(&hist);
         assert_eq!(map["200"], 2);
         assert_eq!(map["404"], 1);
         assert_eq!(map["error"], 2);
@@ -290,19 +220,19 @@ mod tests {
 
     #[test]
     fn status_code_map_empty_input() {
-        let map = status_code_map(&[]);
+        let hist = StatusCodeHistogram::new();
+        let map = status_code_map(&hist);
         assert!(map.is_empty());
     }
 
     #[test]
     fn status_code_map_keys_are_sorted() {
-        let results = vec![
-            make_result(10, false, Some(503)),
-            make_result(10, true, Some(200)),
-            make_result(10, false, None),
-            make_result(10, false, Some(404)),
-        ];
-        let map = status_code_map(&results);
+        let mut hist = StatusCodeHistogram::new();
+        hist.record(Some(503));
+        hist.record(Some(200));
+        hist.record(None);
+        hist.record(Some(404));
+        let map = status_code_map(&hist);
         let keys: Vec<&str> = map.keys().map(|s| s.as_str()).collect();
         // BTreeMap sorts lexicographically; "200" < "404" < "503" < "error"
         assert_eq!(keys, vec!["200", "404", "503", "error"]);
@@ -425,17 +355,18 @@ mod tests {
             });
         }
         let report = response_stats_report(&rs);
-        // responses_parsed must equal total_responses from the reservoir (7),
-        // not any larger count such as total_requests
         assert_eq!(report.responses_parsed, 7);
     }
 
     #[test]
     fn response_stats_report_empty_float_field_omitted() {
+        use crate::histogram::{NumericHistogram, NumericHistogramParams};
         let mut rs = ResponseStats::new();
         // Manually insert an empty float field
-        rs.float_fields
-            .insert("empty".to_string(), FloatFieldStats { values: vec![] });
+        rs.float_fields.insert(
+            "empty".to_string(),
+            NumericHistogram::new(NumericHistogramParams { max_samples: 10 }),
+        );
         let report = response_stats_report(&rs);
         assert!(!report.float_fields.contains_key("empty"));
     }

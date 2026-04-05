@@ -1,7 +1,3 @@
-use std::time::Duration;
-
-use crate::http::RequestResult;
-
 // ── Distribution ──────────────────────────────────────────────────────────────
 
 /// Owns a sorted snapshot of observed values and answers arbitrary quantile queries.
@@ -85,58 +81,6 @@ impl Distribution {
     /// to `[0, n-1]` before calling this method.
     pub fn value_at(&self, idx: usize) -> f64 {
         self.sorted[idx]
-    }
-}
-
-// ── LatencyDistribution ───────────────────────────────────────────────────────
-
-/// Wraps a `RequestResult` slice and presents latency queries in milliseconds.
-///
-/// Converts each `Duration` to `f64` milliseconds at construction time using
-/// `d.as_secs_f64() * 1000.0`. This avoids making `Distribution` generic while
-/// keeping Duration-specific construction ergonomic for latency use cases.
-pub struct LatencyDistribution(Distribution);
-
-impl LatencyDistribution {
-    /// Converts each `RequestResult.duration` to milliseconds, then constructs a
-    /// sorted `Distribution`.
-    pub fn from_results(results: &[RequestResult]) -> Self {
-        let ms_values: Vec<f64> = results
-            .iter()
-            .map(|r| r.duration.as_secs_f64() * 1000.0)
-            .collect();
-        Self(Distribution::from_unsorted(ms_values))
-    }
-
-    /// Converts each `Duration` to milliseconds, then constructs a sorted `Distribution`.
-    pub fn from_durations(durations: &[Duration]) -> Self {
-        let ms_values: Vec<f64> = durations.iter().map(|d| d.as_secs_f64() * 1000.0).collect();
-        Self(Distribution::from_unsorted(ms_values))
-    }
-
-    /// Returns the value at quantile `p` in `[0.0, 1.0]` in milliseconds.
-    pub fn quantile_ms(&self, p: f64) -> f64 {
-        self.0.quantile(p)
-    }
-
-    /// Returns the minimum latency in milliseconds, or `0.0` for an empty distribution.
-    pub fn min_ms(&self) -> f64 {
-        self.0.min()
-    }
-
-    /// Returns the maximum latency in milliseconds, or `0.0` for an empty distribution.
-    pub fn max_ms(&self) -> f64 {
-        self.0.max()
-    }
-
-    /// Returns the arithmetic mean latency in milliseconds, or `0.0` for an empty distribution.
-    pub fn mean_ms(&self) -> f64 {
-        self.0.mean()
-    }
-
-    /// Returns `true` if the distribution contains no values.
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
     }
 }
 
@@ -226,41 +170,5 @@ mod tests {
         assert_eq!(dist.value_at(0), 10.0);
         assert_eq!(dist.value_at(2), 30.0);
         assert_eq!(dist.value_at(4), 50.0);
-    }
-
-    // ── LatencyDistribution ───────────────────────────────────────────────────
-
-    #[test]
-    fn latency_distribution_converts_duration_to_ms() {
-        let durations = vec![Duration::from_millis(42)];
-        let dist = LatencyDistribution::from_durations(&durations);
-        assert_eq!(dist.quantile_ms(0.5), 42.0);
-        assert_eq!(dist.min_ms(), 42.0);
-        assert_eq!(dist.max_ms(), 42.0);
-        assert_eq!(dist.mean_ms(), 42.0);
-    }
-
-    #[test]
-    fn latency_distribution_empty() {
-        let dist = LatencyDistribution::from_durations(&[]);
-        assert_eq!(dist.quantile_ms(0.5), 0.0);
-        assert_eq!(dist.min_ms(), 0.0);
-        assert_eq!(dist.max_ms(), 0.0);
-        assert_eq!(dist.mean_ms(), 0.0);
-        assert!(dist.is_empty());
-    }
-
-    #[test]
-    fn latency_distribution_from_results() {
-        let results: Vec<RequestResult> = vec![
-            RequestResult::new(Duration::from_millis(10), true, Some(200), None),
-            RequestResult::new(Duration::from_millis(20), true, Some(200), None),
-            RequestResult::new(Duration::from_millis(30), true, Some(200), None),
-        ];
-        let dist = LatencyDistribution::from_results(&results);
-        assert_eq!(dist.min_ms(), 10.0);
-        assert_eq!(dist.max_ms(), 30.0);
-        // mean = (10 + 20 + 30) / 3 = 20.0
-        assert!((dist.mean_ms() - 20.0).abs() < f64::EPSILON);
     }
 }

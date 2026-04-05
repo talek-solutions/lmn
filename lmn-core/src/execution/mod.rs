@@ -6,13 +6,12 @@ use std::path::PathBuf;
 
 use crate::command::{Body, HttpMethod};
 use crate::config::secret::SensitiveString;
+use crate::histogram::{LatencyHistogram, StatusCodeHistogram};
 use crate::http::RequestConfig;
 use crate::load_curve::LoadCurve;
 use crate::response_template::ResponseTemplate;
-use crate::response_template::extractor;
 use crate::response_template::field::TrackedField;
 use crate::response_template::stats::ResponseStats;
-use crate::http::RequestResult;
 
 // ── RunMode ───────────────────────────────────────────────────────────────────
 
@@ -25,21 +24,6 @@ pub enum RunMode {
     Curve,
 }
 
-// ── SamplingStats ─────────────────────────────────────────────────────────────
-
-/// Aggregated sampling counters produced at the end of a run.
-#[derive(Debug, Clone)]
-pub struct SamplingStats {
-    /// Actual (unsampled) total request count.
-    pub total_requests: usize,
-    /// Actual (unsampled) failure count.
-    pub total_failures: usize,
-    /// Final VU-threshold sample rate at end of run (1.0 = no threshold sampling).
-    pub sample_rate: f64,
-    /// Lowest sample rate observed at any point during the run.
-    pub min_sample_rate: f64,
-}
-
 // ── TemplateStats ─────────────────────────────────────────────────────────────
 
 /// Timing information for request template generation.
@@ -48,13 +32,24 @@ pub struct TemplateStats {
     pub generation_duration: std::time::Duration,
 }
 
+// ── StageStats ────────────────────────────────────────────────────────────────
+
+/// Per-stage latency and request counts for curve-mode runs.
+pub struct StageStats {
+    pub latency: LatencyHistogram,
+    pub status_codes: StatusCodeHistogram,
+    pub total_requests: u64,
+    pub total_failures: u64,
+}
+
 // ── CurveStats ────────────────────────────────────────────────────────────────
 
 /// Curve-specific metadata captured at the end of a curve run.
-#[derive(Debug, Clone)]
 pub struct CurveStats {
     pub duration: std::time::Duration,
     pub stages: Vec<crate::load_curve::Stage>,
+    /// Per-stage histogram data — one entry per stage in the load curve.
+    pub stage_stats: Vec<StageStats>,
 }
 
 // ── RunStats ──────────────────────────────────────────────────────────────────
@@ -62,8 +57,10 @@ pub struct CurveStats {
 pub struct RunStats {
     pub elapsed: std::time::Duration,
     pub mode: RunMode,
-    pub request_results: Vec<RequestResult>,
-    pub sampling_stats: SamplingStats,
+    pub latency: LatencyHistogram,
+    pub status_codes: StatusCodeHistogram,
+    pub total_requests: u64,
+    pub total_failures: u64,
     pub template_stats: Option<TemplateStats>,
     pub response_stats: Option<ResponseStats>,
     pub curve_stats: Option<CurveStats>,
@@ -80,14 +77,6 @@ pub struct RequestSpec {
     pub response_template_path: Option<PathBuf>,
     /// Custom HTTP headers to send with every request in this run.
     pub headers: Vec<(String, SensitiveString)>,
-}
-
-// ── SamplingConfig ────────────────────────────────────────────────────────────
-
-/// Sampling and reservoir parameters for a run.
-pub struct SamplingConfig {
-    pub sample_threshold: usize,
-    pub result_buffer: usize,
 }
 
 // ── ExecutionMode ─────────────────────────────────────────────────────────────
@@ -135,22 +124,5 @@ pub(crate) fn build_request_config(
         body: Arc::new(body),
         tracked_fields,
         headers: Arc::new(headers),
-    })
-}
-
-pub(crate) fn compute_response_stats(
-    results: &[RequestResult],
-    tracked_fields: &Option<Arc<Vec<TrackedField>>>,
-) -> Option<ResponseStats> {
-    tracked_fields.as_ref().map(|fields| {
-        let mut rs = ResponseStats::new();
-        for result in results {
-            if let Some(ref body_str) = result.response_body
-                && let Ok(body_val) = serde_json::from_str(body_str)
-            {
-                rs.record(extractor::extract(&body_val, fields));
-            }
-        }
-        rs
     })
 }

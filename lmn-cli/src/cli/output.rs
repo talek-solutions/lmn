@@ -1,12 +1,11 @@
 use lmn_core::execution::{RunMode, RunStats};
-use lmn_core::http::RequestResult;
+use lmn_core::histogram::LatencyHistogram;
 use lmn_core::response_template::stats::ResponseStats;
-use lmn_core::stats::{Distribution, LatencyDistribution};
 use lmn_core::threshold::ThresholdReport;
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-// ── PrintStatsParams ──────────────────────────────────────────────────────────
+// ── PrintStatsParams ──��───────────────────────────────────────────────────────
 
 /// Parameters for `print_stats`.
 ///
@@ -14,7 +13,6 @@ use std::time::Duration;
 /// function signature can grow (e.g., adding threshold report, config path)
 /// without breaking all call sites.
 pub struct PrintStatsParams<'a> {
-    pub results: &'a [RequestResult],
     pub stats: &'a RunStats,
     /// Optional threshold evaluation report produced by `lumen_core::config::evaluate`.
     /// When `Some`, a "Thresholds" section is appended to the table output and
@@ -26,29 +24,22 @@ pub struct PrintStatsParams<'a> {
 
 pub fn print_stats(params: PrintStatsParams<'_>) {
     let PrintStatsParams {
-        results,
         stats,
         threshold_report,
     } = params;
 
-    let total = stats.sampling_stats.total_requests;
-    let ok = total.saturating_sub(stats.sampling_stats.total_failures);
-    let fail = stats.sampling_stats.total_failures;
+    let total = stats.total_requests as usize;
+    let ok = total.saturating_sub(stats.total_failures as usize);
+    let fail = stats.total_failures as usize;
     let throughput = if stats.elapsed.as_secs_f64() > 0.0 {
         total as f64 / stats.elapsed.as_secs_f64()
     } else {
         0.0
     };
 
-    let lat_dist = LatencyDistribution::from_results(results);
-
-    let min = Duration::from_secs_f64(lat_dist.min_ms() / 1000.0);
-    let max = Duration::from_secs_f64(lat_dist.max_ms() / 1000.0);
-    let avg = Duration::from_secs_f64(lat_dist.mean_ms() / 1000.0);
-
-    // Keep a sorted Duration slice for the histogram below.
-    let mut durations: Vec<Duration> = results.iter().map(|r| r.duration).collect();
-    durations.sort();
+    let min = Duration::from_secs_f64(stats.latency.min_ms() / 1000.0);
+    let max = Duration::from_secs_f64(stats.latency.max_ms() / 1000.0);
+    let avg = Duration::from_secs_f64(stats.latency.mean_ms() / 1000.0);
 
     let lat_rows: Vec<(&str, String)> = {
         let mut rows = vec![("min", fmt_latency(min))];
@@ -61,7 +52,7 @@ pub fn print_stats(params: PrintStatsParams<'_>) {
             (0.95, "p95"),
             (0.99, "p99"),
         ] {
-            let ms = lat_dist.quantile_ms(p);
+            let ms = stats.latency.quantile_ms(p);
             rows.push((label, fmt_latency(Duration::from_secs_f64(ms / 1000.0))));
         }
         rows.push(("max", fmt_latency(max)));
@@ -71,14 +62,13 @@ pub fn print_stats(params: PrintStatsParams<'_>) {
 
     let val_width = lat_rows.iter().map(|(_, v)| v.len()).max().unwrap_or(0);
 
-    let code_counts: Vec<(String, usize)> = {
-        let mut map = std::collections::BTreeMap::new();
-        for r in results {
-            let key = match r.status_code {
-                Some(c) => c.to_string(),
-                None => "err".to_string(),
-            };
-            *map.entry(key).or_insert(0usize) += 1;
+    let code_counts: Vec<(String, u64)> = {
+        let mut map = BTreeMap::new();
+        for (code, count) in stats.status_codes.counts() {
+            map.insert(code.to_string(), *count);
+        }
+        if stats.status_codes.error_count() > 0 {
+            map.insert("err".to_string(), stats.status_codes.error_count());
         }
         map.into_iter().collect()
     };
@@ -107,10 +97,6 @@ pub fn print_stats(params: PrintStatsParams<'_>) {
         println!("  template   {}", fmt_total_duration(ts.generation_duration));
     }
     println!("  throughput {throughput:.1} req/s");
-    if stats.sampling_stats.min_sample_rate < 1.0 {
-        let inverse = (1.0_f64 / stats.sampling_stats.min_sample_rate).round() as usize;
-        println!("  sampling  ~1-in-{inverse} (latency percentiles are approximate)");
-    }
     println!();
     println!(" Latency {rule}");
     for (label, val) in &lat_rows {
@@ -118,11 +104,11 @@ pub fn print_stats(params: PrintStatsParams<'_>) {
     }
     println!();
     println!(" Histogram {rule}");
-    print_latency_histogram(&durations, min, max, bar_width);
+    print_latency_histogram(&stats.latency, bar_width);
     println!();
     println!(" Status codes {rule}");
     for (code, count) in &code_counts {
-        let bar = frac_bar(*count, bar_max, bar_width);
+        let bar = frac_bar(*count as usize, bar_max as usize, bar_width);
         println!("  {code:<5}  {count:>count_width$}  {bar}");
     }
     println!();
@@ -136,29 +122,36 @@ pub fn print_stats(params: PrintStatsParams<'_>) {
     }
 }
 
-fn print_latency_histogram(durations: &[Duration], min: Duration, max: Duration, bar_width: usize) {
+fn print_latency_histogram(hist: &LatencyHistogram, bar_width: usize) {
     const BUCKETS: usize = 10;
-    if durations.is_empty() || min == max {
+    if hist.is_empty() {
         return;
     }
-    let min_us = min.as_micros() as f64;
-    let max_us = max.as_micros() as f64;
-    let step = (max_us - min_us) / BUCKETS as f64;
+    let min_us = (hist.min_ms() * 1000.0) as u64;
+    let max_us = (hist.max_ms() * 1000.0) as u64;
+    if min_us >= max_us {
+        return;
+    }
+    let step = (max_us - min_us) as f64 / BUCKETS as f64;
 
-    let mut counts = [0usize; BUCKETS];
-    for d in durations {
-        let us = d.as_micros() as f64;
-        let idx = ((us - min_us) / step) as usize;
-        counts[idx.min(BUCKETS - 1)] += 1;
+    let mut counts = [0u64; BUCKETS];
+    for (val_us, count) in hist.iter_recorded_us() {
+        if val_us >= min_us && val_us <= max_us {
+            let idx = ((val_us - min_us) as f64 / step) as usize;
+            counts[idx.min(BUCKETS - 1)] += count;
+        }
     }
 
     let bucket_max = *counts.iter().max().unwrap_or(&1);
-    let label_width = fmt_latency(max).len().max(fmt_latency(min).len()) + 1;
+    let label_width = fmt_latency(Duration::from_micros(max_us))
+        .len()
+        .max(fmt_latency(Duration::from_micros(min_us)).len())
+        + 1;
 
     for (i, &count) in counts.iter().enumerate() {
-        let bucket_start = Duration::from_micros((min_us + step * i as f64) as u64);
+        let bucket_start = Duration::from_micros(min_us + (step * i as f64) as u64);
         let label = fmt_latency(bucket_start);
-        let bar = frac_bar(count, bucket_max, bar_width);
+        let bar = frac_bar(count as usize, bucket_max as usize, bar_width);
         println!("  {label:>label_width$}  {bar}  {count}");
     }
 }
@@ -185,10 +178,10 @@ fn frac_bar(value: usize, max: usize, width: usize) -> String {
 }
 
 fn print_response_stats(rs: &ResponseStats, rule: &str) {
-    let sorted_strings: BTreeMap<_, _> = rs.string_distributions.iter().collect();
-    for (path, dist) in &sorted_strings {
+    let sorted_strings: BTreeMap<_, _> = rs.string_fields.iter().collect();
+    for (path, hist) in &sorted_strings {
         println!(" Response: {path} {rule}");
-        let mut entries: Vec<_> = dist.iter().collect();
+        let mut entries: Vec<_> = hist.entries().iter().collect();
         entries.sort_by(|a, b| b.1.cmp(a.1));
         let count_width = entries
             .iter()
@@ -198,18 +191,18 @@ fn print_response_stats(rs: &ResponseStats, rule: &str) {
         let bar_max = entries.iter().map(|(_, n)| **n).max().unwrap_or(1);
         let bar_width = 28usize;
         for (val, count) in &entries {
-            let bar = frac_bar(**count, bar_max, bar_width);
+            let bar = frac_bar(**count as usize, bar_max as usize, bar_width);
             println!("  {val:<20}  {count:>count_width$}  {bar}");
         }
         println!();
     }
 
     let sorted_floats: BTreeMap<_, _> = rs.float_fields.iter().collect();
-    for (path, field) in &sorted_floats {
-        if field.values.is_empty() {
+    for (path, hist) in &sorted_floats {
+        if hist.is_empty() {
             continue;
         }
-        let dist = Distribution::from_unsorted(field.values.clone());
+        let dist = hist.distribution();
         let min = dist.min();
         let max = dist.max();
         let avg = dist.mean();

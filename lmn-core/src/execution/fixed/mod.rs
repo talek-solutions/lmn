@@ -6,11 +6,11 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use tracing::info_span;
 
-use crate::execution::SamplingStats;
-use crate::http::{RequestConfig, RequestResult};
+use crate::histogram::{LatencyHistogram, StatusCodeHistogram};
+use crate::http::{RequestConfig, RequestRecord};
 use crate::monitoring::SpanName;
 use crate::request_template::Template;
-use crate::sampling::{ReservoirAction, SamplingParams, SamplingState};
+use crate::response_template::stats::ResponseStats;
 use crate::vu::Vu;
 
 // ── FixedExecutorParams ───────────────────────────────────────────────────────
@@ -22,16 +22,17 @@ pub struct FixedExecutorParams {
     pub total: usize,
     pub concurrency: usize,
     pub cancellation_token: CancellationToken,
-    pub sampling: SamplingParams,
 }
 
 // ── FixedExecutionResult ──────────────────────────────────────────────────────
 
-/// Result returned by `FixedExecutor::execute`. Carries the reservoir-bounded
-/// sample of results plus the sampling counters for `RunStats`.
+/// Result returned by `FixedExecutor::execute`.
 pub struct FixedExecutionResult {
-    pub results: Vec<RequestResult>,
-    pub sampling_stats: SamplingStats,
+    pub latency: LatencyHistogram,
+    pub status_codes: StatusCodeHistogram,
+    pub total_requests: u64,
+    pub total_failures: u64,
+    pub response_stats: Option<ResponseStats>,
 }
 
 // ── FixedExecutor ─────────────────────────────────────────────────────────────
@@ -49,9 +50,8 @@ impl FixedExecutor {
     }
 
     /// Runs the fixed load test. Spawns `concurrency` VU tasks sharing a budget
-    /// of `total` requests. Applies VU-threshold + reservoir sampling to bound
-    /// memory usage. Returns a `FixedExecutionResult` when all requests complete
-    /// or a cancellation signal is received.
+    /// of `total` requests. Returns a `FixedExecutionResult` when all requests
+    /// complete or a cancellation signal is received.
     pub async fn execute(self) -> FixedExecutionResult {
         let FixedExecutorParams {
             request_config,
@@ -59,7 +59,6 @@ impl FixedExecutor {
             total,
             concurrency,
             cancellation_token,
-            sampling,
         } = self.params;
 
         // Pre-convert headers once before spawning VUs to avoid per-request allocation.
@@ -71,9 +70,11 @@ impl FixedExecutor {
                 .collect(),
         );
 
-        let (all_results, sampling_state) = async {
+        let has_tracked_fields = request_config.tracked_fields.is_some();
+
+        let (latency, status_codes, total_requests, total_failures, response_stats) = async {
             let budget = Arc::new(AtomicUsize::new(total));
-            let (tx, mut rx) = mpsc::unbounded_channel::<RequestResult>();
+            let (tx, mut rx) = mpsc::unbounded_channel::<RequestRecord>();
 
             // Spawn exactly `concurrency` VU tasks. Each claims requests from the
             // shared budget and self-terminates when the budget is exhausted.
@@ -95,19 +96,26 @@ impl FixedExecutor {
             // senders are also dropped (they are, once each VU task exits).
             drop(tx);
 
-            let reservoir_size = sampling.reservoir_size;
-            let mut sampling_state = SamplingState::new(sampling);
-            // VU count is constant for the duration of a fixed run.
-            sampling_state.set_active_vus(concurrency);
+            let mut latency = LatencyHistogram::new();
+            let mut status_codes = StatusCodeHistogram::new();
+            let mut total_requests: u64 = 0;
+            let mut total_failures: u64 = 0;
+            let mut response_stats: Option<ResponseStats> = if has_tracked_fields {
+                Some(ResponseStats::new())
+            } else {
+                None
+            };
 
-            let mut results: Vec<RequestResult> = Vec::with_capacity(total.min(reservoir_size));
-            while let Some(result) = rx.recv().await {
-                sampling_state.record_request(result.success);
-                if sampling_state.should_collect() {
-                    match sampling_state.reservoir_slot(results.len()) {
-                        ReservoirAction::Push => results.push(result),
-                        ReservoirAction::Replace(idx) => results[idx] = result,
-                        ReservoirAction::Discard => {}
+            while let Some(record) = rx.recv().await {
+                total_requests += 1;
+                if !record.success {
+                    total_failures += 1;
+                }
+                latency.record(record.duration);
+                status_codes.record(record.status_code);
+                if let Some(extraction) = record.extraction {
+                    if let Some(ref mut rs) = response_stats {
+                        rs.record(extraction);
                     }
                 }
             }
@@ -118,19 +126,17 @@ impl FixedExecutor {
                 let _ = handle.await;
             }
 
-            (results, sampling_state)
+            (latency, status_codes, total_requests, total_failures, response_stats)
         }
         .instrument(info_span!(SpanName::REQUESTS, total))
         .await;
 
         FixedExecutionResult {
-            results: all_results,
-            sampling_stats: SamplingStats {
-                total_requests: sampling_state.total_requests(),
-                total_failures: sampling_state.total_failures(),
-                sample_rate: sampling_state.sample_rate(),
-                min_sample_rate: sampling_state.min_sample_rate(),
-            },
+            latency,
+            status_codes,
+            total_requests,
+            total_failures,
+            response_stats,
         }
     }
 }
@@ -146,19 +152,16 @@ mod tests {
     #[test]
     fn struct_shape_fixed_execution_result() {
         let result = FixedExecutionResult {
-            results: vec![],
-            sampling_stats: SamplingStats {
-                total_requests: 10,
-                total_failures: 1,
-                sample_rate: 1.0,
-                min_sample_rate: 0.8,
-            },
+            latency: LatencyHistogram::new(),
+            status_codes: StatusCodeHistogram::new(),
+            total_requests: 10,
+            total_failures: 1,
+            response_stats: None,
         };
-        assert_eq!(result.sampling_stats.total_requests, 10);
-        assert_eq!(result.sampling_stats.total_failures, 1);
-        assert_eq!(result.sampling_stats.sample_rate, 1.0);
-        assert_eq!(result.sampling_stats.min_sample_rate, 0.8);
-        assert!(result.results.is_empty());
+        assert_eq!(result.total_requests, 10);
+        assert_eq!(result.total_failures, 1);
+        assert!(result.latency.is_empty());
+        assert!(result.response_stats.is_none());
     }
 
     // ── struct_shape_fixed_executor_params ────────────────────────────────────
@@ -167,7 +170,6 @@ mod tests {
     fn struct_shape_fixed_executor_params() {
         use crate::command::HttpMethod;
         use crate::http::RequestConfig;
-        use crate::sampling::SamplingParams;
         use tokio_util::sync::CancellationToken;
 
         let config = Arc::new(RequestConfig {
@@ -185,10 +187,6 @@ mod tests {
             total: 5,
             concurrency: 2,
             cancellation_token: CancellationToken::new(),
-            sampling: SamplingParams {
-                vu_threshold: 100,
-                reservoir_size: 10_000,
-            },
         };
 
         assert_eq!(params.total, 5);
@@ -202,7 +200,6 @@ mod tests {
     fn fixed_executor_new_stores_params() {
         use crate::command::HttpMethod;
         use crate::http::RequestConfig;
-        use crate::sampling::SamplingParams;
         use tokio_util::sync::CancellationToken;
 
         let config = Arc::new(RequestConfig {
@@ -220,10 +217,6 @@ mod tests {
             total: 1,
             concurrency: 1,
             cancellation_token: CancellationToken::new(),
-            sampling: SamplingParams {
-                vu_threshold: 100,
-                reservoir_size: 10_000,
-            },
         });
 
         assert_eq!(executor.params.total, 1);

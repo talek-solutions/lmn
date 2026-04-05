@@ -58,6 +58,20 @@ pub struct RequestResult {
     pub response_body: Option<String>,
 }
 
+// ── RequestRecord ─────────────────────────────────────────────────────────────
+
+/// Lightweight per-request record sent from VU to coordinator over the channel.
+///
+/// Unlike `RequestResult`, carries no raw response body — any extraction is done
+/// inside the VU before sending, keeping KB-sized bodies off the channel.
+pub struct RequestRecord {
+    pub duration: std::time::Duration,
+    pub success: bool,
+    pub status_code: Option<u16>,
+    /// Present only when a response template is active and extraction succeeded.
+    pub extraction: Option<crate::response_template::extractor::ExtractionResult>,
+}
+
 impl RequestResult {
     /// Constructs a `RequestResult` with all fields explicit.
     ///

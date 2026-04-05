@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::http::{Request, RequestConfig, RequestResult};
+use crate::http::{Request, RequestConfig, RequestRecord};
 use crate::request_template::Template;
 
 // ── Vu ────────────────────────────────────────────────────────────────────────
@@ -21,7 +21,7 @@ pub struct Vu {
     pub plain_headers: Arc<Vec<(String, String)>>,
     pub template: Option<Arc<Template>>,
     pub cancellation_token: CancellationToken,
-    pub result_tx: mpsc::UnboundedSender<RequestResult>,
+    pub result_tx: mpsc::UnboundedSender<RequestRecord>,
     /// Optional request budget shared across all VUs in fixed-count mode.
     ///
     /// Each VU atomically claims one unit before dispatching a request and stops
@@ -67,7 +67,8 @@ impl Vu {
                 let client = self.request_config.client.clone();
                 let url = Arc::clone(&self.request_config.host);
                 let method = self.request_config.method;
-                let capture_body = self.request_config.tracked_fields.is_some();
+                let tracked_fields = self.request_config.tracked_fields.clone();
+                let capture_body = tracked_fields.is_some();
 
                 // Only clone the Arc when there are headers — avoids an atomic op on
                 // the common no-headers path.
@@ -94,7 +95,31 @@ impl Vu {
                 tokio::select! {
                     _ = self.cancellation_token.cancelled() => break,
                     result = result_fut => {
-                        if self.result_tx.send(result).is_err() {
+                        // Perform response body extraction inline in the VU before
+                        // sending over the channel, so raw response bodies never
+                        // transit the channel.
+                        let extraction = if let Some(ref fields) = tracked_fields {
+                            if let Some(ref body_str) = result.response_body {
+                                if let Ok(val) = serde_json::from_str::<serde_json::Value>(body_str) {
+                                    Some(crate::response_template::extractor::extract(&val, fields))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+
+                        let record = RequestRecord {
+                            duration: result.duration,
+                            success: result.success,
+                            status_code: result.status_code,
+                            extraction,
+                        };
+
+                        if self.result_tx.send(record).is_err() {
                             break;
                         }
                     }

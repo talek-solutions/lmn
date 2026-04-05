@@ -43,11 +43,9 @@ serde_json = "1"
 ### Minimal example — fixed load test
 
 ```rust,no_run
-use std::time::Instant;
-
 use lmn_core::command::{Command, Commands, HttpMethod};
 use lmn_core::command::run::RunCommand;
-use lmn_core::execution::{ExecutionMode, RequestSpec, SamplingConfig};
+use lmn_core::execution::{ExecutionMode, RequestSpec};
 use lmn_core::output::{RunReport, RunReportParams};
 
 #[tokio::main]
@@ -65,18 +63,10 @@ async fn main() {
             request_count: 1000,
             concurrency: 50,
         },
-        sampling: SamplingConfig {
-            sample_threshold: 50,
-            result_buffer: 100_000,
-        },
     };
 
     if let Ok(Some(stats)) = Commands::Run(cmd).execute().await {
-        let report = RunReport::from_params(RunReportParams {
-            stats: &stats,
-            reservoir_size: 100_000,
-            run_start: Instant::now(),
-        });
+        let report = RunReport::from_params(RunReportParams { stats: &stats });
         println!("{}", serde_json::to_string_pretty(&report).unwrap());
     }
 }

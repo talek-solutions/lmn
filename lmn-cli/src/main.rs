@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use clap::Parser;
 use cli::command::{LoadTestRunCli, OutputFormat};
 use cli::json_output::{JsonDest, WriteJsonOutputParams, write_json_output};
@@ -54,7 +52,6 @@ fn main() {
                 Ok(resolved) => {
                     let output_format = resolved.output;
                     let output_file = resolved.output_file.clone();
-                    let reservoir_size = resolved.sampling.result_buffer;
                     let thresholds = resolved.thresholds.clone();
                     let run_cmd = resolved.into_run_command();
                     (
@@ -62,7 +59,6 @@ fn main() {
                         thresholds,
                         output_format,
                         output_file,
-                        reservoir_size,
                     )
                 }
                 Err(e) => {
@@ -75,39 +71,22 @@ fn main() {
                 None,
                 OutputFormat::Table,
                 None,
-                100_000,
             ),
             LoadTestRunCli::ConfigureResponse(args) => (
                 Commands::ConfigureResponse(ConfigureTemplateCommand::from(args)),
                 None,
                 OutputFormat::Table,
                 None,
-                100_000,
             ),
         };
 
-        let (commands, thresholds, output_format, output_file, reservoir_size) = cmd;
+        let (commands, thresholds, output_format, output_file) = cmd;
 
-        let run_start = Instant::now();
         let result = commands.execute().await;
 
         let code = match result {
             Ok(Some(stats)) => {
-                let mut report = match stats.curve_stats.as_ref().map(|cs| cs.stages.as_slice()) {
-                    Some(stages) => RunReport::from_params_with_curve(
-                        RunReportParams {
-                            stats: &stats,
-                            reservoir_size,
-                            run_start,
-                        },
-                        stages,
-                    ),
-                    None => RunReport::from_params(RunReportParams {
-                        stats: &stats,
-                        reservoir_size,
-                        run_start,
-                    }),
-                };
+                let mut report = RunReport::from_params(RunReportParams { stats: &stats });
 
                 // Evaluate thresholds and attach to report so JSON output includes them.
                 // exit code 2 = threshold failure; 1 = run error; 0 = success.
@@ -140,7 +119,6 @@ fn main() {
                     OutputFormat::Table => {
                         // Table always goes to stdout regardless of --output-file.
                         print_stats(PrintStatsParams {
-                            results: &stats.request_results,
                             stats: &stats,
                             threshold_report: report.thresholds.as_ref(),
                         });

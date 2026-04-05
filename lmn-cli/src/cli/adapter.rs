@@ -6,7 +6,7 @@ use crate::cli::command::{
 use lmn_core::command::Body;
 use lmn_core::command::configure_template::{ConfigureTemplateCommand, TemplateKind};
 use lmn_core::command::run::RunCommand;
-use lmn_core::execution::{ExecutionMode, RequestSpec, SamplingConfig};
+use lmn_core::execution::{ExecutionMode, RequestSpec};
 use lmn_core::config::{ExecutionConfig, LumenConfig, parse_config};
 use lmn_core::http::BodyFormat;
 use lmn_core::load_curve::LoadCurve;
@@ -65,7 +65,6 @@ fn parse_output_str(s: &str) -> Result<OutputFormat, String> {
 pub struct RunArgsResolved {
     pub request: RequestSpec,
     pub execution: ExecutionMode,
-    pub sampling: SamplingConfig,
     /// Threshold rules sourced from the config file.
     /// `None` when no config was supplied or the config has no `thresholds` section.
     pub thresholds: Option<Vec<Threshold>>,
@@ -79,7 +78,6 @@ impl RunArgsResolved {
         RunCommand {
             request: self.request,
             execution: self.execution,
-            sampling: self.sampling,
         }
     }
 }
@@ -147,18 +145,6 @@ impl TryFrom<RunArgs> for RunArgsResolved {
             cfg.as_ref()
                 .and_then(|c| c.run.as_ref()?.output_file.as_deref().map(PathBuf::from))
         });
-
-        // ── sample_threshold ──────────────────────────────────────────────────
-        let sample_threshold: usize = args
-            .sample_threshold
-            .or_else(|| cfg.as_ref().and_then(|c| c.run.as_ref()?.sample_threshold))
-            .unwrap_or(50);
-
-        // ── result_buffer ─────────────────────────────────────────────────────
-        let result_buffer: usize = args
-            .result_buffer
-            .or_else(|| cfg.as_ref().and_then(|c| c.run.as_ref()?.result_buffer))
-            .unwrap_or(100_000);
 
         // ── request_count / concurrency ───────────────────────────────────────
         let request_count: usize = args
@@ -345,10 +331,6 @@ impl TryFrom<RunArgs> for RunArgsResolved {
                 headers,
             },
             execution,
-            sampling: SamplingConfig {
-                sample_threshold,
-                result_buffer,
-            },
             thresholds,
             output,
             output_file,
@@ -485,8 +467,6 @@ mod tests {
             response_template: None,
             response_alias: None,
             load_curve,
-            sample_threshold: Some(50),
-            result_buffer: Some(100_000),
             output: Some(crate::cli::command::OutputFormat::Table),
             output_file: None,
             config: None,
@@ -760,38 +740,6 @@ mod tests {
             Some(PathBuf::from("/tmp/out.json")),
             "expected output_file from config"
         );
-    }
-
-    #[test]
-    fn sample_threshold_from_config() {
-        use std::io::Write;
-        let mut f = tempfile::NamedTempFile::new().unwrap();
-        f.write_all(b"run:\n  host: http://localhost:3000\n  sample_threshold: 200\n")
-            .unwrap();
-
-        let mut args = make_run_args(None);
-        args.host = None;
-        args.sample_threshold = None; // simulate user not passing --sample-threshold
-        args.config = Some(f.path().to_path_buf());
-
-        let result = RunArgsResolved::try_from(args).expect("should succeed");
-        assert_eq!(result.sampling.sample_threshold, 200);
-    }
-
-    #[test]
-    fn result_buffer_from_config() {
-        use std::io::Write;
-        let mut f = tempfile::NamedTempFile::new().unwrap();
-        f.write_all(b"run:\n  host: http://localhost:3000\n  result_buffer: 50000\n")
-            .unwrap();
-
-        let mut args = make_run_args(None);
-        args.host = None;
-        args.result_buffer = None; // simulate user not passing --result-buffer
-        args.config = Some(f.path().to_path_buf());
-
-        let result = RunArgsResolved::try_from(args).expect("should succeed");
-        assert_eq!(result.sampling.result_buffer, 50000);
     }
 
     #[test]

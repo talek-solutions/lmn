@@ -6,10 +6,8 @@ use crate::config::error::ConfigError;
 use crate::threshold::Threshold;
 use crate::threshold::parse::validate_thresholds;
 
-const MAX_RESULT_BUFFER: usize = 10_000_000;
 const MAX_CONCURRENCY: usize = 10_000;
 const MAX_REQUEST_COUNT: usize = 100_000_000;
-const MAX_SAMPLE_THRESHOLD: usize = 10_000;
 const MAX_HEADERS: usize = 64;
 const MAX_HEADER_NAME_LEN: usize = 256;
 const MAX_HEADER_VALUE_LEN: usize = 8192;
@@ -24,8 +22,6 @@ pub struct RunConfig {
     pub method: Option<String>,
     pub output: Option<String>,
     pub output_file: Option<String>,
-    pub sample_threshold: Option<usize>,
-    pub result_buffer: Option<usize>,
     /// Optional static HTTP headers to send with every request.
     /// Values may contain `${ENV_VAR}` placeholders resolved at run start.
     pub headers: Option<HashMap<String, String>>,
@@ -110,20 +106,6 @@ pub fn parse_config(yaml: &str) -> Result<LumenConfig, ConfigError> {
 
     // Validate numeric bounds.
     if let Some(ref run) = config.run {
-        if let Some(v) = run.result_buffer
-            && v > MAX_RESULT_BUFFER
-        {
-            return Err(ConfigError::ValidationError(format!(
-                "result_buffer {v} exceeds maximum ({MAX_RESULT_BUFFER})"
-            )));
-        }
-        if let Some(v) = run.sample_threshold
-            && v > MAX_SAMPLE_THRESHOLD
-        {
-            return Err(ConfigError::ValidationError(format!(
-                "sample_threshold {v} exceeds maximum ({MAX_SAMPLE_THRESHOLD})"
-            )));
-        }
         // Validate headers if present.
         if let Some(ref headers) = run.headers {
             if headers.len() > MAX_HEADERS {
@@ -190,8 +172,6 @@ run:
   method: POST
   output: json
   output_file: /tmp/report.json
-  sample_threshold: 200
-  result_buffer: 50000
 
 execution:
   request_count: 500
@@ -206,8 +186,6 @@ response_template: /templates/response.json
         assert_eq!(run.method.as_deref(), Some("POST"));
         assert_eq!(run.output.as_deref(), Some("json"));
         assert_eq!(run.output_file.as_deref(), Some("/tmp/report.json"));
-        assert_eq!(run.sample_threshold, Some(200));
-        assert_eq!(run.result_buffer, Some(50000));
 
         let exec = config.execution.expect("execution must be Some");
         assert_eq!(exec.request_count, Some(500));
@@ -307,17 +285,18 @@ execution:
     }
 
     #[test]
-    fn parse_run_sample_threshold_and_result_buffer() {
+    fn parse_run_with_output_format() {
         let yaml = r#"
 run:
   host: http://localhost:8080
-  sample_threshold: 100
-  result_buffer: 200000
+  output: json
+  output_file: /tmp/results.json
 "#;
         let config = parse_config(yaml).expect("should parse");
         let run = config.run.expect("run must be Some");
-        assert_eq!(run.sample_threshold, Some(100));
-        assert_eq!(run.result_buffer, Some(200000));
+        assert_eq!(run.host.as_deref(), Some("http://localhost:8080"));
+        assert_eq!(run.output.as_deref(), Some("json"));
+        assert_eq!(run.output_file.as_deref(), Some("/tmp/results.json"));
     }
 
     #[test]
@@ -345,23 +324,6 @@ execution:
       target_vus: 10
   concurrency: 50
 "#;
-        let result = parse_config(yaml);
-        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
-    }
-
-    #[test]
-    fn parse_config_result_buffer_exceeds_max_is_error() {
-        let yaml = "run:\n  result_buffer: 10000001\n";
-        let result = parse_config(yaml);
-        assert!(
-            matches!(result, Err(ConfigError::ValidationError(_))),
-            "expected ValidationError for result_buffer > MAX"
-        );
-    }
-
-    #[test]
-    fn parse_config_sample_threshold_exceeds_max_is_error() {
-        let yaml = "run:\n  sample_threshold: 10001\n";
         let result = parse_config(yaml);
         assert!(matches!(result, Err(ConfigError::ValidationError(_))));
     }

@@ -1,3 +1,3 @@
 mod distribution;
 
-pub use distribution::{Distribution, LatencyDistribution};
+pub use distribution::Distribution;

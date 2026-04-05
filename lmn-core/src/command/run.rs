@@ -5,21 +5,19 @@ use tokio_util::sync::CancellationToken;
 
 use crate::command::Command;
 use crate::execution::{
-    CurveStats, ExecutionMode, RequestSpec, RunMode, RunStats, SamplingConfig,
-    build_request_config, compute_response_stats, resolve_tracked_fields,
+    CurveStats, ExecutionMode, RequestSpec, RunMode, RunStats,
+    build_request_config, resolve_tracked_fields,
 };
 use crate::execution::curve::{CurveExecutor, CurveExecutorParams};
 use crate::execution::fixed::{FixedExecutor, FixedExecutorParams};
 use crate::load_curve::LoadCurve;
 use crate::request_template::Template;
-use crate::sampling::SamplingParams;
 
 // ── RunCommand ────────────────────────────────────────────────────────────────
 
 pub struct RunCommand {
     pub request: RequestSpec,
     pub execution: ExecutionMode,
-    pub sampling: SamplingConfig,
 }
 
 impl Command for RunCommand {
@@ -28,8 +26,8 @@ impl Command for RunCommand {
             ExecutionMode::Fixed {
                 request_count,
                 concurrency,
-            } => execute_fixed(self.request, self.sampling, request_count, concurrency).await,
-            ExecutionMode::Curve(curve) => execute_curve(self.request, self.sampling, curve).await,
+            } => execute_fixed(self.request, request_count, concurrency).await,
+            ExecutionMode::Curve(curve) => execute_curve(self.request, curve).await,
         }
     }
 }
@@ -39,7 +37,6 @@ impl Command for RunCommand {
 /// Fixed-count semaphore-based execution path.
 async fn execute_fixed(
     request_spec: RequestSpec,
-    sampling: SamplingConfig,
     total: usize,
     concurrency: usize,
 ) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
@@ -79,23 +76,19 @@ async fn execute_fixed(
         total,
         concurrency,
         cancellation_token,
-        sampling: SamplingParams {
-            vu_threshold: sampling.sample_threshold,
-            reservoir_size: sampling.result_buffer,
-        },
     })
     .execute()
     .await;
 
-    let response_stats = compute_response_stats(&result.results, &request_config.tracked_fields);
-
     Ok(Some(RunStats {
         elapsed: started_at.elapsed(),
         mode: RunMode::Fixed,
-        request_results: result.results,
-        sampling_stats: result.sampling_stats,
+        latency: result.latency,
+        status_codes: result.status_codes,
+        total_requests: result.total_requests,
+        total_failures: result.total_failures,
         template_stats: None,
-        response_stats,
+        response_stats: result.response_stats,
         curve_stats: None,
     }))
 }
@@ -105,7 +98,6 @@ async fn execute_fixed(
 /// Curve-based dynamic VU execution path.
 async fn execute_curve(
     request_spec: RequestSpec,
-    sampling: SamplingConfig,
     curve: LoadCurve,
 ) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
     let RequestSpec {
@@ -116,10 +108,8 @@ async fn execute_curve(
         response_template_path,
         headers,
     } = request_spec;
-    let curve_stats = CurveStats {
-        duration: curve.total_duration(),
-        stages: curve.stages.clone(),
-    };
+    let curve_duration = curve.total_duration();
+    let curve_stages = curve.stages.clone();
 
     // Parse template for on-demand body generation (no pre-generation in curve mode)
     let template: Option<Arc<Template>> = template_path
@@ -148,25 +138,24 @@ async fn execute_curve(
         request_config: Arc::clone(&request_config),
         template,
         cancellation_token,
-        sampling: SamplingParams {
-            vu_threshold: sampling.sample_threshold,
-            reservoir_size: sampling.result_buffer,
-        },
     });
 
     let curve_result = executor.execute().await;
 
-    let response_stats =
-        compute_response_stats(&curve_result.results, &request_config.tracked_fields);
-
     Ok(Some(RunStats {
         elapsed: started_at.elapsed(),
         mode: RunMode::Curve,
-        request_results: curve_result.results,
-        sampling_stats: curve_result.sampling_stats,
+        latency: curve_result.latency,
+        status_codes: curve_result.status_codes,
+        total_requests: curve_result.total_requests,
+        total_failures: curve_result.total_failures,
         template_stats: None,
-        response_stats,
-        curve_stats: Some(curve_stats),
+        response_stats: curve_result.response_stats,
+        curve_stats: Some(CurveStats {
+            duration: curve_duration,
+            stages: curve_stages,
+            stage_stats: curve_result.stage_stats,
+        }),
     }))
 }
 
@@ -176,20 +165,18 @@ async fn execute_curve(
 mod tests {
     use std::time::Duration;
 
-    use crate::execution::{CurveStats, RunMode, RunStats, SamplingStats};
+    use crate::execution::{CurveStats, RunMode, RunStats};
+    use crate::histogram::{LatencyHistogram, StatusCodeHistogram};
     use crate::load_curve::{RampType, Stage};
 
     fn make_stats_fixed() -> RunStats {
         RunStats {
             elapsed: Duration::from_secs(1),
             mode: RunMode::Fixed,
-            request_results: vec![],
-            sampling_stats: SamplingStats {
-                total_requests: 10,
-                total_failures: 0,
-                sample_rate: 1.0,
-                min_sample_rate: 1.0,
-            },
+            latency: LatencyHistogram::new(),
+            status_codes: StatusCodeHistogram::new(),
+            total_requests: 10,
+            total_failures: 0,
             template_stats: None,
             response_stats: None,
             curve_stats: None,
@@ -197,21 +184,28 @@ mod tests {
     }
 
     fn make_stats_curve(stages: Vec<Stage>) -> RunStats {
+        use crate::execution::StageStats;
+        let n = stages.len();
         RunStats {
             elapsed: Duration::from_secs(10),
             mode: RunMode::Curve,
-            request_results: vec![],
-            sampling_stats: SamplingStats {
-                total_requests: 100,
-                total_failures: 2,
-                sample_rate: 1.0,
-                min_sample_rate: 1.0,
-            },
+            latency: LatencyHistogram::new(),
+            status_codes: StatusCodeHistogram::new(),
+            total_requests: 100,
+            total_failures: 2,
             template_stats: None,
             response_stats: None,
             curve_stats: Some(CurveStats {
                 duration: Duration::from_secs(10),
                 stages,
+                stage_stats: (0..n)
+                    .map(|_| StageStats {
+                        latency: LatencyHistogram::new(),
+                        status_codes: StatusCodeHistogram::new(),
+                        total_requests: 0,
+                        total_failures: 0,
+                    })
+                    .collect(),
             }),
         }
     }
