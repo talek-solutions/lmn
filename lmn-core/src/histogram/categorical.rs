@@ -37,8 +37,8 @@ impl CategoricalHistogram {
     /// Records a single string value.
     pub fn record(&mut self, value: &str) {
         self.total += 1;
-        if self.entries.contains_key(value) {
-            *self.entries.get_mut(value).unwrap() += 1;
+        if let Some(count) = self.entries.get_mut(value) {
+            *count += 1;
         } else if self.entries.len() < self.max_buckets {
             self.entries.insert(value.to_string(), 1);
         } else {

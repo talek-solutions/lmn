@@ -9,7 +9,7 @@ use tracing::debug;
 use crate::execution::StageStats;
 use crate::histogram::{LatencyHistogram, StatusCodeHistogram};
 use crate::http::{RequestConfig, RequestRecord};
-use crate::load_curve::LoadCurve;
+use crate::load_curve::{LoadCurve, Stage};
 use crate::request_template::Template;
 use crate::response_template::stats::ResponseStats;
 use crate::vu::Vu;
@@ -39,7 +39,7 @@ pub struct CurveExecutionResult {
 // ── stage_index_at ────────────────────────────────────────────────────────────
 
 /// Returns the 0-based stage index for a given elapsed duration.
-fn stage_index_at(stages: &[crate::load_curve::Stage], elapsed: Duration) -> usize {
+fn stage_index_at(stages: &[Stage], elapsed: Duration) -> usize {
     let mut offset = Duration::ZERO;
     for (i, stage) in stages.iter().enumerate() {
         offset += stage.duration;
@@ -74,7 +74,7 @@ impl CurveExecutor {
         } = self.params;
 
         let total_duration = curve.total_duration();
-        let started_at = Instant::now();
+        let run_start = Instant::now();
 
         // Pre-convert headers once before spawning any VUs to avoid per-VU allocation.
         let plain_headers: Arc<Vec<(String, String)>> = Arc::new(
@@ -85,34 +85,81 @@ impl CurveExecutor {
                 .collect(),
         );
 
-        // Unbounded channel; VUs push results as they complete without risk of blocking.
-        let (tx, mut rx) = mpsc::unbounded_channel::<RequestRecord>();
-
-        // Track active VU handles and their per-VU cancellation tokens.
-        let mut vu_handles: Vec<(JoinHandle<()>, CancellationToken)> = Vec::new();
-
         let has_tracked_fields = request_config.tracked_fields.is_some();
         let n_stages = curve.stages.len();
 
-        let mut latency = LatencyHistogram::new();
-        let mut status_codes = StatusCodeHistogram::new();
-        let mut total_requests: u64 = 0;
-        let mut total_failures: u64 = 0;
-        let mut response_stats: Option<ResponseStats> = if has_tracked_fields {
-            Some(ResponseStats::new())
-        } else {
-            None
-        };
+        // Clone the stages vec so the drain task can own it without holding onto `curve`.
+        let drain_stages = curve.stages.clone();
 
-        // Pre-allocate per-stage histograms.
-        let mut stage_stats: Vec<StageStats> = (0..n_stages)
-            .map(|_| StageStats {
-                latency: LatencyHistogram::new(),
-                status_codes: StatusCodeHistogram::new(),
-                total_requests: 0,
-                total_failures: 0,
-            })
-            .collect();
+        // Unbounded channel; VUs push results as they complete without risk of blocking.
+        let (tx, rx) = mpsc::unbounded_channel::<RequestRecord>();
+
+        // Spawn a dedicated drain task that owns the receiver and all accumulator
+        // state. It attributes each record to the correct stage via `completed_at`.
+        let drain_handle = tokio::spawn(async move {
+            let mut rx = rx;
+            let mut latency = LatencyHistogram::new();
+            let mut status_codes = StatusCodeHistogram::new();
+            let mut total_requests: u64 = 0;
+            let mut total_failures: u64 = 0;
+            let mut response_stats: Option<ResponseStats> = if has_tracked_fields {
+                Some(ResponseStats::new())
+            } else {
+                None
+            };
+
+            // Pre-allocate per-stage accumulators.
+            let mut stage_stats: Vec<StageStats> = (0..n_stages)
+                .map(|_| StageStats {
+                    latency: LatencyHistogram::new(),
+                    status_codes: StatusCodeHistogram::new(),
+                    total_requests: 0,
+                    total_failures: 0,
+                })
+                .collect();
+
+            while let Some(record) = rx.recv().await {
+                total_requests += 1;
+                if !record.success {
+                    total_failures += 1;
+                }
+                latency.record(record.duration);
+                status_codes.record(record.status_code);
+
+                // Determine which stage this record belongs to using its
+                // wall-clock completion time relative to the run start.
+                let elapsed = record
+                    .completed_at
+                    .checked_duration_since(run_start)
+                    .unwrap_or(Duration::ZERO);
+                let stage_idx = stage_index_at(&drain_stages, elapsed);
+
+                stage_stats[stage_idx].latency.record(record.duration);
+                stage_stats[stage_idx].status_codes.record(record.status_code);
+                stage_stats[stage_idx].total_requests += 1;
+                if !record.success {
+                    stage_stats[stage_idx].total_failures += 1;
+                }
+
+                if let Some(extraction) = record.extraction {
+                    if let Some(ref mut rs) = response_stats {
+                        rs.record(extraction);
+                    }
+                }
+            }
+
+            CurveExecutionResult {
+                latency,
+                status_codes,
+                total_requests,
+                total_failures,
+                response_stats,
+                stage_stats,
+            }
+        });
+
+        // Track active VU handles and their per-VU cancellation tokens.
+        let mut vu_handles: Vec<(JoinHandle<()>, CancellationToken)> = Vec::new();
 
         let mut ticker = tokio::time::interval(tokio::time::Duration::from_millis(100));
 
@@ -123,7 +170,7 @@ impl CurveExecutor {
                     break;
                 }
                 _ = ticker.tick() => {
-                    let elapsed = started_at.elapsed();
+                    let elapsed = run_start.elapsed();
 
                     if elapsed >= total_duration {
                         debug!("curve executor: total duration elapsed, shutting down");
@@ -167,33 +214,11 @@ impl CurveExecutor {
                         }
                         std::cmp::Ordering::Equal => {}
                     }
-
-                    // Drain all results currently in the channel without blocking.
-                    let stage_idx = stage_index_at(&curve.stages, elapsed);
-                    while let Ok(record) = rx.try_recv() {
-                        total_requests += 1;
-                        if !record.success {
-                            total_failures += 1;
-                        }
-                        latency.record(record.duration);
-                        status_codes.record(record.status_code);
-                        stage_stats[stage_idx].latency.record(record.duration);
-                        stage_stats[stage_idx].status_codes.record(record.status_code);
-                        stage_stats[stage_idx].total_requests += 1;
-                        if !record.success {
-                            stage_stats[stage_idx].total_failures += 1;
-                        }
-                        if let Some(extraction) = record.extraction {
-                            if let Some(ref mut rs) = response_stats {
-                                rs.record(extraction);
-                            }
-                        }
-                    }
                 }
             }
         }
 
-        // Cancel all remaining VU tasks — cancel all tokens first, then await
+        // Cancel all remaining VU tasks — cancel all tokens first, then await.
         for (_, token) in &vu_handles {
             token.cancel();
         }
@@ -205,37 +230,7 @@ impl CurveExecutor {
         // senders (clones) are also dropped (they are, since tasks ended).
         drop(tx);
 
-        // Final drain: collect any results that arrived between the last tick
-        // and the VU tasks completing.
-        let final_elapsed = started_at.elapsed();
-        let final_stage_idx = stage_index_at(&curve.stages, final_elapsed);
-        while let Some(record) = rx.recv().await {
-            total_requests += 1;
-            if !record.success {
-                total_failures += 1;
-            }
-            latency.record(record.duration);
-            status_codes.record(record.status_code);
-            stage_stats[final_stage_idx].latency.record(record.duration);
-            stage_stats[final_stage_idx].status_codes.record(record.status_code);
-            stage_stats[final_stage_idx].total_requests += 1;
-            if !record.success {
-                stage_stats[final_stage_idx].total_failures += 1;
-            }
-            if let Some(extraction) = record.extraction {
-                if let Some(ref mut rs) = response_stats {
-                    rs.record(extraction);
-                }
-            }
-        }
-
-        CurveExecutionResult {
-            latency,
-            status_codes,
-            total_requests,
-            total_failures,
-            response_stats,
-            stage_stats,
-        }
+        // Await the drain task to get the fully accumulated result.
+        drain_handle.await.expect("drain task panicked")
     }
 }

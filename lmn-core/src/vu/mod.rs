@@ -114,6 +114,7 @@ impl Vu {
 
                         let record = RequestRecord {
                             duration: result.duration,
+                            completed_at: result.completed_at,
                             success: result.success,
                             status_code: result.status_code,
                             extraction,

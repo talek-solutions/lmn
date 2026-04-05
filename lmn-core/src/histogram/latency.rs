@@ -23,7 +23,11 @@ impl LatencyHistogram {
     /// Records a duration. Values are clamped to [1µs, 1 hour].
     pub fn record(&mut self, d: Duration) {
         let us = (d.as_micros() as u64).max(1).min(self.inner.high());
-        let _ = self.inner.record(us);
+        let ok = self.inner.record(us).is_ok();
+        debug_assert!(
+            ok,
+            "HDR histogram record failed for value {us}µs — this should never happen after clamping"
+        );
     }
 
     /// Returns the value at quantile `q` (0.0–1.0) in milliseconds.
@@ -54,11 +58,6 @@ impl LatencyHistogram {
     /// Returns `true` if no values have been recorded.
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
-    }
-
-    /// Merges `other` into `self`. Used for building aggregate histograms.
-    pub fn add(&mut self, other: &LatencyHistogram) {
-        let _ = self.inner.add(&other.inner);
     }
 
     /// Returns `(value_us, count)` pairs for all recorded distinct values.
@@ -121,19 +120,6 @@ mod tests {
         h.record(Duration::from_millis(100));
         assert!((h.min_ms() - 10.0).abs() < 1.0, "min_ms={}", h.min_ms());
         assert!((h.max_ms() - 100.0).abs() < 1.0, "max_ms={}", h.max_ms());
-    }
-
-    #[test]
-    fn add_merges_counts() {
-        let mut h1 = LatencyHistogram::new();
-        h1.record(Duration::from_millis(10));
-        h1.record(Duration::from_millis(20));
-
-        let mut h2 = LatencyHistogram::new();
-        h2.record(Duration::from_millis(30));
-
-        h1.add(&h2);
-        assert_eq!(h1.total_count(), 3);
     }
 
     #[test]

@@ -1,4 +1,5 @@
 use rand::Rng;
+use rand::SeedableRng;
 
 use crate::stats::Distribution;
 
@@ -18,11 +19,14 @@ pub struct NumericHistogramParams {
 /// Fills up to `max_samples`, then applies Vitter's Algorithm R reservoir
 /// sampling so the retained set remains a uniform random sample of all
 /// observed values.
+///
+/// Uses `SmallRng` (a `Send`-safe PRNG) seeded from entropy at construction
+/// time, so instances can be sent across threads (e.g. moved into drain tasks).
 pub struct NumericHistogram {
     samples: Vec<f64>,
     max_samples: usize,
     total_seen: usize,
-    rng: rand::rngs::ThreadRng,
+    rng: rand::rngs::SmallRng,
 }
 
 impl NumericHistogram {
@@ -32,7 +36,7 @@ impl NumericHistogram {
             samples: Vec::new(),
             max_samples: params.max_samples,
             total_seen: 0,
-            rng: rand::rng(),
+            rng: rand::rngs::SmallRng::from_os_rng(),
         }
     }
 

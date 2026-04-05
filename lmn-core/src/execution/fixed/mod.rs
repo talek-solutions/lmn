@@ -72,9 +72,47 @@ impl FixedExecutor {
 
         let has_tracked_fields = request_config.tracked_fields.is_some();
 
-        let (latency, status_codes, total_requests, total_failures, response_stats) = async {
+        async {
             let budget = Arc::new(AtomicUsize::new(total));
-            let (tx, mut rx) = mpsc::unbounded_channel::<RequestRecord>();
+            let (tx, rx) = mpsc::unbounded_channel::<RequestRecord>();
+
+            // Spawn a dedicated drain task that owns the receiver and all
+            // accumulator state. It returns a `FixedExecutionResult` once the
+            // channel closes (all VU senders dropped).
+            let drain_handle = tokio::spawn(async move {
+                let mut rx = rx;
+                let mut latency = LatencyHistogram::new();
+                let mut status_codes = StatusCodeHistogram::new();
+                let mut total_requests: u64 = 0;
+                let mut total_failures: u64 = 0;
+                let mut response_stats: Option<ResponseStats> = if has_tracked_fields {
+                    Some(ResponseStats::new())
+                } else {
+                    None
+                };
+
+                while let Some(record) = rx.recv().await {
+                    total_requests += 1;
+                    if !record.success {
+                        total_failures += 1;
+                    }
+                    latency.record(record.duration);
+                    status_codes.record(record.status_code);
+                    if let Some(extraction) = record.extraction {
+                        if let Some(ref mut rs) = response_stats {
+                            rs.record(extraction);
+                        }
+                    }
+                }
+
+                FixedExecutionResult {
+                    latency,
+                    status_codes,
+                    total_requests,
+                    total_failures,
+                    response_stats,
+                }
+            });
 
             // Spawn exactly `concurrency` VU tasks. Each claims requests from the
             // shared budget and self-terminates when the budget is exhausted.
@@ -96,48 +134,17 @@ impl FixedExecutor {
             // senders are also dropped (they are, once each VU task exits).
             drop(tx);
 
-            let mut latency = LatencyHistogram::new();
-            let mut status_codes = StatusCodeHistogram::new();
-            let mut total_requests: u64 = 0;
-            let mut total_failures: u64 = 0;
-            let mut response_stats: Option<ResponseStats> = if has_tracked_fields {
-                Some(ResponseStats::new())
-            } else {
-                None
-            };
-
-            while let Some(record) = rx.recv().await {
-                total_requests += 1;
-                if !record.success {
-                    total_failures += 1;
-                }
-                latency.record(record.duration);
-                status_codes.record(record.status_code);
-                if let Some(extraction) = record.extraction {
-                    if let Some(ref mut rs) = response_stats {
-                        rs.record(extraction);
-                    }
-                }
-            }
-
-            // VUs have exited (their senders dropped, closing the channel).
-            // Await handles to ensure all task resources are released.
+            // Await all VU tasks to ensure they have finished sending.
             for handle in vu_handles {
                 let _ = handle.await;
             }
 
-            (latency, status_codes, total_requests, total_failures, response_stats)
+            // All VU senders are now dropped — channel is closed. Await the
+            // drain task to get the accumulated result.
+            drain_handle.await.expect("drain task panicked")
         }
         .instrument(info_span!(SpanName::REQUESTS, total))
-        .await;
-
-        FixedExecutionResult {
-            latency,
-            status_codes,
-            total_requests,
-            total_failures,
-            response_stats,
-        }
+        .await
     }
 }
 

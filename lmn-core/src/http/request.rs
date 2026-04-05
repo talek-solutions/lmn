@@ -66,6 +66,9 @@ pub struct RequestResult {
 /// inside the VU before sending, keeping KB-sized bodies off the channel.
 pub struct RequestRecord {
     pub duration: std::time::Duration,
+    /// Wall-clock instant at which the response was received (or the error occurred).
+    /// Used by the drain task to bucket results into per-stage windows in curve mode.
+    pub completed_at: Instant,
     pub success: bool,
     pub status_code: Option<u16>,
     /// Present only when a response template is active and extraction succeeded.
