@@ -88,26 +88,14 @@ impl Template {
         Ok(Template { body, context })
     }
 
-    /// Pre-generates `n` request bodies, each with independently rendered placeholders.
-    /// `:global` placeholders share the same value across all `n` bodies.
-    #[instrument(name = "lmn.template.render", skip(self), fields(n))]
-    pub fn pre_generate(&self, n: usize) -> Vec<String> {
-        let mut rng = rand::rng();
-        (0..n)
-            .map(|_| {
-                let rendered = renderer::render(&self.body, &self.context, &mut rng);
-                serde_json::to_string(&rendered).expect("rendered Value is always valid JSON")
-            })
-            .collect()
-    }
-
     /// Generates a single request body on demand.
     /// Thread-safe: each call creates its own RNG state, so concurrent VU tasks
     /// can call this simultaneously without contention.
-    pub fn generate_one(&self) -> String {
+    #[instrument(name = "lmn.template.generate_one", skip(self))]
+    pub fn generate_one(&self) -> Result<String, TemplateError> {
         let mut rng = rand::rng();
         let rendered = renderer::render(&self.body, &self.context, &mut rng);
-        serde_json::to_string(&rendered).expect("rendered Value is always valid JSON")
+        serde_json::to_string(&rendered).map_err(TemplateError::Serialization)
     }
 }
 
@@ -164,7 +152,7 @@ mod tests {
     fn generate_one_returns_valid_json() {
         let f = write_temp(r#"{"field": "static", "value": 42}"#);
         let template = Template::parse(f.path()).unwrap();
-        let result = template.generate_one();
+        let result = template.generate_one().unwrap();
         // Must parse as valid JSON
         let parsed: serde_json::Value =
             serde_json::from_str(&result).expect("generate_one must return valid JSON");
@@ -180,8 +168,8 @@ mod tests {
         // Two calls should both produce valid JSON (no shared mutable state issues)
         let f = write_temp(r#"{"field": "static"}"#);
         let template = Template::parse(f.path()).unwrap();
-        let a = template.generate_one();
-        let b = template.generate_one();
+        let a = template.generate_one().unwrap();
+        let b = template.generate_one().unwrap();
         assert!(serde_json::from_str::<serde_json::Value>(&a).is_ok());
         assert!(serde_json::from_str::<serde_json::Value>(&b).is_ok());
     }
@@ -191,7 +179,7 @@ mod tests {
         unsafe { std::env::set_var("LUMEN_TEST_TOKEN", "secret123") };
         let f = write_temp(r#"{"token": "{{ENV:LUMEN_TEST_TOKEN}}"}"#);
         let template = Template::parse(f.path()).unwrap();
-        let result = template.generate_one();
+        let result = template.generate_one().unwrap();
         assert!(
             result.contains("secret123"),
             "expected 'secret123' in output, got: {result}"
@@ -232,7 +220,7 @@ mod tests {
         unsafe { std::env::set_var("LUMEN_TEST_ONCE_TOKEN", "once_secret_value") };
         let f = write_temp(r#"{"token": "{{ENV:LUMEN_TEST_ONCE_TOKEN:global}}"}"#);
         let template = Template::parse(f.path()).unwrap();
-        let result = template.generate_one();
+        let result = template.generate_one().unwrap();
         assert!(
             result.contains("once_secret_value"),
             "expected 'once_secret_value' in output, got: {result}"

@@ -61,7 +61,14 @@ impl Vu {
                     break;
                 }
 
-                let body = self.template.as_ref().map(|t| t.generate_one());
+                let body = match self.template.as_ref().map(|t| t.generate_one()) {
+                    None => None,
+                    Some(Ok(s)) => Some(s),
+                    Some(Err(e)) => {
+                        tracing::error!(error = %e, "template serialization failed, skipping request");
+                        continue;
+                    }
+                };
                 let resolved = self.request_config.resolve_body(body);
 
                 let client = self.request_config.client.clone();
