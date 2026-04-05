@@ -13,32 +13,76 @@ use crate::request_template::{ENV_PLACEHOLDER_PREFIX, PlaceholderRef, parse_plac
 // ── Segment ───────────────────────────────────────────────────────────────────
 
 /// A pre-compiled unit of a template body.
-pub enum Segment {
+enum Segment {
     /// Pre-serialized JSON fragment written verbatim into the output buffer at render time.
     Static(Arc<str>),
     /// Placeholder name to resolve at render time.
     Placeholder(String),
 }
 
-// ── compile ───────────────────────────────────────────────────────────────────
+// ── CompiledTemplate ──────────────────────────────────────────────────────────
 
-/// Walks the `Value` tree depth-first and emits a flat list of [`Segment`]s.
-/// This is the compile step: done once at parse time so render time only
-/// iterates segments without touching the `Value` tree.
-pub fn compile(body: &Value) -> Vec<Segment> {
-    let mut segments = Vec::new();
-    compile_value(body, &mut segments);
-    segments
+/// A template body compiled into a flat list of [`Segment`]s.
+///
+/// Created once at parse time via [`CompiledTemplate::compile`]; rendered
+/// on every request via [`CompiledTemplate::render`] without revisiting the
+/// original `Value` tree.
+pub struct CompiledTemplate {
+    segments: Vec<Segment>,
 }
 
-fn compile_value(value: &Value, out: &mut Vec<Segment>) {
+impl CompiledTemplate {
+    /// Walks the `Value` tree depth-first and compiles it into a flat list of
+    /// [`Segment`]s. Done once at parse time so render time only iterates
+    /// the segment list.
+    pub fn compile(body: &Value) -> Result<Self, TemplateError> {
+        let mut segments = Vec::new();
+        compile_value(body, &mut segments)?;
+        Ok(Self { segments })
+    }
+
+    /// Iterates the compiled segments and writes static bytes and resolved
+    /// placeholder values into a `String` buffer.
+    ///
+    /// For each placeholder:
+    /// - If the name is present in `ctx.resolved` (pre-serialized `:global` or `ENV:`
+    ///   value), it is written verbatim.
+    /// - Otherwise, a fresh value is generated via `ctx.generate_by_name` and
+    ///   serialized inline.
+    pub fn render(
+        &self,
+        ctx: &GeneratorContext,
+        rng: &mut impl Rng,
+    ) -> Result<String, TemplateError> {
+        let mut buf = String::new();
+        for segment in &self.segments {
+            match segment {
+                Segment::Static(s) => buf.push_str(s),
+                Segment::Placeholder(name) => {
+                    if let Some(precomputed) = ctx.resolved.get(name) {
+                        buf.push_str(precomputed);
+                    } else {
+                        let val = ctx.generate_by_name(name, rng);
+                        buf.push_str(
+                            &serde_json::to_string(&val)
+                                .map_err(TemplateError::Serialization)?,
+                        );
+                    }
+                }
+            }
+        }
+        Ok(buf)
+    }
+}
+
+fn compile_value(value: &Value, out: &mut Vec<Segment>) -> Result<(), TemplateError> {
     match value {
         Value::String(s) => {
             if let Some(ph) = parse_placeholder(s) {
                 out.push(Segment::Placeholder(ph.name));
             } else {
-                // JSON-quote the string so it is a valid JSON string literal in the output.
-                let serialized = serde_json::to_string(s).expect("string is always serializable");
+                let serialized =
+                    serde_json::to_string(s).map_err(TemplateError::Serialization)?;
                 out.push(Segment::Static(Arc::from(serialized.as_str())));
             }
         }
@@ -51,11 +95,11 @@ fn compile_value(value: &Value, out: &mut Vec<Segment>) {
                 }
                 first = false;
                 let key_json =
-                    serde_json::to_string(key).expect("object key is always serializable");
+                    serde_json::to_string(key).map_err(TemplateError::Serialization)?;
                 out.push(Segment::Static(Arc::from(
                     format!("{key_json}:").as_str(),
                 )));
-                compile_value(val, out);
+                compile_value(val, out)?;
             }
             out.push(Segment::Static(Arc::from("}")));
         }
@@ -67,50 +111,18 @@ fn compile_value(value: &Value, out: &mut Vec<Segment>) {
                     out.push(Segment::Static(Arc::from(",")));
                 }
                 first = false;
-                compile_value(val, out);
+                compile_value(val, out)?;
             }
             out.push(Segment::Static(Arc::from("]")));
         }
         // Number, Bool, Null — serialize as-is
         _ => {
-            let serialized = serde_json::to_string(value).expect("primitive is always serializable");
+            let serialized =
+                serde_json::to_string(value).map_err(TemplateError::Serialization)?;
             out.push(Segment::Static(Arc::from(serialized.as_str())));
         }
     }
-}
-
-// ── render_compiled ───────────────────────────────────────────────────────────
-
-/// Iterates pre-compiled segments and writes static bytes and resolved
-/// placeholder values into a `String` buffer.
-///
-/// For each [`Segment::Placeholder`]:
-/// - If the name is present in `ctx.resolved` (pre-serialized `:global` or `ENV:`
-///   value), it is written verbatim.
-/// - Otherwise, a fresh value is generated via `ctx.generate_by_name` and
-///   serialized inline.
-pub fn render_compiled(
-    compiled: &[Segment],
-    ctx: &GeneratorContext,
-    rng: &mut impl Rng,
-) -> Result<String, TemplateError> {
-    let mut buf = String::new();
-    for segment in compiled {
-        match segment {
-            Segment::Static(s) => buf.push_str(s),
-            Segment::Placeholder(name) => {
-                if let Some(precomputed) = ctx.resolved.get(name) {
-                    buf.push_str(precomputed);
-                } else {
-                    let val = ctx.generate_by_name(name, rng);
-                    buf.push_str(
-                        &serde_json::to_string(&val).map_err(TemplateError::Serialization)?,
-                    );
-                }
-            }
-        }
-    }
-    Ok(buf)
+    Ok(())
 }
 
 // ── PlaceholderHandler trait ──────────────────────────────────────────────────
@@ -242,8 +254,8 @@ fn resolve_env_vars(names: &[String]) -> Result<HashMap<String, Arc<str>>, Templ
 /// Resolves `{{placeholder_name}}` patterns in a raw string by calling the
 /// corresponding generator from `ctx`.
 ///
-/// Unlike [`render_compiled`], which operates on pre-compiled segments, this
-/// function works directly on a string — useful for resolving placeholders
+/// Unlike [`CompiledTemplate::render`], which operates on pre-compiled segments,
+/// this function works directly on a string — useful for resolving placeholders
 /// in header values or other non-body string fields.
 ///
 /// Each placeholder is resolved to its display form (i.e. the raw string value,
@@ -459,10 +471,9 @@ mod tests {
 
     #[test]
     fn compile_static_string_emits_json_quoted() {
-        let body = serde_json::json!("hello");
-        let segments = compile(&body);
-        assert_eq!(segments.len(), 1);
-        if let Segment::Static(s) = &segments[0] {
+        let compiled = CompiledTemplate::compile(&serde_json::json!("hello")).unwrap();
+        assert_eq!(compiled.segments.len(), 1);
+        if let Segment::Static(s) = &compiled.segments[0] {
             assert_eq!(s.as_ref(), "\"hello\"");
         } else {
             panic!("expected Static segment");
@@ -471,10 +482,9 @@ mod tests {
 
     #[test]
     fn compile_placeholder_string_emits_placeholder() {
-        let body = serde_json::json!("{{val}}");
-        let segments = compile(&body);
-        assert_eq!(segments.len(), 1);
-        if let Segment::Placeholder(name) = &segments[0] {
+        let compiled = CompiledTemplate::compile(&serde_json::json!("{{val}}")).unwrap();
+        assert_eq!(compiled.segments.len(), 1);
+        if let Segment::Placeholder(name) = &compiled.segments[0] {
             assert_eq!(name, "val");
         } else {
             panic!("expected Placeholder segment");
@@ -483,49 +493,45 @@ mod tests {
 
     #[test]
     fn compile_object_emits_braces_and_key() {
-        let body = serde_json::json!({ "k": "v" });
-        let segments = compile(&body);
+        let compiled = CompiledTemplate::compile(&serde_json::json!({ "k": "v" })).unwrap();
         // Expected: Static("{"), Static("\"k\":"), Static("\"v\""), Static("}")
-        assert!(segments.len() >= 3);
+        assert!(compiled.segments.len() >= 3);
     }
 
     #[test]
     fn compile_empty_object_roundtrips() {
-        let body = serde_json::json!({});
-        let compiled = compile(&body);
+        let compiled = CompiledTemplate::compile(&serde_json::json!({})).unwrap();
         let ctx = GeneratorContext::new(HashMap::new());
-        let result = render_compiled(&compiled, &ctx, &mut rand::rng()).unwrap();
+        let result = compiled.render(&ctx, &mut rand::rng()).unwrap();
         assert_eq!(result, "{}");
     }
 
     #[test]
     fn compile_empty_array_roundtrips() {
-        let body = serde_json::json!([]);
-        let compiled = compile(&body);
+        let compiled = CompiledTemplate::compile(&serde_json::json!([])).unwrap();
         let ctx = GeneratorContext::new(HashMap::new());
-        let result = render_compiled(&compiled, &ctx, &mut rand::rng()).unwrap();
+        let result = compiled.render(&ctx, &mut rand::rng()).unwrap();
         assert_eq!(result, "[]");
     }
 
     #[test]
     fn compile_array_with_placeholder_renders_correctly() {
         let ctx = make_ctx_with_float("val", 1.0);
-        let body = serde_json::json!(["static", "{{val}}"]);
-        let compiled = compile(&body);
+        let compiled =
+            CompiledTemplate::compile(&serde_json::json!(["static", "{{val}}"])).unwrap();
         let result: serde_json::Value =
-            serde_json::from_str(&render_compiled(&compiled, &ctx, &mut rand::rng()).unwrap())
-                .unwrap();
+            serde_json::from_str(&compiled.render(&ctx, &mut rand::rng()).unwrap()).unwrap();
         assert_eq!(result[0], serde_json::json!("static"));
         assert!(result[1].is_number());
     }
 
     #[test]
     fn compile_special_chars_in_string_are_escaped() {
-        let body = serde_json::json!({"key": "hello \"world\"\nnewline"});
-        let compiled = compile(&body);
+        let compiled =
+            CompiledTemplate::compile(&serde_json::json!({"key": "hello \"world\"\nnewline"}))
+                .unwrap();
         let ctx = GeneratorContext::new(HashMap::new());
-        let output = render_compiled(&compiled, &ctx, &mut rand::rng()).unwrap();
-        // Must parse as valid JSON and round-trip correctly
+        let output = compiled.render(&ctx, &mut rand::rng()).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&output).unwrap();
         assert_eq!(parsed["key"], serde_json::json!("hello \"world\"\nnewline"));
     }
@@ -533,56 +539,53 @@ mod tests {
     #[test]
     fn compile_deeply_nested_renders_correctly() {
         let ctx = make_ctx_with_float("price", 5.0);
-        let body = serde_json::json!({ "a": { "b": { "c": "{{price}}" } } });
-        let compiled = compile(&body);
-        let result: serde_json::Value =
-            serde_json::from_str(&render_compiled(&compiled, &ctx, &mut rand::rng()).unwrap())
+        let compiled =
+            CompiledTemplate::compile(&serde_json::json!({ "a": { "b": { "c": "{{price}}" } } }))
                 .unwrap();
+        let result: serde_json::Value =
+            serde_json::from_str(&compiled.render(&ctx, &mut rand::rng()).unwrap()).unwrap();
         assert!(result["a"]["b"]["c"].is_number());
     }
 
     #[test]
-    fn render_compiled_substitutes_placeholder() {
+    fn render_substitutes_placeholder() {
         let ctx = make_ctx_with_float("val", 42.0);
-        let template = serde_json::json!({ "field": "{{val}}" });
-        let compiled = compile(&template);
+        let compiled =
+            CompiledTemplate::compile(&serde_json::json!({ "field": "{{val}}" })).unwrap();
         let result: serde_json::Value =
-            serde_json::from_str(&render_compiled(&compiled, &ctx, &mut rand::rng()).unwrap())
-                .unwrap();
+            serde_json::from_str(&compiled.render(&ctx, &mut rand::rng()).unwrap()).unwrap();
         assert!(result["field"].is_number());
     }
 
     #[test]
-    fn render_compiled_leaves_plain_string_unchanged() {
+    fn render_leaves_plain_string_unchanged() {
         let ctx = GeneratorContext::new(HashMap::new());
-        let template = serde_json::json!({ "field": "plain" });
-        let compiled = compile(&template);
+        let compiled =
+            CompiledTemplate::compile(&serde_json::json!({ "field": "plain" })).unwrap();
         let result: serde_json::Value =
-            serde_json::from_str(&render_compiled(&compiled, &ctx, &mut rand::rng()).unwrap())
-                .unwrap();
+            serde_json::from_str(&compiled.render(&ctx, &mut rand::rng()).unwrap()).unwrap();
         assert_eq!(result["field"], serde_json::json!("plain"));
     }
 
     #[test]
-    fn render_compiled_handles_nested_objects() {
+    fn render_handles_nested_objects() {
         let ctx = make_ctx_with_float("price", 10.0);
-        let template = serde_json::json!({ "order": { "price": "{{price}}" } });
-        let compiled = compile(&template);
-        let result: serde_json::Value =
-            serde_json::from_str(&render_compiled(&compiled, &ctx, &mut rand::rng()).unwrap())
+        let compiled =
+            CompiledTemplate::compile(&serde_json::json!({ "order": { "price": "{{price}}" } }))
                 .unwrap();
+        let result: serde_json::Value =
+            serde_json::from_str(&compiled.render(&ctx, &mut rand::rng()).unwrap()).unwrap();
         assert!(result["order"]["price"].is_number());
     }
 
     #[test]
-    fn render_compiled_uses_preresolved_value() {
+    fn render_uses_preresolved_value() {
         let ctx = GeneratorContext::new(HashMap::new())
             .with_resolved([("x".to_string(), Arc::from("99"))].into_iter().collect());
-        let template = serde_json::json!({ "field": "{{x}}" });
-        let compiled = compile(&template);
+        let compiled =
+            CompiledTemplate::compile(&serde_json::json!({ "field": "{{x}}" })).unwrap();
         let result: serde_json::Value =
-            serde_json::from_str(&render_compiled(&compiled, &ctx, &mut rand::rng()).unwrap())
-                .unwrap();
+            serde_json::from_str(&compiled.render(&ctx, &mut rand::rng()).unwrap()).unwrap();
         assert_eq!(result["field"], serde_json::json!(99));
     }
 

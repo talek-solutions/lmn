@@ -1,7 +1,7 @@
 use lmn_core::request_template::{
     definition::{FloatDef, FloatStrategy, TemplateDef},
     generator::GeneratorContext,
-    renderer::{compile, render_compiled, validate_placeholders},
+    renderer::{CompiledTemplate, validate_placeholders},
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -21,30 +21,28 @@ fn ctx_with_float(name: &str, value: f64) -> GeneratorContext {
 #[test]
 fn render_substitutes_placeholder_string() {
     let ctx = ctx_with_float("val", 42.0);
-    let template = json!({ "field": "{{val}}" });
-    let compiled = compile(&template);
+    let compiled = CompiledTemplate::compile(&json!({ "field": "{{val}}" })).unwrap();
     let result: serde_json::Value =
-        serde_json::from_str(&render_compiled(&compiled, &ctx, &mut rand::rng()).unwrap()).unwrap();
+        serde_json::from_str(&compiled.render(&ctx, &mut rand::rng()).unwrap()).unwrap();
     assert!(result["field"].is_number());
 }
 
 #[test]
 fn render_leaves_plain_string_unchanged() {
     let ctx = GeneratorContext::new(HashMap::new());
-    let template = json!({ "field": "plain" });
-    let compiled = compile(&template);
+    let compiled = CompiledTemplate::compile(&json!({ "field": "plain" })).unwrap();
     let result: serde_json::Value =
-        serde_json::from_str(&render_compiled(&compiled, &ctx, &mut rand::rng()).unwrap()).unwrap();
+        serde_json::from_str(&compiled.render(&ctx, &mut rand::rng()).unwrap()).unwrap();
     assert_eq!(result["field"], json!("plain"));
 }
 
 #[test]
 fn render_handles_nested_objects() {
     let ctx = ctx_with_float("price", 10.0);
-    let template = json!({ "order": { "price": "{{price}}" } });
-    let compiled = compile(&template);
+    let compiled =
+        CompiledTemplate::compile(&json!({ "order": { "price": "{{price}}" } })).unwrap();
     let result: serde_json::Value =
-        serde_json::from_str(&render_compiled(&compiled, &ctx, &mut rand::rng()).unwrap()).unwrap();
+        serde_json::from_str(&compiled.render(&ctx, &mut rand::rng()).unwrap()).unwrap();
     assert!(result["order"]["price"].is_number());
 }
 

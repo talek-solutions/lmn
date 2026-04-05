@@ -12,7 +12,7 @@ use tracing::instrument;
 
 pub use error::TemplateError;
 use generator::GeneratorContext;
-use renderer::{EnvPlaceholderHandler, GlobalPlaceholderHandler, PlaceholderHandler, Segment};
+use renderer::{CompiledTemplate, EnvPlaceholderHandler, GlobalPlaceholderHandler, PlaceholderHandler};
 
 const METADATA_KEY: &str = "_lmn_metadata_templates";
 pub(crate) const ENV_PLACEHOLDER_PREFIX: &str = "ENV:";
@@ -47,7 +47,7 @@ pub fn parse_placeholder(s: &str) -> Option<PlaceholderRef> {
 // ── Template ──────────────────────────────────────────────────────────────────
 
 pub struct Template {
-    compiled: Vec<Segment>,
+    compiled: CompiledTemplate,
     context: GeneratorContext,
 }
 
@@ -88,7 +88,7 @@ impl Template {
         let mut all_resolved = global_resolved;
         all_resolved.extend(env_resolved);
 
-        let compiled = renderer::compile(&body);
+        let compiled = CompiledTemplate::compile(&body)?;
         // body is dropped here — no longer needed after compile.
 
         Ok(Template {
@@ -103,7 +103,7 @@ impl Template {
     #[instrument(name = "lmn.template.generate_one", skip(self))]
     pub fn generate_one(&self) -> Result<String, TemplateError> {
         let mut rng = rand::rng();
-        renderer::render_compiled(&self.compiled, &self.context, &mut rng)
+        self.compiled.render(&self.context, &mut rng)
     }
 }
 
