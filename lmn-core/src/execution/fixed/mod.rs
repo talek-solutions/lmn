@@ -98,11 +98,10 @@ impl FixedExecutor {
                     }
                     latency.record(record.duration);
                     status_codes.record(record.status_code);
-                    if let Some(extraction) = record.extraction {
-                        if let Some(ref mut rs) = response_stats {
+                    if let Some(extraction) = record.extraction
+                        && let Some(ref mut rs) = response_stats {
                             rs.record(extraction);
                         }
-                    }
                 }
 
                 FixedExecutionResult {

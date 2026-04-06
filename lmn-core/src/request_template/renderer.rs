@@ -64,8 +64,7 @@ impl CompiledTemplate {
                     } else {
                         let val = ctx.generate_by_name(name, rng);
                         buf.push_str(
-                            &serde_json::to_string(&val)
-                                .map_err(TemplateError::Serialization)?,
+                            &serde_json::to_string(&val).map_err(TemplateError::Serialization)?,
                         );
                     }
                 }
@@ -81,8 +80,7 @@ fn compile_value(value: &Value, out: &mut Vec<Segment>) -> Result<(), TemplateEr
             if let Some(ph) = parse_placeholder(s) {
                 out.push(Segment::Placeholder(ph.name));
             } else {
-                let serialized =
-                    serde_json::to_string(s).map_err(TemplateError::Serialization)?;
+                let serialized = serde_json::to_string(s).map_err(TemplateError::Serialization)?;
                 out.push(Segment::Static(Arc::from(serialized.as_str())));
             }
         }
@@ -94,11 +92,8 @@ fn compile_value(value: &Value, out: &mut Vec<Segment>) -> Result<(), TemplateEr
                     out.push(Segment::Static(Arc::from(",")));
                 }
                 first = false;
-                let key_json =
-                    serde_json::to_string(key).map_err(TemplateError::Serialization)?;
-                out.push(Segment::Static(Arc::from(
-                    format!("{key_json}:").as_str(),
-                )));
+                let key_json = serde_json::to_string(key).map_err(TemplateError::Serialization)?;
+                out.push(Segment::Static(Arc::from(format!("{key_json}:").as_str())));
                 compile_value(val, out)?;
             }
             out.push(Segment::Static(Arc::from("}")));
@@ -117,8 +112,7 @@ fn compile_value(value: &Value, out: &mut Vec<Segment>) -> Result<(), TemplateEr
         }
         // Number, Bool, Null — serialize as-is
         _ => {
-            let serialized =
-                serde_json::to_string(value).map_err(TemplateError::Serialization)?;
+            let serialized = serde_json::to_string(value).map_err(TemplateError::Serialization)?;
             out.push(Segment::Static(Arc::from(serialized.as_str())));
         }
     }
@@ -159,11 +153,10 @@ pub trait PlaceholderHandler {
     fn walk(&self, value: &Value, names: &mut Vec<String>) {
         match value {
             Value::String(s) => {
-                if let Some(ph) = parse_placeholder(s) {
-                    if self.matches(&ph) {
+                if let Some(ph) = parse_placeholder(s)
+                    && self.matches(&ph) {
                         names.push(ph.name);
                     }
-                }
             }
             Value::Object(map) => map.values().for_each(|v| self.walk(v, names)),
             Value::Array(arr) => arr.iter().for_each(|v| self.walk(v, names)),
@@ -560,8 +553,7 @@ mod tests {
     #[test]
     fn render_leaves_plain_string_unchanged() {
         let ctx = GeneratorContext::new(HashMap::new());
-        let compiled =
-            CompiledTemplate::compile(&serde_json::json!({ "field": "plain" })).unwrap();
+        let compiled = CompiledTemplate::compile(&serde_json::json!({ "field": "plain" })).unwrap();
         let result: serde_json::Value =
             serde_json::from_str(&compiled.render(&ctx, &mut rand::rng()).unwrap()).unwrap();
         assert_eq!(result["field"], serde_json::json!("plain"));
@@ -582,8 +574,7 @@ mod tests {
     fn render_uses_preresolved_value() {
         let ctx = GeneratorContext::new(HashMap::new())
             .with_resolved([("x".to_string(), Arc::from("99"))].into_iter().collect());
-        let compiled =
-            CompiledTemplate::compile(&serde_json::json!({ "field": "{{x}}" })).unwrap();
+        let compiled = CompiledTemplate::compile(&serde_json::json!({ "field": "{{x}}" })).unwrap();
         let result: serde_json::Value =
             serde_json::from_str(&compiled.render(&ctx, &mut rand::rng()).unwrap()).unwrap();
         assert_eq!(result["field"], serde_json::json!(99));
@@ -596,8 +587,7 @@ mod tests {
                 .into_iter()
                 .collect(),
         );
-        let result =
-            resolve_string_placeholders("Bearer {{ENV:TOKEN}}", &ctx, &mut rand::rng());
+        let result = resolve_string_placeholders("Bearer {{ENV:TOKEN}}", &ctx, &mut rand::rng());
         assert_eq!(result, "Bearer mysecret");
     }
 

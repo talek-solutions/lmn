@@ -65,11 +65,7 @@ impl RunReport {
         let status_codes = status_code_map(&stats.status_codes);
         let response_stats = stats.response_stats.as_ref().map(response_stats_report);
 
-        let curve_stages = if let Some(ref cs) = stats.curve_stats {
-            Some(per_stage_reports(&cs.stages, &cs.stage_stats))
-        } else {
-            None
-        };
+        let curve_stages = stats.curve_stats.as_ref().map(|cs| per_stage_reports(&cs.stages, &cs.stage_stats));
 
         RunReport {
             version: 2,
@@ -95,11 +91,7 @@ mod tests {
     use crate::load_curve::{LoadCurve, RampType, Stage};
     use crate::output::{RunReport, RunReportParams};
 
-    fn make_run_stats(
-        mode: RunMode,
-        total_requests: u64,
-        total_failures: u64,
-    ) -> RunStats {
+    fn make_run_stats(mode: RunMode, total_requests: u64, total_failures: u64) -> RunStats {
         RunStats {
             elapsed: Duration::from_secs(5),
             mode,

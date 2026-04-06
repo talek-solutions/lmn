@@ -135,17 +135,18 @@ impl CurveExecutor {
                 let stage_idx = stage_index_at(&drain_stages, elapsed);
 
                 stage_stats[stage_idx].latency.record(record.duration);
-                stage_stats[stage_idx].status_codes.record(record.status_code);
+                stage_stats[stage_idx]
+                    .status_codes
+                    .record(record.status_code);
                 stage_stats[stage_idx].total_requests += 1;
                 if !record.success {
                     stage_stats[stage_idx].total_failures += 1;
                 }
 
-                if let Some(extraction) = record.extraction {
-                    if let Some(ref mut rs) = response_stats {
+                if let Some(extraction) = record.extraction
+                    && let Some(ref mut rs) = response_stats {
                         rs.record(extraction);
                     }
-                }
             }
 
             CurveExecutionResult {
