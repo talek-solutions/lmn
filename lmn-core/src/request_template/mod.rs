@@ -12,7 +12,9 @@ use tracing::instrument;
 
 pub use error::TemplateError;
 use generator::GeneratorContext;
-use renderer::{CompiledTemplate, EnvPlaceholderHandler, GlobalPlaceholderHandler, PlaceholderHandler};
+use renderer::{
+    CompiledTemplate, EnvPlaceholderHandler, GlobalPlaceholderHandler, PlaceholderHandler,
+};
 
 const METADATA_KEY: &str = "_lmn_metadata_templates";
 pub(crate) const ENV_PLACEHOLDER_PREFIX: &str = "ENV:";

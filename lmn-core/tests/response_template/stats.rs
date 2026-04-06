@@ -38,7 +38,10 @@ fn builds_string_distribution() {
     stats.record(string_result("status", "ok"));
     stats.record(string_result("status", "ok"));
     stats.record(string_result("status", "err"));
-    let hist = stats.string_fields.get("status").expect("status field must exist");
+    let hist = stats
+        .string_fields
+        .get("status")
+        .expect("status field must exist");
     assert_eq!(hist.entries()["ok"], 2);
     assert_eq!(hist.entries()["err"], 1);
 }
@@ -48,7 +51,10 @@ fn accumulates_float_values() {
     let mut stats = ResponseStats::new();
     stats.record(float_result("score", 1.0));
     stats.record(float_result("score", 2.0));
-    let hist = stats.float_fields.get("score").expect("score field must exist");
+    let hist = stats
+        .float_fields
+        .get("score")
+        .expect("score field must exist");
     assert_eq!(hist.total_seen(), 2);
 }
 

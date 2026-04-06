@@ -18,8 +18,9 @@ impl LatencyHistogram {
         // Bounds are compile-time constants: low=1µs, high=1h, sig_figs=3.
         // new_with_bounds only fails for invalid bounds (low==0, high<2*low, sig_figs>5),
         // none of which can occur here.
-        let inner = Histogram::<u64>::new_with_bounds(1, 3_600_000_000, 3)
-            .unwrap_or_else(|_| unreachable!("HDR histogram bounds (1, 3_600_000_000, 3) are always valid"));
+        let inner = Histogram::<u64>::new_with_bounds(1, 3_600_000_000, 3).unwrap_or_else(|_| {
+            unreachable!("HDR histogram bounds (1, 3_600_000_000, 3) are always valid")
+        });
         Self { inner }
     }
 

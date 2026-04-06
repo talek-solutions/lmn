@@ -114,8 +114,11 @@ mod tests {
 
     #[test]
     fn with_resolved_merges_entries() {
-        let ctx = GeneratorContext::new(HashMap::new())
-            .with_resolved([("key".to_string(), Arc::from("\"value\""))].into_iter().collect());
+        let ctx = GeneratorContext::new(HashMap::new()).with_resolved(
+            [("key".to_string(), Arc::from("\"value\""))]
+                .into_iter()
+                .collect(),
+        );
         assert!(ctx.resolved.contains_key("key"));
     }
 }

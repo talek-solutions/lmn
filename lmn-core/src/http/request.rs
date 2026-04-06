@@ -155,7 +155,7 @@ impl Request {
                 req = req.header(name, value);
             }
         }
-        
+
         match req.send().await {
             Ok(resp) => {
                 let status = resp.status();

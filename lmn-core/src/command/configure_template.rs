@@ -1,6 +1,6 @@
-use crate::execution::RunStats;
 use crate::command::{Body, Command};
 use crate::config::error::ConfigError;
+use crate::execution::RunStats;
 use std::error::Error;
 use std::fs::File;
 use std::io::Write;

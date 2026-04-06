@@ -94,7 +94,10 @@ pub fn print_stats(params: PrintStatsParams<'_>) {
         println!("  curve      {}", fmt_total_duration(cs.duration));
     }
     if let Some(ref ts) = stats.template_stats {
-        println!("  template   {}", fmt_total_duration(ts.generation_duration));
+        println!(
+            "  template   {}",
+            fmt_total_duration(ts.generation_duration)
+        );
     }
     println!("  throughput {throughput:.1} req/s");
     println!();

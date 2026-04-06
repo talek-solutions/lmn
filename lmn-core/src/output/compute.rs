@@ -85,8 +85,11 @@ pub fn response_stats_report(rs: &ResponseStats) -> ResponseStatsReport {
         .string_fields
         .iter()
         .map(|(k, hist)| {
-            let inner: BTreeMap<String, u64> =
-                hist.entries().iter().map(|(v, c)| (v.clone(), *c)).collect();
+            let inner: BTreeMap<String, u64> = hist
+                .entries()
+                .iter()
+                .map(|(v, c)| (v.clone(), *c))
+                .collect();
             (k.clone(), inner)
         })
         .collect();
@@ -186,10 +189,22 @@ mod tests {
         }
         let stats = latency_stats(&hist);
         // HDR histogram has bounded precision — check values are in reasonable range
-        assert!(stats.min_ms >= 1.0 && stats.min_ms <= 2.0, "min_ms={}", stats.min_ms);
-        assert!(stats.max_ms >= 99.0 && stats.max_ms <= 101.0, "max_ms={}", stats.max_ms);
+        assert!(
+            stats.min_ms >= 1.0 && stats.min_ms <= 2.0,
+            "min_ms={}",
+            stats.min_ms
+        );
+        assert!(
+            stats.max_ms >= 99.0 && stats.max_ms <= 101.0,
+            "max_ms={}",
+            stats.max_ms
+        );
         // p99 of 100 values (1ms-100ms) should be near 100ms
-        assert!(stats.p99_ms >= 98.0 && stats.p99_ms <= 101.0, "p99_ms={}", stats.p99_ms);
+        assert!(
+            stats.p99_ms >= 98.0 && stats.p99_ms <= 101.0,
+            "p99_ms={}",
+            stats.p99_ms
+        );
     }
 
     #[test]

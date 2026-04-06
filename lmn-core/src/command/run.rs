@@ -4,12 +4,12 @@ use std::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::command::Command;
-use crate::execution::{
-    CurveStats, ExecutionMode, RequestSpec, RunMode, RunStats,
-    build_request_config, resolve_tracked_fields,
-};
 use crate::execution::curve::{CurveExecutor, CurveExecutorParams};
 use crate::execution::fixed::{FixedExecutor, FixedExecutorParams};
+use crate::execution::{
+    CurveStats, ExecutionMode, RequestSpec, RunMode, RunStats, build_request_config,
+    resolve_tracked_fields,
+};
 use crate::load_curve::LoadCurve;
 use crate::request_template::Template;
 
@@ -56,14 +56,17 @@ async fn execute_fixed(
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     let tracked_fields = resolve_tracked_fields(response_template_path)?;
-    let request_config = build_request_config(host, method, body, tracked_fields, headers, concurrency)?;
+    let request_config =
+        build_request_config(host, method, body, tracked_fields, headers, concurrency)?;
 
     let cancellation_token = CancellationToken::new();
     let cancel = cancellation_token.clone();
     tokio::spawn(async move {
         match tokio::signal::ctrl_c().await {
             Ok(()) => {
-                eprintln!("\nShutdown signal received — waiting for in-flight requests to finish...");
+                eprintln!(
+                    "\nShutdown signal received — waiting for in-flight requests to finish..."
+                );
                 cancel.cancel();
             }
             Err(e) => eprintln!("warning: failed to listen for ctrl_c: {e}"),
@@ -120,8 +123,14 @@ async fn execute_curve(
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
     let tracked_fields = resolve_tracked_fields(response_template_path)?;
-    let peak_vus = curve.stages.iter().map(|s| s.target_vus as usize).max().unwrap_or(1);
-    let request_config = build_request_config(host, method, body, tracked_fields, headers, peak_vus)?;
+    let peak_vus = curve
+        .stages
+        .iter()
+        .map(|s| s.target_vus as usize)
+        .max()
+        .unwrap_or(1);
+    let request_config =
+        build_request_config(host, method, body, tracked_fields, headers, peak_vus)?;
 
     let cancellation_token = CancellationToken::new();
     let cancel = cancellation_token.clone();

@@ -55,20 +55,20 @@ mod tests {
     }
 
     fn make_join_error() -> JoinError {
-        tokio::runtime::Runtime::new()
-            .unwrap()
-            .block_on(async {
-                tokio::spawn(async { panic!("test panic") })
-                    .await
-                    .unwrap_err()
-            })
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            tokio::spawn(async { panic!("test panic") })
+                .await
+                .unwrap_err()
+        })
     }
 
     #[test]
     fn display_http_client_build() {
         let run_err = RunError::HttpClientBuild(make_reqwest_error());
         assert!(
-            run_err.to_string().starts_with("failed to build HTTP client:"),
+            run_err
+                .to_string()
+                .starts_with("failed to build HTTP client:"),
             "unexpected: {run_err}"
         );
     }
@@ -77,7 +77,9 @@ mod tests {
     fn display_drain_task_failed() {
         let run_err = RunError::DrainTaskFailed(make_join_error());
         assert!(
-            run_err.to_string().starts_with("drain task failed unexpectedly:"),
+            run_err
+                .to_string()
+                .starts_with("drain task failed unexpectedly:"),
             "unexpected: {run_err}"
         );
     }

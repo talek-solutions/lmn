@@ -4,8 +4,8 @@ pub mod fixed;
 
 pub use error::RunError;
 
-use std::sync::Arc;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::command::{Body, HttpMethod};
 use crate::config::secret::SensitiveString;

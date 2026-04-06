@@ -37,11 +37,10 @@ fn main() {
     let tracer = provider.tracer("lmn");
     let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
     let subscriber = Registry::default().with(telemetry);
-    tracing::subscriber::set_global_default(subscriber)
-        .unwrap_or_else(|e| {
-            eprintln!("error: failed to set global tracing subscriber: {e}");
-            std::process::exit(1);
-        });
+    tracing::subscriber::set_global_default(subscriber).unwrap_or_else(|e| {
+        eprintln!("error: failed to set global tracing subscriber: {e}");
+        std::process::exit(1);
+    });
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
