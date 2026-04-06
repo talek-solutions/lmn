@@ -144,9 +144,10 @@ impl CurveExecutor {
                 }
 
                 if let Some(extraction) = record.extraction
-                    && let Some(ref mut rs) = response_stats {
-                        rs.record(extraction);
-                    }
+                    && let Some(ref mut rs) = response_stats
+                {
+                    rs.record(extraction);
+                }
             }
 
             CurveExecutionResult {

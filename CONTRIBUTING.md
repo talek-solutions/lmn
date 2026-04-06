@@ -17,6 +17,14 @@ cargo build
 cargo test --workspace
 ```
 
+**Install pre-commit hooks** (one-time, per clone):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook runs `cargo fmt` and `cargo clippy --fix` automatically before each commit and re-stages any fixed files.
+
 A `.env` file in the working directory is loaded automatically — copy `.env.example` if present.
 
 ## Running the Observability Stack

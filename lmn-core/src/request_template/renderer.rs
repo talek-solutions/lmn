@@ -154,9 +154,10 @@ pub trait PlaceholderHandler {
         match value {
             Value::String(s) => {
                 if let Some(ph) = parse_placeholder(s)
-                    && self.matches(&ph) {
-                        names.push(ph.name);
-                    }
+                    && self.matches(&ph)
+                {
+                    names.push(ph.name);
+                }
             }
             Value::Object(map) => map.values().for_each(|v| self.walk(v, names)),
             Value::Array(arr) => arr.iter().for_each(|v| self.walk(v, names)),
