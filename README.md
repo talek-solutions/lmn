@@ -56,6 +56,16 @@ cargo install lmn
 **Docker (zero-install):**
 
 ```bash
+# Basic run
+docker run --rm ghcr.io/talek-solutions/lmn:latest run -H https://httpbin.org/get
+
+# Mount a config file from the current directory
+docker run --rm \
+  -v "$PWD:/workspace" -w /workspace \
+  ghcr.io/talek-solutions/lmn:latest \
+  run -f lmn.yaml
+
+# Hit a locally running service
 docker run --rm ghcr.io/talek-solutions/lmn:latest run -H http://host.docker.internal:3000/api
 ```
 

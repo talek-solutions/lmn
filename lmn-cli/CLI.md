@@ -24,7 +24,7 @@ lmn run [OPTIONS] -H <HOST>
 |-------|------|---------|-------------|
 | `-H` | `--host` | required | Target host URL |
 | `-R` | `--request-count` | `100` | Total number of requests to send |
-| `-C` | `--concurrency` | `100` | Max in-flight requests at any time |
+| `-C` | `--concurrency` | `10` | Max in-flight requests at any time |
 | `-M` | `--method` | `get` | HTTP method (`get`, `post`, `put`, `patch`, `delete`) |
 | `-B` | `--body` | — | Inline JSON request body |
 | `-T` | `--request-template` | — | Path to a request template file |

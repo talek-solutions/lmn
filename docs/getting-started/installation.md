@@ -41,9 +41,47 @@ sudo mv lmn /usr/local/bin/
 
 ## Docker
 
+No Rust toolchain required — pull and run directly.
+
 ```bash
 docker pull ghcr.io/talek-solutions/lmn:latest
+```
+
+**Basic GET test:**
+
+```bash
 docker run --rm ghcr.io/talek-solutions/lmn:latest run -H https://httpbin.org/get
+```
+
+**With concurrency and request count:**
+
+```bash
+docker run --rm ghcr.io/talek-solutions/lmn:latest run -H https://httpbin.org/get -R 1000 -C 50
+```
+
+**Run from a config file** — mount the directory containing `lmn.yaml`:
+
+```bash
+docker run --rm \
+  -v "$PWD:/workspace" -w /workspace \
+  ghcr.io/talek-solutions/lmn:latest \
+  run -f lmn.yaml
+```
+
+**Passing secrets via environment variables:**
+
+```bash
+docker run --rm \
+  -v "$PWD:/workspace" -w /workspace \
+  -e API_TOKEN="my-secret-token" \
+  ghcr.io/talek-solutions/lmn:latest \
+  run -f lmn.yaml
+```
+
+**Testing a locally running service** — use `host.docker.internal` to reach the host machine:
+
+```bash
+docker run --rm ghcr.io/talek-solutions/lmn:latest run -H http://host.docker.internal:3000/api
 ```
 
 ## From Source

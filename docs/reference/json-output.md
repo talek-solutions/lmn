@@ -23,7 +23,6 @@ The schema is versioned. The current version is `1`.
 | `requests` | object | Yes | Aggregated request counts and derived metrics. |
 | `latency` | object | Yes | Latency percentiles and summary statistics. All values in **milliseconds**. |
 | `status_codes` | object | Yes | HTTP status code counts. Keys are string codes (`"200"`, `"404"`). The key `"error"` covers connection errors with no HTTP response. |
-| `sampling` | object | Yes | Reservoir sampling state at end of run. |
 | `response_stats` | object \| null | No | Response body field analysis. Present only when `--response-template` was used. |
 | `curve_stages` | array \| null | No | Per-stage breakdown. Present only when `mode == "curve"`. |
 | `thresholds` | object \| null | No | Threshold evaluation results. Present only when thresholds were configured. |
@@ -69,21 +68,6 @@ All values are in **milliseconds** (`f64`). Field names carry the `_ms` suffix.
 | `p99_ms` | 99th percentile |
 | `max_ms` | Maximum observed latency |
 | `avg_ms` | Mean latency |
-
-!!! note "Sampling"
-    When `sampling.sampled == true`, latency percentiles are computed from a random sample of the full request population and are approximate. See [`sampling`](#sampling).
-
----
-
-## `sampling`
-
-| Field | Type | Description |
-|---|---|---|
-| `sampled` | boolean | `true` if latency percentiles are based on a sample rather than the full population |
-| `final_sample_rate` | float | Sample rate at end of run. `1.0` means no sampling occurred. |
-| `min_sample_rate` | float | Lowest sample rate observed during the run |
-| `reservoir_size` | integer | Maximum results held in memory (configurable via `--result-buffer`) |
-| `results_collected` | integer | Actual results collected (≤ `reservoir_size`) |
 
 ---
 
@@ -187,13 +171,6 @@ Each entry in `float_fields`:
   },
   "status_codes": {
     "200": 100
-  },
-  "sampling": {
-    "sampled": false,
-    "final_sample_rate": 1.0,
-    "min_sample_rate": 1.0,
-    "reservoir_size": 100000,
-    "results_collected": 100
   },
   "response_stats": null,
   "curve_stages": null,

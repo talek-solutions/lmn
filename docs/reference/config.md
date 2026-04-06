@@ -22,8 +22,6 @@ thresholds: # Pass/fail rules (optional)
 | `alias` | string | No | Name of a saved request template alias |
 | `output` | string | No | Output format. Values: `table` (default), `json` |
 | `output_file` | path | No | Write JSON report to this file (in addition to table output) |
-| `result_buffer` | int | No | Reservoir size for sampling. Default: `100000`. Max: `500000` |
-| `sample_threshold` | int | No | VU count above which sampling activates. Default: `50`. Max: `1000`. Set `0` to disable |
 
 ## `execution`
 

@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0]
+
+### Breaking
+
+- **JSON output**: `sampling` field removed from the output schema. Latency percentiles are now exact (computed from a full HDR histogram) — no approximation, no sampling state to report.
+- **Config**: `result_buffer` and `sample_threshold` config fields removed. The old reservoir sampling pipeline has been replaced; these settings have no effect and will cause a parse error if present.
+
+### Changed
+
+- Histogram-based statistics pipeline — exact latency percentiles for any run size, replacing the reservoir sampling approach
+- Worker-pool VU model with Arc-based clone reduction — lower memory overhead at high concurrency
+- `CompiledTemplate` struct — template compilation errors are now reported at startup, before any requests fire
+- Write-to-buffer renderer with pre-resolved globals — faster per-request body generation
+- Replaced `expect`/`unwrap` with a typed `RunError` — no more panics during a run, errors surface cleanly
+
+### Fixed
+
+- CLI reference: default value for `--concurrency` corrected to `10` (was incorrectly documented as `100`)
+
 ## [0.1.7]
 
 ### Changed
