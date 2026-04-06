@@ -209,7 +209,7 @@ run_test "yaml config curve" 0 \
 # 8. JSON output format — assert valid JSON with total_requests field
 check_json_output() {
     local file="$1"
-    jq -e '.total_requests > 0' "$file" > /dev/null 2>&1
+    jq -e '.requests.total > 0' "$file" > /dev/null 2>&1
 }
 run_test_with_check "json output format" 0 check_json_output \
     run --host https://httpbin.org/get \
@@ -223,7 +223,7 @@ run_test "json output to file" 0 \
     --output-file "$TMPDIR/report.json"
 
 check_output_file() {
-    jq -e '.total_requests > 0' "$TMPDIR/report.json" > /dev/null 2>&1
+    jq -e '.requests.total > 0' "$TMPDIR/report.json" > /dev/null 2>&1
 }
 if check_output_file; then
     echo "  PASS  json output file — report.json contains valid data"
