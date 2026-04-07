@@ -10,6 +10,7 @@ pub enum TemplateError {
     MissingDefinition(String),
     MissingEnvVar(String),
     InvalidEnvVarName(String),
+    Serialization(serde_json::Error),
 }
 
 impl std::fmt::Display for TemplateError {
@@ -39,6 +40,7 @@ impl std::fmt::Display for TemplateError {
             Self::InvalidEnvVarName(name) => {
                 write!(f, "ENV placeholder '{name}' has an empty variable name")
             }
+            Self::Serialization(e) => write!(f, "failed to serialize rendered template: {e}"),
         }
     }
 }

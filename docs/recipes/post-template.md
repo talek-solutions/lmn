@@ -57,11 +57,11 @@ lmn run -H https://api.example.com/orders \
 ## Static values (same across all requests)
 
 {% raw %}
-Add `:once` to generate a value once and reuse it across all requests:
+Add `:global` to generate a value once and reuse it across all requests:
 
 ```json
 {
-  "sessionId": "{{session_id:once}}",
+  "sessionId": "{{session_id:global}}",
   "item": "{{item_name}}"
 }
 ```

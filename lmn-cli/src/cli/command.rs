@@ -92,14 +92,6 @@ pub struct RunArgs {
     #[arg(conflicts_with_all = ["request_count", "concurrency"])]
     pub load_curve: Option<std::path::PathBuf>,
 
-    #[arg(long = "sample-threshold")]
-    #[arg(help = "VU count below which all results are collected (0 = disabled) (default: 50)")]
-    pub sample_threshold: Option<usize>,
-
-    #[arg(long = "result-buffer")]
-    #[arg(help = "Max results to retain for percentile computation (default: 100000)")]
-    pub result_buffer: Option<usize>,
-
     #[arg(long = "output")]
     #[arg(help = "Output format: table (default) or json")]
     pub output: Option<OutputFormat>,

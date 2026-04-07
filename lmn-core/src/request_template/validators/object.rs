@@ -40,7 +40,7 @@ impl Validator for ObjectValidator {
 
 fn extract_plain_name(s: &str) -> Option<&str> {
     let inner = s.trim().strip_prefix("{{")?.strip_suffix("}}")?;
-    Some(inner.trim_end_matches(":once"))
+    Some(inner.trim_end_matches(":global"))
 }
 
 #[cfg(test)]
@@ -70,8 +70,8 @@ mod tests {
     }
 
     #[test]
-    fn extract_plain_name_strips_once_suffix() {
-        assert_eq!(extract_plain_name("{{name:once}}"), Some("name"));
+    fn extract_plain_name_strips_global_suffix() {
+        assert_eq!(extract_plain_name("{{name:global}}"), Some("name"));
     }
 
     #[test]

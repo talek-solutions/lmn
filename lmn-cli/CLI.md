@@ -24,7 +24,7 @@ lmn run [OPTIONS] -H <HOST>
 |-------|------|---------|-------------|
 | `-H` | `--host` | required | Target host URL |
 | `-R` | `--request-count` | `100` | Total number of requests to send |
-| `-C` | `--concurrency` | `100` | Max in-flight requests at any time |
+| `-C` | `--concurrency` | `10` | Max in-flight requests at any time |
 | `-M` | `--method` | `get` | HTTP method (`get`, `post`, `put`, `patch`, `delete`) |
 | `-B` | `--body` | — | Inline JSON request body |
 | `-T` | `--request-template` | — | Path to a request template file |
@@ -32,8 +32,6 @@ lmn run [OPTIONS] -H <HOST>
 | `-S` | `--response-template` | — | Path to a response template file |
 | `-E` | `--response-alias` | — | Alias of a stored response template |
 | `-L` | `--load-curve` | — | Path to a load curve JSON file (time-based VU scaling mode) |
-| — | `--sample-threshold` | `50` | VU count below which all results are collected (0 = disabled) |
-| — | `--result-buffer` | `100000` | Max results to retain for percentile computation |
 | — | `--output` | `table` | Output format: `table` (default) or `json` |
 | — | `--output-file` | — | Write JSON result to `<path>` (always JSON regardless of `--output`) |
 | `-f` | `--config` | — | Path to a YAML config file. CLI flags take precedence over config values. |
@@ -105,8 +103,6 @@ Run parameters are nested under a `run:` section. Execution strategy is configur
 | `method` | string | `-M` / `--method` | HTTP method (`get`, `post`, `put`, `patch`, `delete`) |
 | `output` | string | `--output` | Output format (`table` or `json`) |
 | `output_file` | string | `--output-file` | Path to write JSON report |
-| `sample_threshold` | number | `--sample-threshold` | VU count below which all results are collected (0 = disabled) |
-| `result_buffer` | number | `--result-buffer` | Max results to retain for percentile computation |
 | `headers` | map | `--header` | Static HTTP headers sent with every request (key: value pairs) |
 
 **`execution:` section**
@@ -134,8 +130,6 @@ run:
   host: https://httpbin.org
   method: post
   output: table
-  sample_threshold: 100
-  result_buffer: 100000
 
 execution:
   request_count: 500
@@ -189,7 +183,7 @@ thresholds:
 
 - When `--output json` and no `--output-file`: JSON goes to stdout; ASCII table is suppressed.
 - When `--output-file` is set: JSON is always written to the file regardless of `--output`. This allows `--output table --output-file run.json` for users who want both a readable terminal table and a machine-readable artifact.
-- All run-time messages (shutdown notice, sampling warnings, errors) always go to stderr.
+- All run-time messages (shutdown notice, errors) always go to stderr.
 
 ### Examples
 

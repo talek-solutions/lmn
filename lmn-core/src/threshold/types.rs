@@ -142,32 +142,30 @@ pub struct EvaluateParams<'a> {
 mod tests {
     use std::time::Duration;
 
-    use crate::command::run::{RunMode, RunStats};
-    use crate::http::RequestResult;
+    use crate::execution::{RunMode, RunStats};
+    use crate::histogram::{LatencyHistogram, StatusCodeHistogram};
     use crate::output::{RunReport, RunReportParams};
 
     use super::*;
 
     fn make_report() -> RunReport {
-        let result = RequestResult::new(Duration::from_millis(99), true, Some(200), None);
+        let mut latency = LatencyHistogram::new();
+        latency.record(Duration::from_millis(99));
+        let mut status_codes = StatusCodeHistogram::new();
+        status_codes.record(Some(200));
+
         let stats = RunStats {
             elapsed: Duration::from_secs(10),
-            template_duration: None,
-            response_stats: None,
-            results: vec![result],
             mode: RunMode::Fixed,
-            curve_duration: None,
-            curve_stages: None,
+            latency,
+            status_codes,
             total_requests: 100,
             total_failures: 5,
-            sample_rate: 1.0,
-            min_sample_rate: 1.0,
+            template_stats: None,
+            response_stats: None,
+            curve_stats: None,
         };
-        RunReport::from_params(RunReportParams {
-            stats: &stats,
-            reservoir_size: 100_000,
-            run_start: std::time::Instant::now(),
-        })
+        RunReport::from_params(RunReportParams { stats: &stats })
     }
 
     #[test]

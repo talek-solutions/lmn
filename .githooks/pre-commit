@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -e
+
+echo ">>> cargo fmt"
+cargo fmt
+
+echo ">>> cargo clippy --fix"
+cargo clippy --fix --allow-dirty -- -D warnings
+
+echo ">>> re-staging fixed files"
+git add -u

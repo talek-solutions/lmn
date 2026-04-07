@@ -30,10 +30,10 @@ serde_json = "1"
 | Type | Module | Purpose |
 |---|---|---|
 | `RunCommand` | `command::run` | Entry point — owns request spec, execution mode, and sampling config |
-| `ExecutionMode` | `command::run` | `Fixed { request_count, concurrency }` or `Curve(LoadCurve)` |
-| `RequestSpec` | `command::run` | Host, method, body, template paths, headers |
-| `SamplingConfig` | `command::run` | VU threshold and reservoir size |
-| `RunStats` | `command::run` | Raw output of a completed run |
+| `ExecutionMode` | `execution` | `Fixed { request_count, concurrency }` or `Curve(LoadCurve)` |
+| `RequestSpec` | `execution` | Host, method, body, template paths, headers |
+| `SamplingConfig` | `execution` | VU threshold and reservoir size |
+| `RunStats` | `execution` | Raw output of a completed run |
 | `RunReport` | `output` | Serializable report built from `RunStats` |
 | `LoadCurve` | `load_curve` | Staged VU ramp definition (parses from JSON) |
 | `Threshold` | `threshold` | Single pass/fail rule on a metric |
@@ -43,10 +43,9 @@ serde_json = "1"
 ### Minimal example — fixed load test
 
 ```rust,no_run
-use std::time::Instant;
-
 use lmn_core::command::{Command, Commands, HttpMethod};
-use lmn_core::command::run::{ExecutionMode, RequestSpec, RunCommand, SamplingConfig};
+use lmn_core::command::run::RunCommand;
+use lmn_core::execution::{ExecutionMode, RequestSpec};
 use lmn_core::output::{RunReport, RunReportParams};
 
 #[tokio::main]
@@ -64,18 +63,10 @@ async fn main() {
             request_count: 1000,
             concurrency: 50,
         },
-        sampling: SamplingConfig {
-            sample_threshold: 50,
-            result_buffer: 100_000,
-        },
     };
 
     if let Ok(Some(stats)) = Commands::Run(cmd).execute().await {
-        let report = RunReport::from_params(RunReportParams {
-            stats: &stats,
-            reservoir_size: 100_000,
-            run_start: Instant::now(),
-        });
+        let report = RunReport::from_params(RunReportParams { stats: &stats });
         println!("{}", serde_json::to_string_pretty(&report).unwrap());
     }
 }
@@ -87,7 +78,7 @@ Define time-based VU ramps using `LoadCurve`, which parses from JSON:
 
 ```rust,no_run
 use lmn_core::load_curve::LoadCurve;
-use lmn_core::command::run::ExecutionMode;
+use lmn_core::execution::ExecutionMode;
 
 let curve: LoadCurve = r#"{
     "stages": [
@@ -111,11 +102,11 @@ use lmn_core::request_template::Template;
 
 let template = Template::parse(Path::new("request.json")).unwrap();
 
-// Pre-generate N bodies at startup (used in fixed mode)
-let bodies = template.pre_generate(1000);
-
-// Or generate on demand (thread-safe, used in curve mode)
+// Generate on demand — thread-safe, used by both fixed and curve executors
 let body = template.generate_one();
+
+// Or pre-generate N bodies upfront (e.g. for deterministic replay)
+let bodies = template.pre_generate(1000);
 ```
 
 Template files embed placeholder definitions under `_loadtest_metadata_templates`:

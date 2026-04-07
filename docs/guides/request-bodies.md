@@ -63,13 +63,13 @@ Each request body will have a randomly chosen `userId` and a random `amount` bet
 "price": { "type": "float", "min": 0.01, "max": 999.99, "details": { "decimals": 2 } }
 ```
 
-## Once placeholders
+## Global placeholders
 
-Use `:once` to generate a value once at startup and reuse it across all requests:
+Use `:global` to generate a value once at startup and reuse it across all requests:
 
 {% raw %}
 ```json
-{ "session": "{{session_id:once}}" }
+{ "session": "{{session_id:global}}" }
 ```
 {% endraw %}
 

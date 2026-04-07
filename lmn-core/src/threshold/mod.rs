@@ -41,34 +41,32 @@ pub fn evaluate(params: EvaluateParams<'_>) -> ThresholdReport {
 mod tests {
     use std::time::Duration;
 
-    use crate::command::run::{RunMode, RunStats};
-    use crate::http::RequestResult;
+    use crate::execution::{RunMode, RunStats};
+    use crate::histogram::{LatencyHistogram, StatusCodeHistogram};
     use crate::output::{RunReport, RunReportParams};
 
     use super::*;
 
     fn make_report_with_latency(latency_ms: u64, error_rate: f64) -> RunReport {
-        let total = 100usize;
-        let failed = (total as f64 * error_rate).round() as usize;
-        let result = RequestResult::new(Duration::from_millis(latency_ms), true, Some(200), None);
+        let total = 100u64;
+        let failed = (total as f64 * error_rate).round() as u64;
+        let mut latency = LatencyHistogram::new();
+        latency.record(Duration::from_millis(latency_ms));
+        let mut status_codes = StatusCodeHistogram::new();
+        status_codes.record(Some(200));
+
         let stats = RunStats {
             elapsed: Duration::from_secs(10),
-            template_duration: None,
-            response_stats: None,
-            results: vec![result],
             mode: RunMode::Fixed,
-            curve_duration: None,
-            curve_stages: None,
+            latency,
+            status_codes,
             total_requests: total,
             total_failures: failed,
-            sample_rate: 1.0,
-            min_sample_rate: 1.0,
+            template_stats: None,
+            response_stats: None,
+            curve_stats: None,
         };
-        RunReport::from_params(RunReportParams {
-            stats: &stats,
-            reservoir_size: 100_000,
-            run_start: std::time::Instant::now(),
-        })
+        RunReport::from_params(RunReportParams { stats: &stats })
     }
 
     #[test]

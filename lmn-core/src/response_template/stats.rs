@@ -1,16 +1,20 @@
 use std::collections::HashMap;
 
+use crate::histogram::{
+    CategoricalHistogram, CategoricalHistogramParams, NumericHistogram, NumericHistogramParams,
+};
 use crate::response_template::extractor::{ExtractedValue, ExtractionResult};
 
-pub struct FloatFieldStats {
-    pub values: Vec<f64>,
-}
+const DEFAULT_CATEGORICAL_MAX_BUCKETS: usize = 256;
+const DEFAULT_NUMERIC_MAX_SAMPLES: usize = 10_000;
+
+// ── ResponseStats ─────────────────────────────────────────────────────────────
 
 pub struct ResponseStats {
-    pub string_distributions: HashMap<String, HashMap<String, usize>>,
-    pub float_fields: HashMap<String, FloatFieldStats>,
-    pub mismatch_counts: HashMap<String, usize>,
-    pub total_responses: usize,
+    pub string_fields: HashMap<String, CategoricalHistogram>,
+    pub float_fields: HashMap<String, NumericHistogram>,
+    pub mismatch_counts: HashMap<String, u64>,
+    pub total_responses: u64,
 }
 
 impl Default for ResponseStats {
@@ -22,7 +26,7 @@ impl Default for ResponseStats {
 impl ResponseStats {
     pub fn new() -> Self {
         Self {
-            string_distributions: HashMap::new(),
+            string_fields: HashMap::new(),
             float_fields: HashMap::new(),
             mismatch_counts: HashMap::new(),
             total_responses: 0,
@@ -35,19 +39,24 @@ impl ResponseStats {
         for (path, value) in result.values {
             match value {
                 ExtractedValue::String(s) => {
-                    *self
-                        .string_distributions
+                    self.string_fields
                         .entry(path)
-                        .or_default()
-                        .entry(s)
-                        .or_insert(0) += 1;
+                        .or_insert_with(|| {
+                            CategoricalHistogram::new(CategoricalHistogramParams {
+                                max_buckets: DEFAULT_CATEGORICAL_MAX_BUCKETS,
+                            })
+                        })
+                        .record(&s);
                 }
                 ExtractedValue::Float(f) => {
                     self.float_fields
                         .entry(path)
-                        .or_insert_with(|| FloatFieldStats { values: Vec::new() })
-                        .values
-                        .push(f);
+                        .or_insert_with(|| {
+                            NumericHistogram::new(NumericHistogramParams {
+                                max_samples: DEFAULT_NUMERIC_MAX_SAMPLES,
+                            })
+                        })
+                        .record(f);
                 }
             }
         }
@@ -88,7 +97,7 @@ mod tests {
         let mut stats = ResponseStats::new();
         stats.record(empty_result());
         assert_eq!(stats.total_responses, 1);
-        assert!(stats.string_distributions.is_empty());
+        assert!(stats.string_fields.is_empty());
         assert!(stats.float_fields.is_empty());
         assert!(stats.mismatch_counts.is_empty());
     }
@@ -97,7 +106,7 @@ mod tests {
     fn mixed_result_records_all_field_types() {
         let mut stats = ResponseStats::new();
         stats.record(mixed_result());
-        assert!(stats.string_distributions.contains_key("status"));
+        assert!(stats.string_fields.contains_key("status"));
         assert!(stats.float_fields.contains_key("score"));
         assert_eq!(stats.mismatch_counts["missing"], 1);
     }
@@ -107,6 +116,8 @@ mod tests {
         let mut stats = ResponseStats::new();
         stats.record(mixed_result());
         stats.record(mixed_result());
-        assert_eq!(stats.float_fields["score"].values, vec![9.5, 9.5]);
+        // Two records of score=9.5 should be tracked in NumericHistogram
+        let hist = stats.float_fields.get("score").expect("score field");
+        assert_eq!(hist.total_seen(), 2);
     }
 }

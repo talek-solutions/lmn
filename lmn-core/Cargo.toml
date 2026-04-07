@@ -1,6 +1,6 @@
 [package]
 name = "lmn-core"
-version = "0.1.7"
+version = "0.2.0"
 edition = "2024"
 description = "Core engine for the lmn HTTP load testing CLI"
 license = "Apache-2.0"
@@ -8,6 +8,7 @@ repository = "https://github.com/talek-solutions/lmn"
 readme = "README.md"
 
 [dependencies]
+hdrhistogram.workspace = true
 rand.workspace = true
 reqwest.workspace = true
 serde.workspace = true

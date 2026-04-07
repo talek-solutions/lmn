@@ -58,6 +58,23 @@ pub struct RequestResult {
     pub response_body: Option<String>,
 }
 
+// ── RequestRecord ─────────────────────────────────────────────────────────────
+
+/// Lightweight per-request record sent from VU to coordinator over the channel.
+///
+/// Unlike `RequestResult`, carries no raw response body — any extraction is done
+/// inside the VU before sending, keeping KB-sized bodies off the channel.
+pub struct RequestRecord {
+    pub duration: std::time::Duration,
+    /// Wall-clock instant at which the response was received (or the error occurred).
+    /// Used by the drain task to bucket results into per-stage windows in curve mode.
+    pub completed_at: Instant,
+    pub success: bool,
+    pub status_code: Option<u16>,
+    /// Present only when a response template is active and extraction succeeded.
+    pub extraction: Option<crate::response_template::extractor::ExtractionResult>,
+}
+
 impl RequestResult {
     /// Constructs a `RequestResult` with all fields explicit.
     ///
@@ -83,21 +100,21 @@ impl RequestResult {
 
 pub struct Request {
     client: reqwest::Client,
-    url: String,
+    url: Arc<String>,
     method: HttpMethod,
     body: Option<(String, &'static str)>,
-    headers: Vec<(String, String)>,
+    headers: Option<Arc<Vec<(String, String)>>>,
     capture_response: bool,
 }
 
 impl Request {
-    pub fn new(client: reqwest::Client, url: String, method: HttpMethod) -> Self {
+    pub fn new(client: reqwest::Client, url: Arc<String>, method: HttpMethod) -> Self {
         Self {
             client,
             url,
             method,
             body: None,
-            headers: Vec::new(),
+            headers: None,
             capture_response: false,
         }
     }
@@ -110,8 +127,8 @@ impl Request {
     /// Attach a list of custom HTTP headers.
     /// These are applied after the auto-set `Content-Type`, so a user-supplied
     /// `Content-Type` header will override the auto-set one.
-    pub fn headers(mut self, headers: Vec<(String, String)>) -> Self {
-        self.headers = headers;
+    pub fn headers(mut self, headers: Arc<Vec<(String, String)>>) -> Self {
+        self.headers = Some(headers);
         self
     }
 
@@ -123,19 +140,22 @@ impl Request {
     pub async fn execute(self) -> RequestResult {
         let start = Instant::now();
         let mut req = match self.method {
-            HttpMethod::Get => self.client.get(&self.url),
-            HttpMethod::Post => self.client.post(&self.url),
-            HttpMethod::Put => self.client.put(&self.url),
-            HttpMethod::Patch => self.client.patch(&self.url),
-            HttpMethod::Delete => self.client.delete(&self.url),
+            HttpMethod::Get => self.client.get(self.url.as_str()),
+            HttpMethod::Post => self.client.post(self.url.as_str()),
+            HttpMethod::Put => self.client.put(self.url.as_str()),
+            HttpMethod::Patch => self.client.patch(self.url.as_str()),
+            HttpMethod::Delete => self.client.delete(self.url.as_str()),
         };
         if let Some((content, content_type)) = self.body {
             req = req.header("Content-Type", content_type).body(content);
         }
         // Apply user-supplied headers AFTER body/Content-Type so they take precedence.
-        for (name, value) in self.headers {
-            req = req.header(name, value);
+        if let Some(headers) = self.headers {
+            for (name, value) in headers.iter() {
+                req = req.header(name, value);
+            }
         }
+
         match req.send().await {
             Ok(resp) => {
                 let status = resp.status();

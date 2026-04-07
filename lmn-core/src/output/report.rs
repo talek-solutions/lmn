@@ -13,15 +13,14 @@ use crate::threshold::ThresholdReport;
 /// The top-level `version` field allows consumers to gate on the schema version.
 #[derive(Serialize, Debug)]
 pub struct RunReport {
-    /// Schema version. Currently `1`. Increment on any breaking schema change.
+    /// Schema version. Currently `2`. Increment on any breaking schema change.
     pub version: u32,
     pub run: RunMeta,
     pub requests: RequestSummary,
     pub latency: LatencyStats,
     /// HTTP status code counts keyed by string code (e.g. `"200"`, `"404"`).
     /// The special key `"error"` covers connection errors with no HTTP response.
-    pub status_codes: BTreeMap<String, usize>,
-    pub sampling: SamplingInfo,
+    pub status_codes: BTreeMap<String, u64>,
     /// Present only when `--response-template` / `--response-alias` was used.
     /// `null` when no response template was configured.
     pub response_stats: Option<ResponseStatsReport>,
@@ -50,9 +49,6 @@ pub struct RunMeta {
 // ── RequestSummary ────────────────────────────────────────────────────────────
 
 /// Aggregated request counts and derived throughput / error rate metrics.
-///
-/// `total` and `failed` come from `SamplingState` — they are the unsampled,
-/// authoritative counts regardless of reservoir sampling.
 #[derive(Serialize, Debug)]
 pub struct RequestSummary {
     pub total: usize,
@@ -84,26 +80,6 @@ pub struct LatencyStats {
     pub avg_ms: f64,
 }
 
-// ── SamplingInfo ──────────────────────────────────────────────────────────────
-
-/// Describes the VU-threshold + reservoir sampling state at end of run.
-///
-/// Consumers should display a disclaimer when `sampled == true`, as percentile
-/// values are based on a random sample of the full request population.
-#[derive(Serialize, Debug)]
-pub struct SamplingInfo {
-    /// `true` if `min_sample_rate < 1.0` at any point during the run.
-    pub sampled: bool,
-    /// VU-threshold sample rate at end of run (`1.0` = no threshold active).
-    pub final_sample_rate: f64,
-    /// Lowest sample rate observed; drives the "percentiles are approximate" warning.
-    pub min_sample_rate: f64,
-    /// Configured reservoir cap (`--result-buffer`).
-    pub reservoir_size: usize,
-    /// Actual results in the reservoir buffer (≤ `reservoir_size`).
-    pub results_collected: usize,
-}
-
 // ── ResponseStatsReport ───────────────────────────────────────────────────────
 
 /// Summary of response body field analysis from a response template.
@@ -112,17 +88,15 @@ pub struct SamplingInfo {
 /// `HashMaps` are promoted to `BTreeMap`s for stable JSON key ordering.
 #[derive(Serialize, Debug)]
 pub struct ResponseStatsReport {
-    /// Number of results in the reservoir whose response body was valid JSON and
-    /// matched the response template. Reflects only the parsed sample, not the full
-    /// unsampled population when sampling was active.
-    pub responses_parsed: usize,
+    /// Number of responses that were parsed and contributed to field statistics.
+    pub responses_parsed: u64,
     /// Distribution of string-valued field extractions. Outer key is the field path,
     /// inner key is the extracted value, value is the count.
-    pub string_fields: BTreeMap<String, BTreeMap<String, usize>>,
+    pub string_fields: BTreeMap<String, BTreeMap<String, u64>>,
     /// Summary statistics for float-valued field extractions.
     pub float_fields: BTreeMap<String, FloatFieldSummary>,
     /// Count of responses where a tracked field could not be extracted.
-    pub mismatch_counts: BTreeMap<String, usize>,
+    pub mismatch_counts: BTreeMap<String, u64>,
 }
 
 /// Summary statistics for a float response field.

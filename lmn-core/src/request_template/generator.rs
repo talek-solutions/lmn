@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use rand::Rng;
 use serde_json::Value;
@@ -11,31 +12,22 @@ use crate::request_template::generators::Generate;
 
 pub struct GeneratorContext {
     pub defs: HashMap<String, TemplateDef>,
-    pub once_values: HashMap<String, Value>,
+    /// Pre-serialized JSON strings for `:global` and `ENV:` placeholders.
+    /// Values are stored as JSON literals (e.g. `"\"hello\""` for a string).
+    pub resolved: HashMap<String, Arc<str>>,
 }
 
 impl GeneratorContext {
     pub fn new(defs: HashMap<String, TemplateDef>) -> Self {
         Self {
             defs,
-            once_values: HashMap::new(),
+            resolved: HashMap::new(),
         }
     }
 
-    pub fn with_once_values(self, once_values: HashMap<String, Value>) -> Self {
-        Self {
-            once_values,
-            ..self
-        }
-    }
-
-    /// Resolves a placeholder by name, returning a pre-computed `:once` value
-    /// if available, otherwise generating a fresh one.
-    pub fn resolve(&self, name: &str, rng: &mut impl Rng) -> Value {
-        if let Some(v) = self.once_values.get(name) {
-            return v.clone();
-        }
-        self.generate_by_name(name, rng)
+    pub(crate) fn with_resolved(mut self, resolved: HashMap<String, Arc<str>>) -> Self {
+        self.resolved.extend(resolved);
+        self
     }
 
     pub(crate) fn generate_by_name(&self, name: &str, rng: &mut impl Rng) -> Value {
@@ -60,7 +52,7 @@ impl GeneratorContext {
         let map = def
             .composition
             .iter()
-            .map(|(field, ref_name)| (field.clone(), self.resolve(ref_name, rng)))
+            .map(|(field, ref_name)| (field.clone(), self.generate_by_name(ref_name, rng)))
             .collect();
         Value::Object(map)
     }
@@ -106,5 +98,27 @@ mod tests {
         };
         let val = ctx.generate_object(&obj, &mut rand::rng());
         assert!(val["amount"].is_number());
+    }
+
+    #[test]
+    fn generate_object_unknown_field_returns_null() {
+        let ctx = GeneratorContext::new(HashMap::new());
+        let obj = ObjectDef {
+            composition: [("field".to_string(), "unknown".to_string())]
+                .into_iter()
+                .collect(),
+        };
+        let val = ctx.generate_object(&obj, &mut rand::rng());
+        assert_eq!(val["field"], Value::Null);
+    }
+
+    #[test]
+    fn with_resolved_merges_entries() {
+        let ctx = GeneratorContext::new(HashMap::new()).with_resolved(
+            [("key".to_string(), Arc::from("\"value\""))]
+                .into_iter()
+                .collect(),
+        );
+        assert!(ctx.resolved.contains_key("key"));
     }
 }

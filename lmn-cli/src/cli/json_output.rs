@@ -46,13 +46,13 @@ pub fn write_json_output(
 mod tests {
     use std::collections::BTreeMap;
 
-    use lmn_core::output::{LatencyStats, RequestSummary, RunMeta, RunReport, SamplingInfo};
+    use lmn_core::output::{LatencyStats, RequestSummary, RunMeta, RunReport};
 
     use super::*;
 
     fn minimal_report() -> RunReport {
         RunReport {
-            version: 1,
+            version: 2,
             run: RunMeta {
                 mode: "fixed".to_string(),
                 elapsed_ms: 100.0,
@@ -79,13 +79,6 @@ mod tests {
                 avg_ms: 3.5,
             },
             status_codes: BTreeMap::from([("200".to_string(), 10)]),
-            sampling: SamplingInfo {
-                sampled: false,
-                final_sample_rate: 1.0,
-                min_sample_rate: 1.0,
-                reservoir_size: 100000,
-                results_collected: 10,
-            },
             response_stats: None,
             curve_stages: None,
             thresholds: None,
@@ -128,7 +121,7 @@ mod tests {
 
         let contents = std::fs::read_to_string(&path).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&contents).unwrap();
-        assert_eq!(parsed["version"], 1);
+        assert_eq!(parsed["version"], 2);
         assert_eq!(parsed["requests"]["total"], 10);
     }
 
