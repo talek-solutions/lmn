@@ -22,7 +22,7 @@ enum Segment {
 
 // ── CompiledTemplate ──────────────────────────────────────────────────────────
 
-/// A template body compiled into a flat list of [`Segment`]s.
+/// A template body compiled into a flat list of `Segment`s.
 ///
 /// Created once at parse time via [`CompiledTemplate::compile`]; rendered
 /// on every request via [`CompiledTemplate::render`] without revisiting the
@@ -33,7 +33,7 @@ pub struct CompiledTemplate {
 
 impl CompiledTemplate {
     /// Walks the `Value` tree depth-first and compiles it into a flat list of
-    /// [`Segment`]s. Done once at parse time so render time only iterates
+    /// `Segment`s. Done once at parse time so render time only iterates
     /// the segment list.
     pub fn compile(body: &Value) -> Result<Self, TemplateError> {
         let mut segments = Vec::new();
@@ -123,9 +123,9 @@ fn compile_value(value: &Value, out: &mut Vec<Segment>) -> Result<(), TemplateEr
 
 /// A strategy for pre-resolving a class of placeholders before any requests fire.
 ///
-/// Implementors declare which placeholders they handle via [`matches`] and
-/// compute a map of `name → Arc<str>` (pre-serialized JSON) via [`resolve`].
-/// The default [`collect_names`] and [`walk`] methods traverse the body tree
+/// Implementors declare which placeholders they handle via `matches` and
+/// compute a map of `name → Arc<str>` (pre-serialized JSON) via `resolve`.
+/// The default `collect_names` and `walk` methods traverse the body tree
 /// using `matches` to find relevant placeholder names.
 pub trait PlaceholderHandler {
     /// Returns `true` if this handler is responsible for the given placeholder.

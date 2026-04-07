@@ -119,7 +119,7 @@ mod tests {
         assert_eq!(dist.max(), 100.0);
         // With 100 values: p50 idx = floor(100 * 0.5) = 50 → 51st value in sorted order
         let p50 = dist.quantile(0.5);
-        assert!(p50 >= 1.0 && p50 <= 100.0, "p50={p50} out of range");
+        assert!((1.0..=100.0).contains(&p50), "p50={p50} out of range");
     }
 
     #[test]

@@ -93,7 +93,7 @@ mod tests {
         h.record(Duration::from_millis(30));
         // p50 of [10, 20, 30] should be approximately 20ms
         let p50 = h.quantile_ms(0.50);
-        assert!(p50 >= 10.0 && p50 <= 30.0, "p50={p50} not in [10, 30]");
+        assert!((10.0..=30.0).contains(&p50), "p50={p50} not in [10, 30]");
     }
 
     #[test]
