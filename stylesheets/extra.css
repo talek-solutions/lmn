@@ -1,0 +1,201 @@
+/* ── Brand palette ───────────────────────────────────────────────────────── */
+:root {
+  --lmn-bg-deep:    #02060d;
+  --lmn-bg-mid:     #08142a;
+  --lmn-bg-surface: #0b1f3b;
+  --lmn-bg-raised:  #0f2847;
+  --lmn-cyan:       #68F7FF;
+  --lmn-cyan-soft:  #42DDE8;
+  --lmn-cyan-dim:   #2ab8c4;
+  --lmn-text:       #d0eaf0;
+  --lmn-text-muted: #7ab0be;
+}
+
+/* ── Base background ─────────────────────────────────────────────────────── */
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color:          var(--lmn-bg-deep);
+  --md-default-fg-color:          var(--lmn-text);
+  --md-default-fg-color--light:   var(--lmn-text-muted);
+  --md-default-fg-color--lighter: #4a7a88;
+
+  --md-primary-fg-color:          var(--lmn-bg-surface);
+  --md-primary-bg-color:          var(--lmn-cyan);
+
+  --md-accent-fg-color:           var(--lmn-cyan);
+  --md-accent-fg-color--transparent: rgba(104, 247, 255, 0.1);
+
+  --md-code-bg-color:             var(--lmn-bg-mid);
+  --md-code-fg-color:             var(--lmn-cyan);
+
+  --md-typeset-a-color:           var(--lmn-cyan);
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.md-header {
+  background: var(--lmn-bg-deep);
+  border-bottom: 1px solid rgba(104, 247, 255, 0.15);
+  box-shadow: 0 1px 20px rgba(104, 247, 255, 0.05);
+}
+
+.md-header__title {
+  font-family: 'Michroma', 'Orbitron', 'Inter', sans-serif;
+  letter-spacing: 0.08em;
+  color: var(--lmn-cyan);
+}
+
+/* ── Navigation ──────────────────────────────────────────────────────────── */
+.md-nav {
+  background: transparent;
+}
+
+.md-sidebar {
+  background: var(--lmn-bg-deep);
+}
+
+.md-nav__item .md-nav__link--active,
+.md-nav__item .md-nav__link:hover {
+  color: var(--lmn-cyan);
+}
+
+.md-nav__item .md-nav__link--active {
+  font-weight: 600;
+}
+
+.md-tabs {
+  background: var(--lmn-bg-mid);
+  border-bottom: 1px solid rgba(104, 247, 255, 0.1);
+}
+
+.md-tabs__link--active,
+.md-tabs__link:hover {
+  color: var(--lmn-cyan) !important;
+}
+
+/* ── Content ─────────────────────────────────────────────────────────────── */
+.md-content {
+  background: var(--lmn-bg-deep);
+}
+
+.md-typeset h1 {
+  font-family: 'Michroma', 'Orbitron', 'Inter', sans-serif;
+  color: var(--lmn-cyan);
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid rgba(104, 247, 255, 0.2);
+  padding-bottom: 0.4em;
+}
+
+.md-typeset h2 {
+  color: var(--lmn-cyan-soft);
+  font-weight: 600;
+}
+
+.md-typeset h3,
+.md-typeset h4 {
+  color: var(--lmn-text);
+}
+
+.md-typeset a {
+  color: var(--lmn-cyan);
+}
+
+.md-typeset a:hover {
+  color: var(--lmn-cyan-soft);
+}
+
+/* ── Code blocks ─────────────────────────────────────────────────────────── */
+.md-typeset code {
+  background: var(--lmn-bg-mid);
+  color: var(--lmn-cyan);
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+  font-size: 0.85em;
+}
+
+.md-typeset pre {
+  background: var(--lmn-bg-mid) !important;
+  border: 1px solid rgba(104, 247, 255, 0.12);
+  border-radius: 6px;
+  padding: 1rem 2.5rem 1rem 1.2rem;
+}
+
+.md-typeset pre code {
+  background: transparent;
+  color: var(--lmn-text);
+  padding: 0;
+}
+
+/* ── Tables ──────────────────────────────────────────────────────────────── */
+.md-typeset table:not([class]) {
+  border: 1px solid rgba(104, 247, 255, 0.15);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.md-typeset table:not([class]) th {
+  background: var(--lmn-bg-surface);
+  color: var(--lmn-cyan);
+  border-bottom: 1px solid rgba(104, 247, 255, 0.2);
+  font-weight: 600;
+}
+
+.md-typeset table:not([class]) tr:nth-child(even) {
+  background: rgba(11, 31, 59, 0.4);
+}
+
+.md-typeset table:not([class]) td {
+  border-color: rgba(104, 247, 255, 0.08);
+}
+
+/* ── Admonitions ─────────────────────────────────────────────────────────── */
+.md-typeset .admonition,
+.md-typeset details {
+  background: var(--lmn-bg-surface);
+  border-color: var(--lmn-cyan-dim);
+  border-radius: 6px;
+}
+
+.md-typeset .admonition-title,
+.md-typeset summary {
+  background: rgba(104, 247, 255, 0.08) !important;
+  color: var(--lmn-cyan);
+}
+
+.md-typeset .tip > .admonition-title,
+.md-typeset .tip > summary {
+  border-color: var(--lmn-cyan);
+}
+
+/* ── Search ──────────────────────────────────────────────────────────────── */
+.md-search__form {
+  background: var(--lmn-bg-surface);
+  border: 1px solid rgba(104, 247, 255, 0.15);
+}
+
+.md-search__input {
+  color: var(--lmn-text);
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+.md-footer {
+  background: var(--lmn-bg-deep);
+  border-top: 1px solid rgba(104, 247, 255, 0.1);
+}
+
+.md-footer-meta {
+  background: var(--lmn-bg-deep);
+}
+
+/* ── Copy button ─────────────────────────────────────────────────────────── */
+.md-clipboard {
+  width: 16px !important;
+  height: 16px !important;
+  top: 6px !important;
+  right: 6px !important;
+}
+
+/* ── Logo sizing ─────────────────────────────────────────────────────────── */
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  height: 32px;
+  width: 32px;
+}
