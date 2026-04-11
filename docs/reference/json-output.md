@@ -10,7 +10,7 @@ lmn run -f lmn.yaml --output-file result.json
 lmn run -f lmn.yaml --output json
 ```
 
-The schema is versioned. The current version is `1`.
+The schema is versioned. The current version is `2`.
 
 ---
 
@@ -18,13 +18,14 @@ The schema is versioned. The current version is `1`.
 
 | Field | Type | Always present | Description |
 |---|---|---|---|
-| `version` | integer | Yes | Schema version. Currently `1`. |
+| `version` | integer | Yes | Schema version. Currently `2`. |
 | `run` | object | Yes | Execution mode and timing metadata. |
 | `requests` | object | Yes | Aggregated request counts and derived metrics. |
 | `latency` | object | Yes | Latency percentiles and summary statistics. All values in **milliseconds**. |
 | `status_codes` | object | Yes | HTTP status code counts. Keys are string codes (`"200"`, `"404"`). The key `"error"` covers connection errors with no HTTP response. |
 | `response_stats` | object \| null | No | Response body field analysis. Present only when `--response-template` was used. |
 | `curve_stages` | array \| null | No | Per-stage breakdown. Present only when `mode == "curve"`. |
+| `scenarios` | array \| null | No | Per-scenario breakdown. Present only when scenarios were configured. |
 | `thresholds` | object \| null | No | Threshold evaluation results. Present only when thresholds were configured. |
 
 ---
@@ -89,6 +90,31 @@ Each stage object:
 | `error_rate` | float | `failed / requests` for this stage |
 | `throughput_rps` | float | Requests per second within this stage's duration window |
 | `latency` | object | Same structure as the top-level [`latency`](#latency) object, scoped to this stage |
+
+---
+
+## `scenarios`
+
+Present only when scenarios were configured. An array of scenario objects sorted by name.
+
+Each scenario object:
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Scenario name |
+| `requests` | object | Same structure as the top-level [`requests`](#requests) object, scoped to this scenario |
+| `latency` | object | Same structure as the top-level [`latency`](#latency) object, scoped to this scenario |
+| `status_codes` | object | HTTP status code counts for this scenario |
+| `steps` | array | Per-step breakdown (see below) |
+
+Each step object in `steps`:
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Step name |
+| `requests` | object | Same structure as [`requests`](#requests), scoped to this step |
+| `latency` | object | Same structure as [`latency`](#latency), scoped to this step |
+| `status_codes` | object | HTTP status code counts for this step |
 
 ---
 
@@ -174,6 +200,7 @@ Each entry in `float_fields`:
   },
   "response_stats": null,
   "curve_stages": null,
+  "scenarios": null,
   "thresholds": {
     "total": 2,
     "passed": 2,

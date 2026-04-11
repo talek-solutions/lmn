@@ -6,13 +6,16 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
 
-use crate::execution::{DrainMetricsAccumulator, ScenarioStats, StageStats};
+use crate::execution::{
+    DrainMetricsAccumulator, ResolvedScenario, ScenarioStats, StageStats, assign_scenario,
+};
 use crate::histogram::{LatencyHistogram, StatusCodeHistogram};
 use crate::http::{RequestConfig, RequestRecord};
 use crate::load_curve::{LoadCurve, Stage};
 use crate::request_template::Template;
 use crate::response_template::stats::ResponseStats;
 use crate::vu::Vu;
+use crate::vu::scenario::{ScenarioVu, StepExec};
 
 // ── CurveExecutorParams ───────────────────────────────────────────────────────
 
@@ -22,6 +25,10 @@ pub struct CurveExecutorParams {
     pub request_config: Arc<RequestConfig>,
     pub template: Option<Arc<Template>>,
     pub cancellation_token: CancellationToken,
+    /// When present, the executor spawns `ScenarioVu` instances instead of
+    /// plain `Vu` instances. VUs are assigned via weighted round-robin using a
+    /// monotonically increasing counter. Budget is always `None` in curve mode.
+    pub scenarios: Option<Vec<ResolvedScenario>>,
 }
 
 // ── CurveExecutionResult ──────────────────────────────────────────────────────
@@ -72,6 +79,7 @@ impl CurveExecutor {
             request_config,
             template,
             cancellation_token,
+            scenarios,
         } = self.params;
 
         let total_duration = curve.total_duration();
@@ -86,7 +94,16 @@ impl CurveExecutor {
                 .collect(),
         );
 
-        let has_tracked_fields = request_config.tracked_fields.is_some();
+        // `has_tracked_fields` is true when the single-request path uses a
+        // response template, OR when any step across any scenario does.
+        let has_tracked_fields = if let Some(ref sc) = scenarios {
+            sc.iter()
+                .flat_map(|s| s.steps.iter())
+                .any(|step| step.response_template.is_some())
+        } else {
+            request_config.tracked_fields.is_some()
+        };
+
         let n_stages = curve.stages.len();
 
         // Clone the stages vec so the drain task can own it without holding onto `curve`.
@@ -149,6 +166,11 @@ impl CurveExecutor {
         // Track active VU handles and their per-VU cancellation tokens.
         let mut vu_handles: Vec<(JoinHandle<()>, CancellationToken)> = Vec::new();
 
+        // Monotonically increasing counter used for deterministic scenario
+        // assignment. Each spawned VU gets the next index so the weighted
+        // round-robin assignment is stable regardless of despawn/respawn.
+        let mut vu_counter: usize = 0;
+
         let mut ticker = tokio::time::interval(tokio::time::Duration::from_millis(100));
 
         loop {
@@ -174,17 +196,50 @@ impl CurveExecutor {
                             let to_add = target - current;
                             for _ in 0..to_add {
                                 let vu_token = CancellationToken::new();
-                                let handle = Vu {
-                                    request_config: Arc::clone(&request_config),
-                                    plain_headers: Arc::clone(&plain_headers),
-                                    template: template.as_ref().map(Arc::clone),
-                                    scenario_label: None,
-                                    step_label: None,
-                                    cancellation_token: vu_token.clone(),
-                                    result_tx: tx.clone(),
-                                    budget: None,
-                                }
-                                .spawn();
+                                let handle = if let Some(ref scenarios) = scenarios {
+                                    // Scenario mode: assign scenario by weighted round-robin
+                                    // over the monotonic vu_counter.
+                                    let scenario = &scenarios[assign_scenario(vu_counter, scenarios)];
+                                    let steps = scenario
+                                        .steps
+                                        .iter()
+                                        .map(|step| StepExec {
+                                            step_name: Arc::clone(&step.name),
+                                            request_config: Arc::clone(&step.request_config),
+                                            plain_headers: Arc::clone(&step.plain_headers),
+                                            request_template: step
+                                                .request_template
+                                                .as_ref()
+                                                .map(Arc::clone),
+                                            response_template: step
+                                                .response_template
+                                                .as_ref()
+                                                .map(Arc::clone),
+                                        })
+                                        .collect();
+                                    ScenarioVu {
+                                        scenario_name: Arc::clone(&scenario.name),
+                                        steps,
+                                        on_step_failure: scenario.on_step_failure,
+                                        cancellation_token: vu_token.clone(),
+                                        result_tx: tx.clone(),
+                                        budget: None, // curve mode: no budget
+                                    }
+                                    .spawn()
+                                } else {
+                                    Vu {
+                                        request_config: Arc::clone(&request_config),
+                                        plain_headers: Arc::clone(&plain_headers),
+                                        template: template.as_ref().map(Arc::clone),
+                                        scenario_label: None,
+                                        step_label: None,
+                                        cancellation_token: vu_token.clone(),
+                                        result_tx: tx.clone(),
+                                        budget: None,
+                                    }
+                                    .spawn()
+                                };
+                                vu_counter += 1;
                                 vu_handles.push((handle, vu_token));
                             }
                         }

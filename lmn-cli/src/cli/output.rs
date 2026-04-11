@@ -238,9 +238,6 @@ fn print_response_stats(rs: &ResponseStats, rule: &str) {
 }
 
 fn print_scenario_stats(scenarios: &[ScenarioStats], elapsed: Duration, rule: &str) {
-    let mut scenarios: Vec<&ScenarioStats> = scenarios.iter().collect();
-    scenarios.sort_by(|a, b| a.name.cmp(&b.name));
-
     for scenario in scenarios {
         let total = scenario.requests.total_requests as usize;
         let failed = scenario.requests.total_failures as usize;
@@ -267,9 +264,7 @@ fn print_scenario_stats(scenarios: &[ScenarioStats], elapsed: Duration, rule: &s
 
         if !scenario.steps.is_empty() {
             println!("  steps");
-            let mut steps: Vec<_> = scenario.steps.iter().collect();
-            steps.sort_by(|a, b| a.name.cmp(&b.name));
-            for step in steps {
+            for step in &scenario.steps {
                 let step_total = step.requests.total_requests as usize;
                 let step_failed = step.requests.total_failures as usize;
                 let step_error_rate = if step_total == 0 {

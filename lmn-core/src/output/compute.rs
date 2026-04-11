@@ -198,10 +198,10 @@ pub fn per_stage_reports(stages: &[Stage], stage_stats: &[StageStats]) -> Vec<St
 ///
 /// Throughput values are normalized over total run elapsed time.
 pub fn scenario_reports(scenarios: &[ScenarioStats], elapsed: Duration) -> Vec<ScenarioReport> {
-    let mut reports: Vec<ScenarioReport> = scenarios
+    let reports: Vec<ScenarioReport> = scenarios
         .iter()
         .map(|scenario| {
-            let mut steps: Vec<ScenarioStepReport> = scenario
+            let steps: Vec<ScenarioStepReport> = scenario
                 .steps
                 .iter()
                 .map(|step| {
@@ -215,7 +215,6 @@ pub fn scenario_reports(scenarios: &[ScenarioStats], elapsed: Duration) -> Vec<S
                     }
                 })
                 .collect();
-            steps.sort_by(|a, b| a.name.cmp(&b.name));
 
             let total = scenario.requests.total_requests as usize;
             let failed = scenario.requests.total_failures as usize;
@@ -229,7 +228,6 @@ pub fn scenario_reports(scenarios: &[ScenarioStats], elapsed: Duration) -> Vec<S
         })
         .collect();
 
-    reports.sort_by(|a, b| a.name.cmp(&b.name));
     reports
 }
 

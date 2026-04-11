@@ -12,6 +12,36 @@ const MAX_HEADERS: usize = 64;
 const MAX_HEADER_NAME_LEN: usize = 256;
 const MAX_HEADER_VALUE_LEN: usize = 8192;
 
+// ── ScenarioStepConfig ────────────────────────────────────────────────────────
+
+/// Configuration for a single step within a scenario.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ScenarioStepConfig {
+    pub name: String,
+    pub host: String,
+    #[serde(default = "default_get_method")]
+    pub method: String,
+    pub headers: Option<HashMap<String, String>>,
+    pub request_template: Option<String>,
+    pub response_template: Option<String>,
+}
+
+fn default_get_method() -> String {
+    "get".to_string()
+}
+
+// ── ScenarioConfig ────────────────────────────────────────────────────────────
+
+/// Configuration for a named scenario with one or more steps.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ScenarioConfig {
+    pub name: String,
+    pub weight: Option<u32>,
+    pub on_step_failure: Option<String>,
+    pub headers: Option<HashMap<String, String>>,
+    pub steps: Vec<ScenarioStepConfig>,
+}
+
 // ── RunConfig ─────────────────────────────────────────────────────────────────
 
 /// Optional run-level configuration. All fields are `Option` — CLI flags fill
@@ -68,6 +98,7 @@ pub struct LumenConfig {
     pub thresholds: Option<Vec<Threshold>>,
     pub request_template: Option<String>,
     pub response_template: Option<String>,
+    pub scenarios: Option<Vec<ScenarioConfig>>,
 }
 
 // ── parse_config ──────────────────────────────────────────────────────────────
@@ -101,6 +132,116 @@ pub fn parse_config(yaml: &str) -> Result<LumenConfig, ConfigError> {
                  request_count/concurrency for fixed mode"
                     .to_string(),
             ));
+        }
+    }
+
+    // Validate scenarios if present.
+    if let Some(ref scenarios) = config.scenarios {
+        // Scenarios are mutually exclusive with run.host, run.method, top-level templates.
+        if config.run.as_ref().and_then(|r| r.host.as_ref()).is_some() {
+            return Err(ConfigError::ValidationError(
+                "'scenarios' and 'run.host' are mutually exclusive — \
+                 use scenarios for multi-step runs or run.host for single-request runs"
+                    .to_string(),
+            ));
+        }
+        if config
+            .run
+            .as_ref()
+            .and_then(|r| r.method.as_ref())
+            .is_some()
+        {
+            return Err(ConfigError::ValidationError(
+                "'scenarios' and 'run.method' are mutually exclusive — \
+                 each scenario step defines its own method"
+                    .to_string(),
+            ));
+        }
+        if config.request_template.is_some() {
+            return Err(ConfigError::ValidationError(
+                "'scenarios' and top-level 'request_template' are mutually exclusive — \
+                 each scenario step defines its own request_template"
+                    .to_string(),
+            ));
+        }
+        if config.response_template.is_some() {
+            return Err(ConfigError::ValidationError(
+                "'scenarios' and top-level 'response_template' are mutually exclusive — \
+                 each scenario step defines its own response_template"
+                    .to_string(),
+            ));
+        }
+
+        // Validate each scenario.
+        let mut seen_names: Vec<String> = Vec::new();
+        for scenario in scenarios {
+            if scenario.name.trim().is_empty() {
+                return Err(ConfigError::ValidationError(
+                    "scenario name must not be empty".to_string(),
+                ));
+            }
+            if seen_names
+                .iter()
+                .any(|n| n.eq_ignore_ascii_case(&scenario.name))
+            {
+                return Err(ConfigError::ValidationError(format!(
+                    "duplicate scenario name '{}' — scenario names must be unique",
+                    scenario.name
+                )));
+            }
+            seen_names.push(scenario.name.clone());
+
+            if let Some(w) = scenario.weight
+                && w < 1 {
+                    return Err(ConfigError::ValidationError(format!(
+                        "scenario '{}': weight must be >= 1, got {w}",
+                        scenario.name
+                    )));
+                }
+
+            if let Some(ref osf) = scenario.on_step_failure
+                && osf != "continue" && osf != "abort_iteration" {
+                    return Err(ConfigError::ValidationError(format!(
+                        "scenario '{}': on_step_failure must be 'continue' or \
+                         'abort_iteration', got '{osf}'",
+                        scenario.name
+                    )));
+                }
+
+            if scenario.steps.is_empty() {
+                return Err(ConfigError::ValidationError(format!(
+                    "scenario '{}': must have at least one step",
+                    scenario.name
+                )));
+            }
+
+            let mut seen_step_names: Vec<String> = Vec::new();
+            for step in &scenario.steps {
+                if step.name.trim().is_empty() {
+                    return Err(ConfigError::ValidationError(format!(
+                        "scenario '{}': step name must not be empty",
+                        scenario.name
+                    )));
+                }
+                if seen_step_names
+                    .iter()
+                    .any(|n| n.eq_ignore_ascii_case(&step.name))
+                {
+                    return Err(ConfigError::ValidationError(format!(
+                        "scenario '{}': duplicate step name '{}' — \
+                         step names must be unique within a scenario",
+                        scenario.name, step.name
+                    )));
+                }
+                seen_step_names.push(step.name.clone());
+
+                if step.host.trim().is_empty() {
+                    return Err(ConfigError::ValidationError(format!(
+                        "scenario '{}', step '{}': host must not be empty",
+                        scenario.name, step.name
+                    )));
+                }
+            }
         }
     }
 
@@ -338,6 +479,324 @@ execution:
     #[test]
     fn parse_config_concurrency_exceeds_max_is_error() {
         let yaml = "execution:\n  concurrency: 10001\n";
+        let result = parse_config(yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+    }
+
+    // ── scenario tests ────────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_minimal_scenario_config() {
+        let yaml = r#"
+scenarios:
+  - name: browse
+    steps:
+      - name: list_products
+        host: https://api.example.com/products
+execution:
+  request_count: 100
+  concurrency: 10
+"#;
+        let config = parse_config(yaml).expect("should parse");
+        let scenarios = config.scenarios.expect("scenarios must be Some");
+        assert_eq!(scenarios.len(), 1);
+        assert_eq!(scenarios[0].name, "browse");
+        assert_eq!(scenarios[0].steps.len(), 1);
+        assert_eq!(scenarios[0].steps[0].name, "list_products");
+        assert_eq!(
+            scenarios[0].steps[0].host,
+            "https://api.example.com/products"
+        );
+        assert_eq!(scenarios[0].steps[0].method, "get");
+    }
+
+    #[test]
+    fn parse_scenario_with_weight_and_on_step_failure() {
+        let yaml = r#"
+scenarios:
+  - name: checkout
+    weight: 3
+    on_step_failure: abort_iteration
+    steps:
+      - name: login
+        host: https://api.example.com/auth/login
+        method: post
+"#;
+        let config = parse_config(yaml).expect("should parse");
+        let scenarios = config.scenarios.expect("scenarios must be Some");
+        assert_eq!(scenarios[0].weight, Some(3));
+        assert_eq!(
+            scenarios[0].on_step_failure.as_deref(),
+            Some("abort_iteration")
+        );
+    }
+
+    #[test]
+    fn parse_scenario_step_default_method_is_get() {
+        let yaml = r#"
+scenarios:
+  - name: browse
+    steps:
+      - name: list
+        host: https://api.example.com/items
+"#;
+        let config = parse_config(yaml).expect("should parse");
+        let step = &config.scenarios.unwrap()[0].steps[0];
+        assert_eq!(step.method, "get");
+    }
+
+    #[test]
+    fn parse_scenario_with_headers_and_templates() {
+        let yaml = r#"
+scenarios:
+  - name: checkout
+    headers:
+      X-Session: abc
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+        method: post
+        headers:
+          Content-Type: application/json
+        request_template: templates/login.json
+        response_template: templates/login_resp.json
+"#;
+        let config = parse_config(yaml).expect("should parse");
+        let scenario = &config.scenarios.unwrap()[0];
+        assert_eq!(
+            scenario.headers.as_ref().unwrap().get("X-Session").unwrap(),
+            "abc"
+        );
+        let step = &scenario.steps[0];
+        assert_eq!(
+            step.request_template.as_deref(),
+            Some("templates/login.json")
+        );
+        assert_eq!(
+            step.response_template.as_deref(),
+            Some("templates/login_resp.json")
+        );
+    }
+
+    #[test]
+    fn parse_multiple_scenarios_with_weights() {
+        let yaml = r#"
+scenarios:
+  - name: checkout
+    weight: 3
+    steps:
+      - name: login
+        host: https://api.example.com/auth/login
+        method: post
+  - name: browse
+    weight: 1
+    steps:
+      - name: list_products
+        host: https://api.example.com/products
+"#;
+        let config = parse_config(yaml).expect("should parse");
+        let scenarios = config.scenarios.expect("scenarios must be Some");
+        assert_eq!(scenarios.len(), 2);
+        assert_eq!(scenarios[0].name, "checkout");
+        assert_eq!(scenarios[0].weight, Some(3));
+        assert_eq!(scenarios[1].name, "browse");
+        assert_eq!(scenarios[1].weight, Some(1));
+    }
+
+    #[test]
+    fn scenarios_with_run_host_is_error() {
+        let yaml = r#"
+run:
+  host: https://api.example.com
+scenarios:
+  - name: browse
+    steps:
+      - name: list
+        host: https://api.example.com/products
+"#;
+        let result = parse_config(yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+        let msg = result.err().unwrap().to_string();
+        assert!(
+            msg.contains("mutually exclusive"),
+            "expected mutual exclusion error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn scenarios_with_run_method_is_error() {
+        let yaml = r#"
+run:
+  method: post
+scenarios:
+  - name: browse
+    steps:
+      - name: list
+        host: https://api.example.com/products
+"#;
+        let result = parse_config(yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+    }
+
+    #[test]
+    fn scenarios_with_top_level_request_template_is_error() {
+        let yaml = r#"
+request_template: templates/request.json
+scenarios:
+  - name: browse
+    steps:
+      - name: list
+        host: https://api.example.com/products
+"#;
+        let result = parse_config(yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+    }
+
+    #[test]
+    fn scenarios_with_top_level_response_template_is_error() {
+        let yaml = r#"
+response_template: templates/response.json
+scenarios:
+  - name: browse
+    steps:
+      - name: list
+        host: https://api.example.com/products
+"#;
+        let result = parse_config(yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+    }
+
+    #[test]
+    fn scenario_empty_name_is_error() {
+        let yaml = r#"
+scenarios:
+  - name: ""
+    steps:
+      - name: list
+        host: https://api.example.com/products
+"#;
+        let result = parse_config(yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+    }
+
+    #[test]
+    fn scenario_duplicate_name_is_error() {
+        let yaml = r#"
+scenarios:
+  - name: browse
+    steps:
+      - name: list
+        host: https://api.example.com/products
+  - name: browse
+    steps:
+      - name: search
+        host: https://api.example.com/search
+"#;
+        let result = parse_config(yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+        let msg = result.err().unwrap().to_string();
+        assert!(
+            msg.contains("duplicate scenario name"),
+            "expected duplicate name error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn scenario_weight_zero_is_error() {
+        let yaml = r#"
+scenarios:
+  - name: browse
+    weight: 0
+    steps:
+      - name: list
+        host: https://api.example.com/products
+"#;
+        let result = parse_config(yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+        let msg = result.err().unwrap().to_string();
+        assert!(
+            msg.contains("weight must be >= 1"),
+            "expected weight error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn scenario_invalid_on_step_failure_is_error() {
+        let yaml = r#"
+scenarios:
+  - name: browse
+    on_step_failure: skip
+    steps:
+      - name: list
+        host: https://api.example.com/products
+"#;
+        let result = parse_config(yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+        let msg = result.err().unwrap().to_string();
+        assert!(
+            msg.contains("on_step_failure"),
+            "expected on_step_failure error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn scenario_empty_steps_is_error() {
+        let yaml = r#"
+scenarios:
+  - name: browse
+    steps: []
+"#;
+        let result = parse_config(yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+        let msg = result.err().unwrap().to_string();
+        assert!(
+            msg.contains("at least one step"),
+            "expected steps error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn scenario_step_empty_name_is_error() {
+        let yaml = r#"
+scenarios:
+  - name: browse
+    steps:
+      - name: ""
+        host: https://api.example.com/products
+"#;
+        let result = parse_config(yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+    }
+
+    #[test]
+    fn scenario_step_duplicate_name_is_error() {
+        let yaml = r#"
+scenarios:
+  - name: browse
+    steps:
+      - name: list
+        host: https://api.example.com/products
+      - name: list
+        host: https://api.example.com/search
+"#;
+        let result = parse_config(yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+        let msg = result.err().unwrap().to_string();
+        assert!(
+            msg.contains("duplicate step name"),
+            "expected duplicate step error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn scenario_step_empty_host_is_error() {
+        let yaml = r#"
+scenarios:
+  - name: browse
+    steps:
+      - name: list
+        host: ""
+"#;
         let result = parse_config(yaml);
         assert!(matches!(result, Err(ConfigError::ValidationError(_))));
     }

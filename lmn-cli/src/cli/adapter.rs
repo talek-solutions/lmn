@@ -6,7 +6,7 @@ use crate::cli::command::{
 use lmn_core::command::Body;
 use lmn_core::command::configure_template::{ConfigureTemplateCommand, TemplateKind};
 use lmn_core::command::run::RunCommand;
-use lmn_core::config::{ExecutionConfig, LumenConfig, parse_config};
+use lmn_core::config::{ExecutionConfig, LumenConfig, parse_config, resolve_scenarios};
 use lmn_core::execution::{ExecutionMode, RequestSpec};
 use lmn_core::http::BodyFormat;
 use lmn_core::load_curve::LoadCurve;
@@ -216,25 +216,6 @@ impl TryFrom<RunArgs> for RunArgsResolved {
 
         let thresholds = cfg.as_ref().and_then(|c| c.thresholds.clone());
 
-        // Resolve host: CLI flag > config run.host > error.
-        let host = args
-            .host
-            .or_else(|| cfg.as_ref().and_then(|c| c.run.as_ref()?.host.clone()))
-            .ok_or("host is required: set -H or run.host in config file")?;
-
-        // Resolve optional template paths from config
-        let template_path = args
-            .request_template
-            .or_else(|| args.request_alias.map(resolve_alias("requests")))
-            .or_else(|| {
-                cfg.as_ref()
-                    .and_then(|c| c.request_template.as_deref().map(PathBuf::from))
-            });
-
-        let response_template_path = args
-            .response_template
-            .or_else(|| args.response_alias.map(resolve_alias("responses")));
-
         // ── headers ───────────────────────────────────────────────────────────────
         // Merge strategy: config headers as base, CLI --header flags override on
         // same key (case-insensitive). Then resolve ${ENV_VAR} in all values.
@@ -322,23 +303,66 @@ impl TryFrom<RunArgs> for RunArgsResolved {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e: String| Box::<dyn std::error::Error>::from(e))?;
 
+        // ── RequestSpec resolution ────────────────────────────────────────────
+        // If scenarios are defined in config, resolve them into RequestSpec::Scenarios.
+        // Otherwise fall through to the single-request path (RequestSpec::Single).
+        let request: RequestSpec =
+            if let Some(scenario_configs) = cfg.as_ref().and_then(|c| c.scenarios.as_ref()) {
+                let resolved = resolve_scenarios(scenario_configs, &headers)?;
+                RequestSpec::Scenarios(resolved)
+            } else {
+                // Single-request path: host is required.
+                let host = args
+                    .host
+                    .or_else(|| cfg.as_ref().and_then(|c| c.run.as_ref()?.host.clone()))
+                    .ok_or("host is required: set -H or run.host in config file")?;
+
+                // Resolve optional template paths from config
+                let template_path = args
+                    .request_template
+                    .or_else(|| args.request_alias.map(resolve_alias("requests")))
+                    .or_else(|| {
+                        cfg.as_ref()
+                            .and_then(|c| c.request_template.as_deref().map(PathBuf::from))
+                    });
+
+                let response_template_path = args
+                    .response_template
+                    .or_else(|| args.response_alias.map(resolve_alias("responses")));
+
+                RequestSpec::Single {
+                    host,
+                    method,
+                    body: args.body.map(|s| Body::Formatted {
+                        content: s,
+                        format: BodyFormat::Json,
+                    }),
+                    template_path,
+                    response_template_path,
+                    headers,
+                }
+            };
+
         Ok(RunArgsResolved {
-            request: RequestSpec {
-                host,
-                method,
-                body: args.body.map(|s| Body::Formatted {
-                    content: s,
-                    format: BodyFormat::Json,
-                }),
-                template_path,
-                response_template_path,
-                headers,
-            },
+            request,
             execution,
             thresholds,
             output,
             output_file,
         })
+    }
+}
+
+/// Merges a `HashMap<String, String>` of headers into an existing ordered
+/// `Vec<(String, String)>`, using case-insensitive last-wins semantics.
+#[cfg(test)]
+fn merge_headers_into(
+    base: &mut Vec<(String, String)>,
+    incoming: &std::collections::HashMap<String, String>,
+) {
+    for (name, value) in incoming {
+        base.retain(|(k, _)| !k.eq_ignore_ascii_case(name));
+        base.push((name.clone(), value.clone()));
     }
 }
 
@@ -384,6 +408,7 @@ pub fn resolve_alias(sub_dir: &'static str) -> impl Fn(String) -> PathBuf {
 mod tests {
     use super::*;
     use lmn_core::command::Command;
+    use lmn_core::execution::OnStepFailure;
 
     #[tokio::test]
     async fn execute_creates_file_from_body() {
@@ -668,7 +693,13 @@ mod tests {
 
         let result = RunArgsResolved::try_from(args);
         assert!(result.is_ok(), "expected ok, got error");
-        assert_eq!(result.unwrap().request.host, "http://from-config:8080");
+        // RequestSpec::Single — extract host for assertion
+        let spec = result.unwrap().request;
+        let host = match spec {
+            RequestSpec::Single { host, .. } => host,
+            _ => panic!("expected Single variant"),
+        };
+        assert_eq!(host, "http://from-config:8080");
     }
 
     #[test]
@@ -684,7 +715,12 @@ mod tests {
 
         let result = RunArgsResolved::try_from(args);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().request.host, "http://from-cli:9090");
+        let spec = result.unwrap().request;
+        let host = match spec {
+            RequestSpec::Single { host, .. } => host,
+            _ => panic!("expected Single variant"),
+        };
+        assert_eq!(host, "http://from-cli:9090");
     }
 
     // ── new tests for config merging ──────────────────────────────────────────
@@ -702,8 +738,13 @@ mod tests {
         args.config = Some(f.path().to_path_buf());
 
         let result = RunArgsResolved::try_from(args).expect("should succeed");
+        let spec = result.request;
+        let method = match spec {
+            RequestSpec::Single { method, .. } => method,
+            _ => panic!("expected Single variant"),
+        };
         assert!(
-            matches!(result.request.method, lmn_core::command::HttpMethod::Post),
+            matches!(method, lmn_core::command::HttpMethod::Post),
             "expected Post from config"
         );
     }
@@ -829,9 +870,11 @@ mod tests {
         args.headers = vec!["Authorization: Bearer cli-token".to_string()];
 
         let result = RunArgsResolved::try_from(args).expect("should succeed");
-        let auth = result
-            .request
-            .headers
+        let headers = match result.request {
+            RequestSpec::Single { headers, .. } => headers,
+            _ => panic!("expected Single variant"),
+        };
+        let auth = headers
             .iter()
             .find(|(k, _)| k.eq_ignore_ascii_case("Authorization"))
             .map(|(_, v)| v.as_str());
@@ -841,9 +884,7 @@ mod tests {
             "CLI header should override config header"
         );
         // must be exactly one Authorization entry (no duplicates)
-        let count = result
-            .request
-            .headers
+        let count = headers
             .iter()
             .filter(|(k, _)| k.eq_ignore_ascii_case("Authorization"))
             .count();
@@ -868,9 +909,11 @@ mod tests {
         // args.headers is already vec![] from make_run_args
 
         let result = RunArgsResolved::try_from(args).expect("should succeed");
-        let custom = result
-            .request
-            .headers
+        let headers = match result.request {
+            RequestSpec::Single { headers, .. } => headers,
+            _ => panic!("expected Single variant"),
+        };
+        let custom = headers
             .iter()
             .find(|(k, _)| k.eq_ignore_ascii_case("X-Custom"))
             .map(|(_, v)| v.as_str());
@@ -894,9 +937,11 @@ mod tests {
         args.config = Some(f.path().to_path_buf());
 
         let result = RunArgsResolved::try_from(args).expect("should succeed");
-        let token = result
-            .request
-            .headers
+        let headers = match result.request {
+            RequestSpec::Single { headers, .. } => headers,
+            _ => panic!("expected Single variant"),
+        };
+        let token = headers
             .iter()
             .find(|(k, _)| k.eq_ignore_ascii_case("X-Token"))
             .map(|(_, v)| v.as_str());
@@ -928,5 +973,187 @@ mod tests {
             msg.contains("64"),
             "error should mention the limit, got: {msg}"
         );
+    }
+
+    // ── scenario resolution tests ─────────────────────────────────────────────
+
+    #[test]
+    fn scenarios_config_resolves_to_scenarios_spec() {
+        use std::io::Write;
+        let yaml = b"
+scenarios:
+  - name: browse
+    steps:
+      - name: list_products
+        host: https://api.example.com/products
+execution:
+  request_count: 50
+  concurrency: 5
+";
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(yaml).unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+
+        let result = RunArgsResolved::try_from(args).expect("should succeed");
+        assert!(
+            matches!(result.request, RequestSpec::Scenarios(_)),
+            "expected Scenarios variant from config with scenarios"
+        );
+    }
+
+    #[test]
+    fn scenarios_global_headers_propagate_to_steps() {
+        use std::io::Write;
+        let yaml = b"
+run:
+  headers:
+    Authorization: Bearer global-token
+scenarios:
+  - name: browse
+    steps:
+      - name: list_products
+        host: https://api.example.com/products
+";
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(yaml).unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+
+        let result = RunArgsResolved::try_from(args).expect("should succeed");
+        let scenarios = match result.request {
+            RequestSpec::Scenarios(s) => s,
+            _ => panic!("expected Scenarios variant"),
+        };
+        assert_eq!(scenarios.len(), 1);
+        let step = &scenarios[0].steps[0];
+        let auth = step
+            .plain_headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("Authorization"))
+            .map(|(_, v)| v.as_str());
+        assert_eq!(
+            auth,
+            Some("Bearer global-token"),
+            "global header should propagate to step"
+        );
+    }
+
+    #[test]
+    fn scenarios_step_header_overrides_scenario_header() {
+        use std::io::Write;
+        let yaml = b"
+scenarios:
+  - name: checkout
+    headers:
+      X-Session: scenario-session
+    steps:
+      - name: add_to_cart
+        host: https://api.example.com/cart
+        method: post
+        headers:
+          X-Session: step-session
+";
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(yaml).unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+
+        let result = RunArgsResolved::try_from(args).expect("should succeed");
+        let scenarios = match result.request {
+            RequestSpec::Scenarios(s) => s,
+            _ => panic!("expected Scenarios variant"),
+        };
+        let step = &scenarios[0].steps[0];
+        let session = step
+            .plain_headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("X-Session"))
+            .map(|(_, v)| v.as_str());
+        assert_eq!(
+            session,
+            Some("step-session"),
+            "step header should override scenario header"
+        );
+        let count = step
+            .plain_headers
+            .iter()
+            .filter(|(k, _)| k.eq_ignore_ascii_case("X-Session"))
+            .count();
+        assert_eq!(count, 1, "should not have duplicate X-Session headers");
+    }
+
+    #[test]
+    fn scenarios_weight_and_on_step_failure_resolved() {
+        use std::io::Write;
+        let yaml = b"
+scenarios:
+  - name: checkout
+    weight: 3
+    on_step_failure: abort_iteration
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+        method: post
+  - name: browse
+    weight: 1
+    steps:
+      - name: list
+        host: https://api.example.com/products
+";
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(yaml).unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+
+        let result = RunArgsResolved::try_from(args).expect("should succeed");
+        let scenarios = match result.request {
+            RequestSpec::Scenarios(s) => s,
+            _ => panic!("expected Scenarios variant"),
+        };
+        assert_eq!(scenarios[0].weight, 3);
+        assert!(matches!(
+            scenarios[0].on_step_failure,
+            OnStepFailure::AbortIteration
+        ));
+        assert_eq!(scenarios[1].weight, 1);
+        assert!(matches!(
+            scenarios[1].on_step_failure,
+            OnStepFailure::Continue
+        ));
+    }
+
+    #[test]
+    fn merge_headers_into_overrides_existing() {
+        use std::collections::HashMap;
+
+        let mut base = vec![
+            ("Authorization".to_string(), "old-token".to_string()),
+            ("X-Custom".to_string(), "keep".to_string()),
+        ];
+        let mut incoming = HashMap::new();
+        incoming.insert("authorization".to_string(), "new-token".to_string());
+
+        merge_headers_into(&mut base, &incoming);
+
+        assert_eq!(base.len(), 2);
+        let auth = base
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("Authorization"))
+            .map(|(_, v)| v.as_str());
+        assert_eq!(auth, Some("new-token"));
+        let custom = base
+            .iter()
+            .find(|(k, _)| k == "X-Custom")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(custom, Some("keep"));
     }
 }

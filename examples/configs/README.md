@@ -7,3 +7,4 @@ Used with `-f` / `--config`. Each file bundles run parameters, load curve, and t
 | `minimal.yaml` | Minimal config: host and basic thresholds only |
 | `ci-pipeline.yaml` | CI-optimized: tight thresholds, ramp curve, JSON output |
 | `full.yaml` | All supported fields documented with inline comments |
+| `scenarios.yaml` | Multi-scenario load test with weighted VU distribution and step failure handling |

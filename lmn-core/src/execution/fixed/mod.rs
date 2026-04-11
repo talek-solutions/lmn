@@ -6,13 +6,14 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use tracing::info_span;
 
-use crate::execution::{DrainMetricsAccumulator, ScenarioStats};
+use crate::execution::{DrainMetricsAccumulator, ResolvedScenario, ScenarioStats, assign_scenario};
 use crate::histogram::{LatencyHistogram, StatusCodeHistogram};
 use crate::http::{RequestConfig, RequestRecord};
 use crate::monitoring::SpanName;
 use crate::request_template::Template;
 use crate::response_template::stats::ResponseStats;
 use crate::vu::Vu;
+use crate::vu::scenario::{ScenarioVu, StepExec};
 
 // ── FixedExecutorParams ───────────────────────────────────────────────────────
 
@@ -23,6 +24,10 @@ pub struct FixedExecutorParams {
     pub total: usize,
     pub concurrency: usize,
     pub cancellation_token: CancellationToken,
+    /// When present, the executor spawns `ScenarioVu` instances instead of
+    /// plain `Vu` instances. Each VU is assigned a scenario via weighted
+    /// round-robin. Budget counts iterations (one per full scenario loop).
+    pub scenarios: Option<Vec<ResolvedScenario>>,
 }
 
 // ── FixedExecutionResult ──────────────────────────────────────────────────────
@@ -61,6 +66,7 @@ impl FixedExecutor {
             total,
             concurrency,
             cancellation_token,
+            scenarios,
         } = self.params;
 
         // Pre-convert headers once before spawning VUs to avoid per-request allocation.
@@ -72,7 +78,15 @@ impl FixedExecutor {
                 .collect(),
         );
 
-        let has_tracked_fields = request_config.tracked_fields.is_some();
+        // `has_tracked_fields` is true when the single-request path uses a
+        // response template, OR when any step across any scenario does.
+        let has_tracked_fields = if let Some(ref sc) = scenarios {
+            sc.iter()
+                .flat_map(|s| s.steps.iter())
+                .any(|step| step.response_template.is_some())
+        } else {
+            request_config.tracked_fields.is_some()
+        };
 
         async {
             let budget = Arc::new(AtomicUsize::new(total));
@@ -101,23 +115,53 @@ impl FixedExecutor {
                 }
             });
 
-            // Spawn exactly `concurrency` VU tasks. Each claims requests from the
-            // shared budget and self-terminates when the budget is exhausted.
-            let vu_handles: Vec<_> = (0..concurrency)
-                .map(|_| {
-                    Vu {
-                        request_config: Arc::clone(&request_config),
-                        plain_headers: Arc::clone(&plain_headers),
-                        template: template.as_ref().map(Arc::clone),
-                        scenario_label: None,
-                        step_label: None,
-                        cancellation_token: cancellation_token.clone(),
-                        result_tx: tx.clone(),
-                        budget: Some(Arc::clone(&budget)),
-                    }
-                    .spawn()
-                })
-                .collect();
+            let vu_handles: Vec<_> = if let Some(ref scenarios) = scenarios {
+                // Scenario mode: spawn `ScenarioVu` instances. Each VU is
+                // assigned a scenario via weighted round-robin and claims one
+                // budget unit per full iteration (not per step).
+                (0..concurrency)
+                    .map(|vu_idx| {
+                        let scenario = &scenarios[assign_scenario(vu_idx, scenarios)];
+                        let steps = scenario
+                            .steps
+                            .iter()
+                            .map(|step| StepExec {
+                                step_name: Arc::clone(&step.name),
+                                request_config: Arc::clone(&step.request_config),
+                                plain_headers: Arc::clone(&step.plain_headers),
+                                request_template: step.request_template.as_ref().map(Arc::clone),
+                                response_template: step.response_template.as_ref().map(Arc::clone),
+                            })
+                            .collect();
+                        ScenarioVu {
+                            scenario_name: Arc::clone(&scenario.name),
+                            steps,
+                            on_step_failure: scenario.on_step_failure,
+                            cancellation_token: cancellation_token.clone(),
+                            result_tx: tx.clone(),
+                            budget: Some(Arc::clone(&budget)),
+                        }
+                        .spawn()
+                    })
+                    .collect()
+            } else {
+                // Single-request mode: spawn plain `Vu` instances sharing the budget.
+                (0..concurrency)
+                    .map(|_| {
+                        Vu {
+                            request_config: Arc::clone(&request_config),
+                            plain_headers: Arc::clone(&plain_headers),
+                            template: template.as_ref().map(Arc::clone),
+                            scenario_label: None,
+                            step_label: None,
+                            cancellation_token: cancellation_token.clone(),
+                            result_tx: tx.clone(),
+                            budget: Some(Arc::clone(&budget)),
+                        }
+                        .spawn()
+                    })
+                    .collect()
+            };
 
             // Drop the coordinator's sender so the channel closes once all VU
             // senders are also dropped (they are, once each VU task exits).
@@ -185,11 +229,13 @@ mod tests {
             total: 5,
             concurrency: 2,
             cancellation_token: CancellationToken::new(),
+            scenarios: None,
         };
 
         assert_eq!(params.total, 5);
         assert_eq!(params.concurrency, 2);
         assert!(params.template.is_none());
+        assert!(params.scenarios.is_none());
     }
 
     // ── fixed_executor_new_stores_params ─────────────────────────────────────
@@ -215,6 +261,7 @@ mod tests {
             total: 1,
             concurrency: 1,
             cancellation_token: CancellationToken::new(),
+            scenarios: None,
         });
 
         assert_eq!(executor.params.total, 1);

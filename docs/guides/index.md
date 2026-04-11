@@ -12,3 +12,4 @@ For copy-paste-ready commands and config snippets, see [Recipes](../recipes/inde
 | [Dynamic Request Bodies](request-bodies.md) | How the template system works, placeholder types, and when to use inline vs. template vs. alias |
 | [Thresholds & CI Gating](thresholds-ci.md) | How thresholds work, available metrics, operators, and exit codes |
 | [Load Curves](load-curves.md) | How curve mode works, how to design a VU ramp, and when to use curves vs. fixed mode |
+| [Scenarios](scenarios.md) | How to define multi-step user flows with weighted VU distribution |

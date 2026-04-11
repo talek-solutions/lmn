@@ -8,6 +8,7 @@ A **virtual user** is a concurrent worker that sends requests in a loop. If you 
 
 - More VUs = more concurrency = more pressure on the server
 - VU count is fixed in **fixed mode** and varies over time in **curve mode**
+- In **scenario mode**, each VU executes a multi-step sequence instead of a single request
 
 ## Fixed Mode vs. Curve Mode
 
@@ -35,6 +36,38 @@ execution:
 ```
 
 You cannot mix `stages` with `request_count`/`concurrency` — pick one mode per run.
+
+## Scenarios
+
+A **scenario** is a named sequence of HTTP steps that a VU executes in order. Instead of every VU hitting the same endpoint, you can model realistic user flows — login, browse, checkout — each with its own host, method, headers, and templates.
+
+```yaml
+scenarios:
+  - name: checkout
+    weight: 3
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+        method: post
+      - name: pay
+        host: https://api.example.com/checkout
+        method: post
+  - name: browse
+    weight: 1
+    steps:
+      - name: list
+        host: https://api.example.com/products
+```
+
+Key concepts:
+
+- **Weight** controls VU distribution. With weights `[3, 1]` and 4 VUs: 3 run "checkout", 1 runs "browse"
+- **Budget** counts scenario iterations, not individual requests. `request_count: 100` means 100 full loops through all steps
+- **`on_step_failure`** controls what happens when a step fails: `continue` (default) finishes all steps, `abort_iteration` skips the rest and starts over
+- Scenarios work with both **fixed** and **curve** modes
+- Scenarios are **mutually exclusive** with `run.host` / `run.method` — each step defines its own target
+
+See [Config File Reference](../reference/config.md#scenarios) for the full schema.
 
 ## Thresholds
 
