@@ -73,6 +73,10 @@ pub struct RequestRecord {
     pub status_code: Option<u16>,
     /// Present only when a response template is active and extraction succeeded.
     pub extraction: Option<crate::response_template::extractor::ExtractionResult>,
+    /// Optional scenario name associated with this request.
+    pub scenario: Option<Arc<str>>,
+    /// Optional step name inside a scenario.
+    pub step: Option<Arc<str>>,
 }
 
 impl RequestResult {

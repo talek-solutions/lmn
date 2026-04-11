@@ -81,6 +81,7 @@ mod tests {
             status_codes: BTreeMap::from([("200".to_string(), 10)]),
             response_stats: None,
             curve_stages: None,
+            scenarios: None,
             thresholds: None,
         }
     }

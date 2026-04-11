@@ -95,6 +95,7 @@ async fn execute_fixed(
         template_stats: None,
         response_stats: result.response_stats,
         curve_stats: None,
+        scenario_stats: result.scenario_stats,
     }))
 }
 
@@ -169,6 +170,7 @@ async fn execute_curve(
             stages: curve_stages,
             stage_stats: curve_result.stage_stats,
         }),
+        scenario_stats: curve_result.scenario_stats,
     }))
 }
 
@@ -193,6 +195,7 @@ mod tests {
             template_stats: None,
             response_stats: None,
             curve_stats: None,
+            scenario_stats: None,
         }
     }
 
@@ -220,6 +223,7 @@ mod tests {
                     })
                     .collect(),
             }),
+            scenario_stats: None,
         }
     }
 

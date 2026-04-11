@@ -1,4 +1,4 @@
-use lmn_core::execution::{RunMode, RunStats};
+use lmn_core::execution::{RunMode, RunStats, ScenarioStats};
 use lmn_core::histogram::LatencyHistogram;
 use lmn_core::response_template::stats::ResponseStats;
 use lmn_core::threshold::ThresholdReport;
@@ -116,6 +116,10 @@ pub fn print_stats(params: PrintStatsParams<'_>) {
     }
     println!();
 
+    if let Some(ref scenarios) = stats.scenario_stats {
+        print_scenario_stats(scenarios, stats.elapsed, &rule);
+    }
+
     if let Some(ref rs) = stats.response_stats {
         print_response_stats(rs, &rule);
     }
@@ -228,6 +232,61 @@ fn print_response_stats(rs: &ResponseStats, rule: &str) {
         println!(" Response mismatches {rule}");
         for (path, count) in &sorted_mismatches {
             println!("  {path:<30}  {count}");
+        }
+        println!();
+    }
+}
+
+fn print_scenario_stats(scenarios: &[ScenarioStats], elapsed: Duration, rule: &str) {
+    let mut scenarios: Vec<&ScenarioStats> = scenarios.iter().collect();
+    scenarios.sort_by(|a, b| a.name.cmp(&b.name));
+
+    for scenario in scenarios {
+        let total = scenario.requests.total_requests as usize;
+        let failed = scenario.requests.total_failures as usize;
+        let ok = total.saturating_sub(failed);
+        let throughput = if elapsed.as_secs_f64() > 0.0 {
+            total as f64 / elapsed.as_secs_f64()
+        } else {
+            0.0
+        };
+
+        let p50 = Duration::from_secs_f64(scenario.requests.latency.quantile_ms(0.50) / 1000.0);
+        let p95 = Duration::from_secs_f64(scenario.requests.latency.quantile_ms(0.95) / 1000.0);
+        let p99 = Duration::from_secs_f64(scenario.requests.latency.quantile_ms(0.99) / 1000.0);
+
+        println!(" Scenario: {} {rule}", scenario.name);
+        println!("  requests   {total}  ({ok} ok · {failed} failed)");
+        println!("  throughput {throughput:.1} req/s");
+        println!(
+            "  latency    p50 {} · p95 {} · p99 {}",
+            fmt_latency(p50),
+            fmt_latency(p95),
+            fmt_latency(p99)
+        );
+
+        if !scenario.steps.is_empty() {
+            println!("  steps");
+            let mut steps: Vec<_> = scenario.steps.iter().collect();
+            steps.sort_by(|a, b| a.name.cmp(&b.name));
+            for step in steps {
+                let step_total = step.requests.total_requests as usize;
+                let step_failed = step.requests.total_failures as usize;
+                let step_error_rate = if step_total == 0 {
+                    0.0
+                } else {
+                    step_failed as f64 / step_total as f64
+                };
+                let step_p95 =
+                    Duration::from_secs_f64(step.requests.latency.quantile_ms(0.95) / 1000.0);
+                println!(
+                    "    {:<16} {:>6} req  {:>5.1}% err  p95 {}",
+                    step.name,
+                    step_total,
+                    step_error_rate * 100.0,
+                    fmt_latency(step_p95),
+                );
+            }
         }
         println!();
     }

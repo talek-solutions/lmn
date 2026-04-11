@@ -6,7 +6,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
 
-use crate::execution::StageStats;
+use crate::execution::{DrainMetricsAccumulator, ScenarioStats, StageStats};
 use crate::histogram::{LatencyHistogram, StatusCodeHistogram};
 use crate::http::{RequestConfig, RequestRecord};
 use crate::load_curve::{LoadCurve, Stage};
@@ -34,6 +34,7 @@ pub struct CurveExecutionResult {
     pub total_failures: u64,
     pub response_stats: Option<ResponseStats>,
     pub stage_stats: Vec<StageStats>,
+    pub scenario_stats: Option<Vec<ScenarioStats>>,
 }
 
 // ── stage_index_at ────────────────────────────────────────────────────────────
@@ -98,15 +99,7 @@ impl CurveExecutor {
         // state. It attributes each record to the correct stage via `completed_at`.
         let drain_handle = tokio::spawn(async move {
             let mut rx = rx;
-            let mut latency = LatencyHistogram::new();
-            let mut status_codes = StatusCodeHistogram::new();
-            let mut total_requests: u64 = 0;
-            let mut total_failures: u64 = 0;
-            let mut response_stats: Option<ResponseStats> = if has_tracked_fields {
-                Some(ResponseStats::new())
-            } else {
-                None
-            };
+            let mut acc = DrainMetricsAccumulator::new(has_tracked_fields);
 
             // Pre-allocate per-stage accumulators.
             let mut stage_stats: Vec<StageStats> = (0..n_stages)
@@ -119,12 +112,7 @@ impl CurveExecutor {
                 .collect();
 
             while let Some(record) = rx.recv().await {
-                total_requests += 1;
-                if !record.success {
-                    total_failures += 1;
-                }
-                latency.record(record.duration);
-                status_codes.record(record.status_code);
+                acc.record_request(&record);
 
                 // Determine which stage this record belongs to using its
                 // wall-clock completion time relative to the run start.
@@ -143,20 +131,18 @@ impl CurveExecutor {
                     stage_stats[stage_idx].total_failures += 1;
                 }
 
-                if let Some(extraction) = record.extraction
-                    && let Some(ref mut rs) = response_stats
-                {
-                    rs.record(extraction);
-                }
+                acc.record_extraction(record.extraction);
             }
+            let scenario_stats = acc.finalize_scenario_stats();
 
             CurveExecutionResult {
-                latency,
-                status_codes,
-                total_requests,
-                total_failures,
-                response_stats,
+                latency: acc.latency,
+                status_codes: acc.status_codes,
+                total_requests: acc.total_requests,
+                total_failures: acc.total_failures,
+                response_stats: acc.response_stats,
                 stage_stats,
+                scenario_stats,
             }
         });
 
@@ -192,6 +178,8 @@ impl CurveExecutor {
                                     request_config: Arc::clone(&request_config),
                                     plain_headers: Arc::clone(&plain_headers),
                                     template: template.as_ref().map(Arc::clone),
+                                    scenario_label: None,
+                                    step_label: None,
                                     cancellation_token: vu_token.clone(),
                                     result_tx: tx.clone(),
                                     budget: None,

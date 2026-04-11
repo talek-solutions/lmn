@@ -164,6 +164,7 @@ mod tests {
             template_stats: None,
             response_stats: None,
             curve_stats: None,
+            scenario_stats: None,
         };
         RunReport::from_params(RunReportParams { stats: &stats })
     }

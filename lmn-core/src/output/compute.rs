@@ -1,12 +1,15 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use crate::execution::StageStats;
+use crate::execution::{ScenarioStats, StageStats};
 use crate::histogram::{LatencyHistogram, StatusCodeHistogram};
 use crate::load_curve::{RampType, Stage};
 use crate::response_template::stats::ResponseStats;
 
-use super::report::{FloatFieldSummary, LatencyStats, ResponseStatsReport, StageReport};
+use super::report::{
+    FloatFieldSummary, LatencyStats, RequestSummary, ResponseStatsReport, ScenarioReport,
+    ScenarioStepReport, StageReport,
+};
 
 // ── latency_stats ─────────────────────────────────────────────────────────────
 
@@ -68,6 +71,24 @@ pub fn error_rate(total_requests: usize, total_failures: usize) -> f64 {
         0.0
     } else {
         (total_failures as f64 / total_requests as f64).min(1.0)
+    }
+}
+
+// ── request_summary ───────────────────────────────────────────────────────────
+
+/// Builds a `RequestSummary` from raw counts and an elapsed duration.
+pub fn request_summary(
+    total_requests: usize,
+    total_failures: usize,
+    elapsed: Duration,
+) -> RequestSummary {
+    let ok = total_requests.saturating_sub(total_failures);
+    RequestSummary {
+        total: total_requests,
+        ok,
+        failed: total_failures,
+        error_rate: error_rate(total_requests, total_failures),
+        throughput_rps: throughput(total_requests, elapsed),
     }
 }
 
@@ -171,11 +192,53 @@ pub fn per_stage_reports(stages: &[Stage], stage_stats: &[StageStats]) -> Vec<St
         .collect()
 }
 
+// ── scenario_reports ──────────────────────────────────────────────────────────
+
+/// Builds per-scenario and per-step reports from aggregated execution stats.
+///
+/// Throughput values are normalized over total run elapsed time.
+pub fn scenario_reports(scenarios: &[ScenarioStats], elapsed: Duration) -> Vec<ScenarioReport> {
+    let mut reports: Vec<ScenarioReport> = scenarios
+        .iter()
+        .map(|scenario| {
+            let mut steps: Vec<ScenarioStepReport> = scenario
+                .steps
+                .iter()
+                .map(|step| {
+                    let total = step.requests.total_requests as usize;
+                    let failed = step.requests.total_failures as usize;
+                    ScenarioStepReport {
+                        name: step.name.clone(),
+                        requests: request_summary(total, failed, elapsed),
+                        latency: latency_stats(&step.requests.latency),
+                        status_codes: status_code_map(&step.requests.status_codes),
+                    }
+                })
+                .collect();
+            steps.sort_by(|a, b| a.name.cmp(&b.name));
+
+            let total = scenario.requests.total_requests as usize;
+            let failed = scenario.requests.total_failures as usize;
+            ScenarioReport {
+                name: scenario.name.clone(),
+                requests: request_summary(total, failed, elapsed),
+                latency: latency_stats(&scenario.requests.latency),
+                status_codes: status_code_map(&scenario.requests.status_codes),
+                steps,
+            }
+        })
+        .collect();
+
+    reports.sort_by(|a, b| a.name.cmp(&b.name));
+    reports
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::execution::{RequestStats, ScenarioStats, ScenarioStepStats};
     use crate::response_template::stats::ResponseStats;
     use std::time::Duration;
 
@@ -259,6 +322,42 @@ mod tests {
     fn throughput_correct() {
         let rps = throughput(1000, Duration::from_secs(10));
         assert!((rps - 100.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn scenario_reports_build_nested_step_stats() {
+        let mut scenario_requests = RequestStats::default();
+        scenario_requests.record(Duration::from_millis(100), true, Some(200));
+        scenario_requests.record(Duration::from_millis(150), false, Some(500));
+
+        let mut login_requests = RequestStats::default();
+        login_requests.record(Duration::from_millis(80), true, Some(200));
+        let mut fetch_requests = RequestStats::default();
+        fetch_requests.record(Duration::from_millis(120), false, Some(500));
+
+        let scenario = ScenarioStats {
+            name: "checkout".to_string(),
+            requests: scenario_requests,
+            steps: vec![
+                ScenarioStepStats {
+                    name: "fetch_profile".to_string(),
+                    requests: fetch_requests,
+                },
+                ScenarioStepStats {
+                    name: "login".to_string(),
+                    requests: login_requests,
+                },
+            ],
+        };
+
+        let reports = scenario_reports(&[scenario], Duration::from_secs(2));
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].name, "checkout");
+        assert_eq!(reports[0].requests.total, 2);
+        assert_eq!(reports[0].requests.failed, 1);
+        // Steps are sorted by name in output
+        assert_eq!(reports[0].steps[0].name, "fetch_profile");
+        assert_eq!(reports[0].steps[1].name, "login");
     }
 
     #[test]

@@ -20,6 +20,10 @@ pub struct Vu {
     /// Pre-converted header pairs shared across all VUs — avoids per-request allocation.
     pub plain_headers: Arc<Vec<(String, String)>>,
     pub template: Option<Arc<Template>>,
+    /// Optional scenario label attached to emitted request records.
+    pub scenario_label: Option<Arc<str>>,
+    /// Optional step label attached to emitted request records.
+    pub step_label: Option<Arc<str>>,
     pub cancellation_token: CancellationToken,
     pub result_tx: mpsc::UnboundedSender<RequestRecord>,
     /// Optional request budget shared across all VUs in fixed-count mode.
@@ -125,6 +129,8 @@ impl Vu {
                             success: result.success,
                             status_code: result.status_code,
                             extraction,
+                            scenario: self.scenario_label.as_ref().map(Arc::clone),
+                            step: self.step_label.as_ref().map(Arc::clone),
                         };
 
                         if self.result_tx.send(record).is_err() {
@@ -164,12 +170,16 @@ mod tests {
             request_config: Arc::clone(&config),
             plain_headers: Arc::new(vec![]),
             template: None,
+            scenario_label: None,
+            step_label: None,
             cancellation_token: CancellationToken::new(),
             result_tx: tx,
             budget: None,
         };
 
         assert!(vu.template.is_none());
+        assert!(vu.scenario_label.is_none());
+        assert!(vu.step_label.is_none());
         assert!(vu.budget.is_none());
     }
 
@@ -195,6 +205,8 @@ mod tests {
             request_config: Arc::clone(&config),
             plain_headers: Arc::new(vec![]),
             template: None,
+            scenario_label: None,
+            step_label: None,
             cancellation_token: CancellationToken::new(),
             result_tx: tx,
             budget: Some(Arc::clone(&budget)),

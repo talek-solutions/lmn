@@ -6,6 +6,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use tracing::info_span;
 
+use crate::execution::{DrainMetricsAccumulator, ScenarioStats};
 use crate::histogram::{LatencyHistogram, StatusCodeHistogram};
 use crate::http::{RequestConfig, RequestRecord};
 use crate::monitoring::SpanName;
@@ -33,6 +34,7 @@ pub struct FixedExecutionResult {
     pub total_requests: u64,
     pub total_failures: u64,
     pub response_stats: Option<ResponseStats>,
+    pub scenario_stats: Option<Vec<ScenarioStats>>,
 }
 
 // ── FixedExecutor ─────────────────────────────────────────────────────────────
@@ -81,36 +83,21 @@ impl FixedExecutor {
             // channel closes (all VU senders dropped).
             let drain_handle = tokio::spawn(async move {
                 let mut rx = rx;
-                let mut latency = LatencyHistogram::new();
-                let mut status_codes = StatusCodeHistogram::new();
-                let mut total_requests: u64 = 0;
-                let mut total_failures: u64 = 0;
-                let mut response_stats: Option<ResponseStats> = if has_tracked_fields {
-                    Some(ResponseStats::new())
-                } else {
-                    None
-                };
+                let mut acc = DrainMetricsAccumulator::new(has_tracked_fields);
 
                 while let Some(record) = rx.recv().await {
-                    total_requests += 1;
-                    if !record.success {
-                        total_failures += 1;
-                    }
-                    latency.record(record.duration);
-                    status_codes.record(record.status_code);
-                    if let Some(extraction) = record.extraction
-                        && let Some(ref mut rs) = response_stats
-                    {
-                        rs.record(extraction);
-                    }
+                    acc.record_request(&record);
+                    acc.record_extraction(record.extraction);
                 }
+                let scenario_stats = acc.finalize_scenario_stats();
 
                 FixedExecutionResult {
-                    latency,
-                    status_codes,
-                    total_requests,
-                    total_failures,
-                    response_stats,
+                    latency: acc.latency,
+                    status_codes: acc.status_codes,
+                    total_requests: acc.total_requests,
+                    total_failures: acc.total_failures,
+                    response_stats: acc.response_stats,
+                    scenario_stats,
                 }
             });
 
@@ -122,6 +109,8 @@ impl FixedExecutor {
                         request_config: Arc::clone(&request_config),
                         plain_headers: Arc::clone(&plain_headers),
                         template: template.as_ref().map(Arc::clone),
+                        scenario_label: None,
+                        step_label: None,
                         cancellation_token: cancellation_token.clone(),
                         result_tx: tx.clone(),
                         budget: Some(Arc::clone(&budget)),
@@ -164,11 +153,13 @@ mod tests {
             total_requests: 10,
             total_failures: 1,
             response_stats: None,
+            scenario_stats: None,
         };
         assert_eq!(result.total_requests, 10);
         assert_eq!(result.total_failures, 1);
         assert!(result.latency.is_empty());
         assert!(result.response_stats.is_none());
+        assert!(result.scenario_stats.is_none());
     }
 
     // ── struct_shape_fixed_executor_params ────────────────────────────────────

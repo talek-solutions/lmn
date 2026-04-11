@@ -3,14 +3,14 @@ mod report;
 
 pub use report::{
     FloatFieldSummary, LatencyStats, RequestSummary, ResponseStatsReport, RunMeta, RunReport,
-    StageReport,
+    ScenarioReport, ScenarioStepReport, StageReport,
 };
 
 use crate::execution::{RunMode, RunStats};
 
 use compute::{
-    error_rate, latency_stats, per_stage_reports, response_stats_report, status_code_map,
-    throughput,
+    latency_stats, per_stage_reports, request_summary, response_stats_report, scenario_reports,
+    status_code_map,
 };
 
 // ── RunReportParams ───────────────────────────────────────────────────────────
@@ -33,8 +33,6 @@ impl RunReport {
 
         let total = stats.total_requests as usize;
         let failed = stats.total_failures as usize;
-        let ok = total.saturating_sub(failed);
-
         let mode_str = match stats.mode {
             RunMode::Fixed => "fixed".to_string(),
             RunMode::Curve => "curve".to_string(),
@@ -53,13 +51,7 @@ impl RunReport {
                 .map(|ts| ts.generation_duration.as_secs_f64() * 1000.0),
         };
 
-        let requests = RequestSummary {
-            total,
-            ok,
-            failed,
-            error_rate: error_rate(total, failed),
-            throughput_rps: throughput(total, stats.elapsed),
-        };
+        let requests = request_summary(total, failed, stats.elapsed);
 
         let latency = latency_stats(&stats.latency);
         let status_codes = status_code_map(&stats.status_codes);
@@ -69,6 +61,10 @@ impl RunReport {
             .curve_stats
             .as_ref()
             .map(|cs| per_stage_reports(&cs.stages, &cs.stage_stats));
+        let scenarios = stats
+            .scenario_stats
+            .as_ref()
+            .map(|scenarios| scenario_reports(scenarios, stats.elapsed));
 
         RunReport {
             version: 2,
@@ -78,6 +74,7 @@ impl RunReport {
             status_codes,
             response_stats,
             curve_stages,
+            scenarios,
             thresholds: None,
         }
     }
@@ -113,6 +110,7 @@ mod tests {
             } else {
                 None
             },
+            scenario_stats: None,
         }
     }
 
@@ -126,6 +124,7 @@ mod tests {
         assert_eq!(report.version, 2);
         assert_eq!(report.run.mode, "fixed");
         assert!(report.curve_stages.is_none());
+        assert!(report.scenarios.is_none());
         assert!(report.response_stats.is_none());
         assert!(report.run.curve_duration_ms.is_none());
     }
@@ -195,6 +194,7 @@ mod tests {
         assert_eq!(parsed["run"]["mode"], "fixed");
         assert!(parsed["requests"]["total"].is_number());
         assert!(parsed["latency"]["p50_ms"].is_number());
+        assert!(parsed["scenarios"].is_null());
         // No sampling field in v2
         assert!(parsed["sampling"].is_null());
     }
