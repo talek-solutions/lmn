@@ -1,12 +1,15 @@
-//! Scenario resolution: converts `ScenarioConfig` entries (from a parsed config
-//! file) into fully resolved `ResolvedScenario` structs ready for VU execution.
+//! Scenario resolution: converts parsed `ScenarioConfig` entries into fully
+//! resolved `ResolvedScenario` structs ready for VU execution.
 //!
-//! This module lives in `lmn-core` so that it can access the `pub(crate)` helper
-//! `build_request_config` and all internal types, while still exposing a public
-//! API consumed by the CLI adapter layer.
+//! The [`ScenarioResolver`] handles the three-layer header merge
+//! (global → scenario → step), `${ENV_VAR}` expansion, method parsing, and
+//! template loading — producing a `Vec<ResolvedScenario>` that executors
+//! consume directly.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::command::HttpMethod;
 use crate::config::ScenarioConfig;
 use crate::config::secret::{SensitiveString, resolve_env_placeholders};
 use crate::execution::{OnStepFailure, ResolvedScenario, ResolvedStep, build_request_config};
@@ -14,163 +17,182 @@ use crate::request_template::Template;
 use crate::response_template::ResponseTemplate;
 use crate::response_template::field::TrackedField;
 
-// ── resolve_scenarios ─────────────────────────────────────────────────────────
+// ── ScenarioResolver ─────────────────────────────────────────────────────────
 
-/// Resolves a list of `ScenarioConfig` entries (from a parsed YAML config) into
-/// fully resolved `ResolvedScenario` values ready to be passed to a
-/// `FixedExecutor` or `CurveExecutor`.
+/// Resolves [`ScenarioConfig`] values into execution-ready [`ResolvedScenario`]
+/// structs.
 ///
-/// # Header merge order
+/// Header merge order (case-insensitive last-wins):
+/// 1. **Global** — pre-resolved headers from `run.headers` / CLI `--header`.
+/// 2. **Scenario** — applied to every step in the scenario.
+/// 3. **Step** — applied to a single step only.
 ///
-/// Headers are merged with case-insensitive last-wins semantics in the following
-/// priority order:
-/// 1. `global_headers` — already-resolved `SensitiveString` values from the
-///    `run.headers` config section (or CLI `--header` flags).
-/// 2. Scenario-level `headers` — applied to every step in the scenario.
-/// 3. Step-level `headers` — applied to this step only.
-///
-/// `${ENV_VAR}` placeholders are resolved in scenario and step header values.
-/// Global headers are assumed to be pre-resolved by the caller.
+/// `${ENV_VAR}` placeholders in scenario and step headers are expanded during
+/// resolution. Global headers are assumed pre-resolved by the caller.
+pub struct ScenarioResolver<'a> {
+    global_headers: &'a [(String, SensitiveString)],
+}
+
+impl<'a> ScenarioResolver<'a> {
+    pub fn new(global_headers: &'a [(String, SensitiveString)]) -> Self {
+        Self { global_headers }
+    }
+
+    /// Resolve all scenarios from parsed config into execution-ready structs.
+    pub fn resolve(
+        &self,
+        configs: &[ScenarioConfig],
+    ) -> Result<Vec<ResolvedScenario>, Box<dyn std::error::Error>> {
+        configs
+            .iter()
+            .map(|cfg| self.resolve_scenario(cfg))
+            .collect()
+    }
+
+    fn resolve_scenario(
+        &self,
+        cfg: &ScenarioConfig,
+    ) -> Result<ResolvedScenario, Box<dyn std::error::Error>> {
+        let scenario_headers = self.merge_scenario_headers(cfg.headers.as_ref());
+
+        let steps = cfg
+            .steps
+            .iter()
+            .map(|step| self.resolve_step(step, &cfg.name, &scenario_headers))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(ResolvedScenario {
+            name: Arc::from(cfg.name.as_str()),
+            weight: cfg.weight.unwrap_or(1),
+            on_step_failure: parse_on_step_failure(cfg.on_step_failure.as_deref(), &cfg.name)?,
+            steps,
+        })
+    }
+
+    fn resolve_step(
+        &self,
+        step: &crate::config::ScenarioStepConfig,
+        scenario_name: &str,
+        scenario_headers: &[(String, String)],
+    ) -> Result<ResolvedStep, Box<dyn std::error::Error>> {
+        let ctx = StepContext {
+            scenario: scenario_name,
+            step: &step.name,
+        };
+
+        let merged_headers = merge_step_headers(scenario_headers, step.headers.as_ref());
+        let resolved_headers = resolve_header_env_vars(&merged_headers, &ctx)?;
+        let plain_headers = to_plain_headers(&resolved_headers);
+
+        let host =
+            resolve_env_placeholders(&step.host).map_err(|e| ctx.error(format!("host: {e}")))?;
+
+        let method = parse_method(&step.method).map_err(|e| ctx.error(e))?;
+
+        let request_config = build_request_config(host, method, None, None, resolved_headers, 1)
+            .map_err(|e| ctx.error(format!("request config: {e}")))?;
+
+        let request_template = load_request_template(step.request_template.as_deref(), &ctx)?;
+        let response_template = load_response_template(step.response_template.as_deref(), &ctx)?;
+
+        Ok(ResolvedStep {
+            name: Arc::from(step.name.as_str()),
+            request_config,
+            plain_headers,
+            request_template,
+            response_template,
+        })
+    }
+
+    /// Merge global headers with scenario-level overrides.
+    fn merge_scenario_headers(
+        &self,
+        scenario_headers: Option<&HashMap<String, String>>,
+    ) -> Vec<(String, String)> {
+        let mut headers: Vec<(String, String)> = self
+            .global_headers
+            .iter()
+            .map(|(k, v)| (k.clone(), v.to_string()))
+            .collect();
+        if let Some(overrides) = scenario_headers {
+            merge_headers_into(&mut headers, overrides);
+        }
+        headers
+    }
+}
+
+// ── Public entry point (convenience wrapper) ─────────────────────────────────
+
+/// Convenience function wrapping [`ScenarioResolver`].
 pub fn resolve_scenarios(
     scenario_configs: &[ScenarioConfig],
     global_headers: &[(String, SensitiveString)],
 ) -> Result<Vec<ResolvedScenario>, Box<dyn std::error::Error>> {
-    let mut resolved_scenarios: Vec<ResolvedScenario> = Vec::with_capacity(scenario_configs.len());
-
-    for scenario_cfg in scenario_configs {
-        let on_step_failure =
-            parse_on_step_failure(scenario_cfg.on_step_failure.as_deref(), &scenario_cfg.name)?;
-        let weight = scenario_cfg.weight.unwrap_or(1);
-
-        // Build the scenario-level header base: global → scenario (last-wins).
-        let mut scenario_header_map: Vec<(String, String)> = global_headers
-            .iter()
-            .map(|(k, v)| (k.clone(), v.to_string()))
-            .collect();
-        if let Some(ref sh) = scenario_cfg.headers {
-            merge_headers_into(&mut scenario_header_map, sh);
-        }
-
-        let mut resolved_steps: Vec<ResolvedStep> = Vec::with_capacity(scenario_cfg.steps.len());
-
-        for step_cfg in &scenario_cfg.steps {
-            // Build the step-level header map: scenario → step (last-wins).
-            let mut step_header_map = scenario_header_map.clone();
-            if let Some(ref step_headers) = step_cfg.headers {
-                merge_headers_into(&mut step_header_map, step_headers);
-            }
-
-            // Resolve ${ENV_VAR} in all step header values.
-            let resolved_headers: Vec<(String, SensitiveString)> = step_header_map
-                .into_iter()
-                .map(|(name, value)| {
-                    let resolved = resolve_env_placeholders(&value).map_err(|e| {
-                        format!(
-                            "scenario '{}', step '{}', header '{name}': {e}",
-                            scenario_cfg.name, step_cfg.name
-                        )
-                    })?;
-                    Ok::<_, String>((name, SensitiveString::new(resolved)))
-                })
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e: String| Box::<dyn std::error::Error>::from(e))?;
-
-            // Parse the step method.
-            let step_method = parse_method_str(&step_cfg.method).map_err(|e| {
-                format!(
-                    "scenario '{}', step '{}': {e}",
-                    scenario_cfg.name, step_cfg.name
-                )
-            })?;
-
-            // Resolve ${ENV_VAR} in the step host.
-            let step_host = resolve_env_placeholders(&step_cfg.host).map_err(|e| {
-                format!(
-                    "scenario '{}', step '{}', host: {e}",
-                    scenario_cfg.name, step_cfg.name
-                )
-            })?;
-
-            // Build per-step RequestConfig.
-            // Concurrency hint is 1 here — the executor manages actual concurrency.
-            // Tracked fields are set via response_template below.
-            let request_config = build_request_config(
-                step_host,
-                step_method,
-                None, // body is driven by request_template per step
-                None, // tracked_fields come from response_template
-                resolved_headers.clone(),
-                1,
-            )
-            .map_err(|e| {
-                format!(
-                    "scenario '{}', step '{}': failed to build request config: {e}",
-                    scenario_cfg.name, step_cfg.name
-                )
-            })?;
-
-            // Load request template if present.
-            let request_template: Option<Arc<Template>> = step_cfg
-                .request_template
-                .as_deref()
-                .map(|path| {
-                    Template::parse(path.as_ref()).map(Arc::new).map_err(|e| {
-                        format!(
-                            "scenario '{}', step '{}': failed to parse request_template '{path}': {e}",
-                            scenario_cfg.name, step_cfg.name
-                        )
-                    })
-                })
-                .transpose()
-                .map_err(|e: String| Box::<dyn std::error::Error>::from(e))?;
-
-            // Load response template if present.
-            let response_template: Option<Arc<Vec<TrackedField>>> = step_cfg
-                .response_template
-                .as_deref()
-                .map(|path| {
-                    ResponseTemplate::parse(path.as_ref())
-                        .map(|rt| Arc::new(rt.fields))
-                        .map_err(|e| {
-                            format!(
-                                "scenario '{}', step '{}': failed to parse response_template '{path}': {e}",
-                                scenario_cfg.name, step_cfg.name
-                            )
-                        })
-                })
-                .transpose()
-                .map_err(|e: String| Box::<dyn std::error::Error>::from(e))?;
-
-            // Plain headers for per-request injection in the VU (no SensitiveString wrapping
-            // at this layer — values are passed as raw strings to reqwest headers).
-            let plain_headers: Arc<Vec<(String, String)>> = Arc::new(
-                resolved_headers
-                    .into_iter()
-                    .map(|(k, v)| (k, v.to_string()))
-                    .collect(),
-            );
-
-            resolved_steps.push(ResolvedStep {
-                name: Arc::from(step_cfg.name.as_str()),
-                request_config: Arc::clone(&request_config),
-                plain_headers,
-                request_template,
-                response_template,
-            });
-        }
-
-        resolved_scenarios.push(ResolvedScenario {
-            name: Arc::from(scenario_cfg.name.as_str()),
-            weight,
-            on_step_failure,
-            steps: resolved_steps,
-        });
-    }
-
-    Ok(resolved_scenarios)
+    ScenarioResolver::new(global_headers).resolve(scenario_configs)
 }
 
-// ── helpers ───────────────────────────────────────────────────────────────────
+// ── StepContext ──────────────────────────────────────────────────────────────
+
+/// Provides consistent error context for a specific scenario + step.
+struct StepContext<'a> {
+    scenario: &'a str,
+    step: &'a str,
+}
+
+impl StepContext<'_> {
+    fn error(&self, detail: impl std::fmt::Display) -> Box<dyn std::error::Error> {
+        format!(
+            "scenario '{}', step '{}': {detail}",
+            self.scenario, self.step
+        )
+        .into()
+    }
+}
+
+// ── Header helpers ──────────────────────────────────────────────────────────
+
+fn merge_step_headers(
+    base: &[(String, String)],
+    step_headers: Option<&HashMap<String, String>>,
+) -> Vec<(String, String)> {
+    let mut merged = base.to_vec();
+    if let Some(overrides) = step_headers {
+        merge_headers_into(&mut merged, overrides);
+    }
+    merged
+}
+
+fn merge_headers_into(base: &mut Vec<(String, String)>, incoming: &HashMap<String, String>) {
+    for (name, value) in incoming {
+        base.retain(|(k, _)| !k.eq_ignore_ascii_case(name));
+        base.push((name.clone(), value.clone()));
+    }
+}
+
+fn resolve_header_env_vars(
+    headers: &[(String, String)],
+    ctx: &StepContext<'_>,
+) -> Result<Vec<(String, SensitiveString)>, Box<dyn std::error::Error>> {
+    headers
+        .iter()
+        .map(|(name, value)| {
+            let resolved = resolve_env_placeholders(value)
+                .map_err(|e| ctx.error(format!("header '{name}': {e}")))?;
+            Ok((name.clone(), SensitiveString::new(resolved)))
+        })
+        .collect()
+}
+
+fn to_plain_headers(headers: &[(String, SensitiveString)]) -> Arc<Vec<(String, String)>> {
+    Arc::new(
+        headers
+            .iter()
+            .map(|(k, v)| (k.clone(), v.to_string()))
+            .collect(),
+    )
+}
+
+// ── Parsing helpers ─────────────────────────────────────────────────────────
 
 fn parse_on_step_failure(
     s: Option<&str>,
@@ -186,26 +208,41 @@ fn parse_on_step_failure(
     }
 }
 
-fn parse_method_str(s: &str) -> Result<crate::command::HttpMethod, String> {
+fn parse_method(s: &str) -> Result<HttpMethod, String> {
     match s.to_lowercase().as_str() {
-        "get" => Ok(crate::command::HttpMethod::Get),
-        "post" => Ok(crate::command::HttpMethod::Post),
-        "put" => Ok(crate::command::HttpMethod::Put),
-        "patch" => Ok(crate::command::HttpMethod::Patch),
-        "delete" => Ok(crate::command::HttpMethod::Delete),
+        "get" => Ok(HttpMethod::Get),
+        "post" => Ok(HttpMethod::Post),
+        "put" => Ok(HttpMethod::Put),
+        "patch" => Ok(HttpMethod::Patch),
+        "delete" => Ok(HttpMethod::Delete),
         other => Err(format!(
             "unknown method '{other}' — expected one of: get, post, put, patch, delete"
         )),
     }
 }
 
-/// Merges incoming headers into a base list using case-insensitive last-wins semantics.
-fn merge_headers_into(
-    base: &mut Vec<(String, String)>,
-    incoming: &std::collections::HashMap<String, String>,
-) {
-    for (name, value) in incoming {
-        base.retain(|(k, _)| !k.eq_ignore_ascii_case(name));
-        base.push((name.clone(), value.clone()));
-    }
+// ── Template helpers ────────────────────────────────────────────────────────
+
+fn load_request_template(
+    path: Option<&str>,
+    ctx: &StepContext<'_>,
+) -> Result<Option<Arc<Template>>, Box<dyn std::error::Error>> {
+    path.map(|p| {
+        Template::parse(p.as_ref())
+            .map(Arc::new)
+            .map_err(|e| ctx.error(format!("request_template '{p}': {e}")))
+    })
+    .transpose()
+}
+
+fn load_response_template(
+    path: Option<&str>,
+    ctx: &StepContext<'_>,
+) -> Result<Option<Arc<Vec<TrackedField>>>, Box<dyn std::error::Error>> {
+    path.map(|p| {
+        ResponseTemplate::parse(p.as_ref())
+            .map(|rt| Arc::new(rt.fields))
+            .map_err(|e| ctx.error(format!("response_template '{p}': {e}")))
+    })
+    .transpose()
 }

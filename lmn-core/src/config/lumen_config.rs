@@ -192,21 +192,24 @@ pub fn parse_config(yaml: &str) -> Result<LumenConfig, ConfigError> {
             seen_names.push(scenario.name.clone());
 
             if let Some(w) = scenario.weight
-                && w < 1 {
-                    return Err(ConfigError::ValidationError(format!(
-                        "scenario '{}': weight must be >= 1, got {w}",
-                        scenario.name
-                    )));
-                }
+                && w < 1
+            {
+                return Err(ConfigError::ValidationError(format!(
+                    "scenario '{}': weight must be >= 1, got {w}",
+                    scenario.name
+                )));
+            }
 
             if let Some(ref osf) = scenario.on_step_failure
-                && osf != "continue" && osf != "abort_iteration" {
-                    return Err(ConfigError::ValidationError(format!(
-                        "scenario '{}': on_step_failure must be 'continue' or \
+                && osf != "continue"
+                && osf != "abort_iteration"
+            {
+                return Err(ConfigError::ValidationError(format!(
+                    "scenario '{}': on_step_failure must be 'continue' or \
                          'abort_iteration', got '{osf}'",
-                        scenario.name
-                    )));
-                }
+                    scenario.name
+                )));
+            }
 
             if scenario.steps.is_empty() {
                 return Err(ConfigError::ValidationError(format!(

@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0]
+
+### Added
+
+- **Multi-step scenarios** — define named sequences of HTTP steps (login → browse → checkout) that VUs execute in order. Each step has its own host, method, headers, and request/response templates.
+- **Weighted VU distribution** — assign relative weights to scenarios to control what proportion of VUs run each flow. Assignment is deterministic by VU index.
+- **Step failure handling** — configurable `on_step_failure` per scenario: `continue` (default) completes all steps, `abort_iteration` skips remaining steps and starts the next iteration.
+- **Three-layer header merging** — headers cascade global → scenario → step with case-insensitive last-wins semantics.
+- **Per-scenario and per-step metrics** — CLI output and JSON reports include latency, throughput, error rate, and status code breakdowns at both scenario and step granularity.
+- **`scenarios` field in JSON output** — new top-level array in the report schema with nested step data.
+- **ScenarioVu execution engine** — new VU type that loops through steps sequentially, with budget claiming per iteration (not per request) in fixed mode.
+- **ScenarioResolver** — structured config resolution with `${ENV_VAR}` expansion, method parsing, and template loading per step.
+- **Scenario config validation** — scenarios are mutually exclusive with `run.host`/`run.method`; unique names enforced; weight >= 1.
+- Scenarios guide, recipe, and config reference documentation.
+- 5 new functional tests covering scenarios in fixed, curve, abort, JSON output, and per-step stats modes.
+
+### Changed
+
+- **`RequestSpec` is now an enum** — `Single { ... }` for single-endpoint mode, `Scenarios(Vec<ResolvedScenario>)` for multi-step mode. This is a breaking change for programmatic users of `lmn-core`.
+- **`DrainMetricsAccumulator`** — extracted shared drain logic from both fixed and curve executors, eliminating code duplication.
+- **HashMap keys use `Arc<str>`** — scenario/step accumulator maps avoid per-request `String` heap allocation on the hot path.
+- **Single canonical sort** — scenarios and steps are sorted once in `into_stats()` rather than redundantly in three layers.
+- JSON output schema version bumped to `2`.
+
 ## [0.2.0]
 
 ### Breaking

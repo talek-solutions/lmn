@@ -20,7 +20,7 @@ This crate provides the building blocks for running load tests programmatically:
 
 ```toml
 [dependencies]
-lmn-core = "0.1"
+lmn-core = "0.3"
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
 ```
@@ -31,8 +31,8 @@ serde_json = "1"
 |---|---|---|
 | `RunCommand` | `command::run` | Entry point — owns request spec, execution mode, and sampling config |
 | `ExecutionMode` | `execution` | `Fixed { request_count, concurrency }` or `Curve(LoadCurve)` |
-| `RequestSpec` | `execution` | Host, method, body, template paths, headers |
-| `SamplingConfig` | `execution` | VU threshold and reservoir size |
+| `RequestSpec` | `execution` | `Single { host, method, … }` or `Scenarios(Vec<ResolvedScenario>)` |
+| `ResolvedScenario` | `execution` | Fully resolved multi-step scenario ready for VU assignment |
 | `RunStats` | `execution` | Raw output of a completed run |
 | `RunReport` | `output` | Serializable report built from `RunStats` |
 | `LoadCurve` | `load_curve` | Staged VU ramp definition (parses from JSON) |
@@ -51,7 +51,7 @@ use lmn_core::output::{RunReport, RunReportParams};
 #[tokio::main]
 async fn main() {
     let cmd = RunCommand {
-        request: RequestSpec {
+        request: RequestSpec::Single {
             host: "https://example.com/api/ping".to_string(),
             method: HttpMethod::Get,
             body: None,

@@ -163,6 +163,81 @@ thresholds:
     value: 0.001
 EOF
 
+# YAML config — scenarios, fixed mode
+cat > "$TMPDIR/config-scenarios-fixed.yaml" << 'EOF'
+scenarios:
+  - name: read_write
+    weight: 2
+    on_step_failure: continue
+    steps:
+      - name: post_data
+        host: https://httpbin.org/post
+        method: post
+      - name: get_data
+        host: https://httpbin.org/get
+        method: get
+  - name: status_check
+    weight: 1
+    steps:
+      - name: health
+        host: https://httpbin.org/status/200
+        method: get
+
+execution:
+  request_count: 6
+  concurrency: 3
+EOF
+
+# YAML config — scenarios, curve mode
+cat > "$TMPDIR/config-scenarios-curve.yaml" << 'EOF'
+scenarios:
+  - name: api_flow
+    steps:
+      - name: ping
+        host: https://httpbin.org/get
+        method: get
+
+execution:
+  stages:
+    - duration: "3s"
+      target_vus: 2
+      ramp: step
+    - duration: "2s"
+      target_vus: 0
+      ramp: linear
+EOF
+
+# YAML config — scenarios, abort_iteration on 500
+cat > "$TMPDIR/config-scenarios-abort.yaml" << 'EOF'
+scenarios:
+  - name: fail_fast
+    on_step_failure: abort_iteration
+    steps:
+      - name: will_fail
+        host: https://httpbin.org/status/500
+        method: get
+      - name: should_skip
+        host: https://httpbin.org/get
+        method: get
+
+execution:
+  request_count: 3
+  concurrency: 2
+EOF
+
+# YAML config — scenarios with JSON output
+cat > "$TMPDIR/config-scenarios-json.yaml" << 'EOF'
+scenarios:
+  - name: simple
+    steps:
+      - name: ping
+        host: https://httpbin.org/get
+
+execution:
+  request_count: 5
+  concurrency: 2
+EOF
+
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 echo "Running functional tests..."
@@ -240,6 +315,54 @@ run_test "thresholds pass" 0 \
 # 11. Thresholds — FAIL (impossible values, expect exit 2)
 run_test "thresholds fail" 2 \
     run --config "$TMPDIR/config-thresholds-fail.yaml"
+
+# 12. Scenarios — fixed mode, weighted distribution
+check_scenarios_fixed() {
+    local file="$1"
+    # Output should contain both scenario names
+    grep -q "Scenario: read_write" "$file" && grep -q "Scenario: status_check" "$file"
+}
+run_test_with_check "scenarios fixed weighted" 0 check_scenarios_fixed \
+    run --config "$TMPDIR/config-scenarios-fixed.yaml"
+
+# 13. Scenarios — curve mode
+check_scenarios_curve() {
+    local file="$1"
+    grep -q "Scenario: api_flow" "$file"
+}
+run_test_with_check "scenarios curve mode" 0 check_scenarios_curve \
+    run --config "$TMPDIR/config-scenarios-curve.yaml"
+
+# 14. Scenarios — abort_iteration skips second step
+check_scenarios_abort() {
+    local file="$1"
+    # Only will_fail should have requests; should_skip should not appear in steps
+    # or should have 0 requests. The simplest check: will_fail appears, and total
+    # failures > 0
+    grep -q "will_fail" "$file" && grep -q "failed" "$file"
+}
+run_test_with_check "scenarios abort_iteration" 0 check_scenarios_abort \
+    run --config "$TMPDIR/config-scenarios-abort.yaml"
+
+# 15. Scenarios — JSON output includes scenarios field
+check_scenarios_json() {
+    local file="$1"
+    jq -e '.scenarios | length > 0' "$file" > /dev/null 2>&1 \
+        && jq -e '.scenarios[0].name == "simple"' "$file" > /dev/null 2>&1 \
+        && jq -e '.scenarios[0].steps | length > 0' "$file" > /dev/null 2>&1
+}
+run_test_with_check "scenarios json output" 0 check_scenarios_json \
+    run --config "$TMPDIR/config-scenarios-json.yaml" \
+    --output json
+
+# 16. Scenarios — per-step stats are present
+check_scenarios_steps() {
+    local file="$1"
+    # Both steps should appear in the output
+    grep -q "post_data" "$file" && grep -q "get_data" "$file"
+}
+run_test_with_check "scenarios per-step stats" 0 check_scenarios_steps \
+    run --config "$TMPDIR/config-scenarios-fixed.yaml"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 
