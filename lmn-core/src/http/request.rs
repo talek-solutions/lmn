@@ -77,6 +77,10 @@ pub struct RequestRecord {
     pub scenario: Option<Arc<str>>,
     /// Optional step name inside a scenario.
     pub step: Option<Arc<str>>,
+    /// True when this record represents a step that was skipped (not executed).
+    /// Skipped records count toward `total_requests` but do not contribute to
+    /// latency histograms or status code distributions.
+    pub skipped: bool,
 }
 
 impl RequestResult {

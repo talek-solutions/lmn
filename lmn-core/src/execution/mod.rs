@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::capture::CaptureDefinition;
 use crate::command::{Body, HttpMethod};
 use crate::config::secret::SensitiveString;
 use crate::histogram::{LatencyHistogram, StatusCodeHistogram};
@@ -59,6 +60,7 @@ pub struct RequestStats {
     pub status_codes: StatusCodeHistogram,
     pub total_requests: u64,
     pub total_failures: u64,
+    pub total_skipped: u64,
 }
 
 impl RequestStats {
@@ -69,6 +71,11 @@ impl RequestStats {
         }
         self.latency.record(duration);
         self.status_codes.record(status_code);
+    }
+
+    pub fn record_skipped(&mut self) {
+        self.total_requests += 1;
+        self.total_skipped += 1;
     }
 }
 
@@ -112,20 +119,32 @@ impl ScenarioMetricsAccumulator {
         duration: Duration,
         success: bool,
         status_code: Option<u16>,
+        skipped: bool,
     ) {
         let Some(scenario_name) = scenario else {
             return;
         };
 
         let scenario = self.scenarios.entry(Arc::clone(scenario_name)).or_default();
-        scenario.requests.record(duration, success, status_code);
 
-        if let Some(step_name) = step {
-            scenario
-                .steps
-                .entry(Arc::clone(step_name))
-                .or_default()
-                .record(duration, success, status_code);
+        if skipped {
+            scenario.requests.record_skipped();
+            if let Some(step_name) = step {
+                scenario
+                    .steps
+                    .entry(Arc::clone(step_name))
+                    .or_default()
+                    .record_skipped();
+            }
+        } else {
+            scenario.requests.record(duration, success, status_code);
+            if let Some(step_name) = step {
+                scenario
+                    .steps
+                    .entry(Arc::clone(step_name))
+                    .or_default()
+                    .record(duration, success, status_code);
+            }
         }
     }
 
@@ -167,6 +186,7 @@ pub(crate) struct DrainMetricsAccumulator {
     pub status_codes: StatusCodeHistogram,
     pub total_requests: u64,
     pub total_failures: u64,
+    pub total_skipped: u64,
     pub response_stats: Option<ResponseStats>,
     scenario_metrics: ScenarioMetricsAccumulator,
 }
@@ -178,6 +198,7 @@ impl DrainMetricsAccumulator {
             status_codes: StatusCodeHistogram::new(),
             total_requests: 0,
             total_failures: 0,
+            total_skipped: 0,
             response_stats: if has_tracked_fields {
                 Some(ResponseStats::new())
             } else {
@@ -189,11 +210,16 @@ impl DrainMetricsAccumulator {
 
     pub fn record_request(&mut self, record: &RequestRecord) {
         self.total_requests += 1;
-        if !record.success {
-            self.total_failures += 1;
+
+        if record.skipped {
+            self.total_skipped += 1;
+        } else {
+            if !record.success {
+                self.total_failures += 1;
+            }
+            self.latency.record(record.duration);
+            self.status_codes.record(record.status_code);
         }
-        self.latency.record(record.duration);
-        self.status_codes.record(record.status_code);
 
         self.scenario_metrics.record(
             record.scenario.as_ref(),
@@ -201,6 +227,7 @@ impl DrainMetricsAccumulator {
             record.duration,
             record.success,
             record.status_code,
+            record.skipped,
         );
     }
 
@@ -236,6 +263,7 @@ pub struct RunStats {
     pub status_codes: StatusCodeHistogram,
     pub total_requests: u64,
     pub total_failures: u64,
+    pub total_skipped: u64,
     pub template_stats: Option<TemplateStats>,
     pub response_stats: Option<ResponseStats>,
     pub curve_stats: Option<CurveStats>,
@@ -264,6 +292,12 @@ pub struct ResolvedStep {
     pub plain_headers: Arc<Vec<(String, String)>>,
     pub request_template: Option<Arc<Template>>,
     pub response_template: Option<Arc<Vec<TrackedField>>>,
+    /// Capture definitions to extract from the response body.
+    pub captures: Vec<CaptureDefinition>,
+    /// Inline request body (mutually exclusive with `request_template`).
+    pub inline_body: Option<Arc<str>>,
+    /// True if any header value contains `{{capture.` references.
+    pub has_capture_headers: bool,
 }
 
 // ── ResolvedScenario ──────────────────────────────────────────────────────────
@@ -340,7 +374,14 @@ mod tests {
     #[test]
     fn scenario_record_none_stays_empty() {
         let mut acc = ScenarioMetricsAccumulator::default();
-        acc.record(None, None, Duration::from_millis(10), true, Some(200));
+        acc.record(
+            None,
+            None,
+            Duration::from_millis(10),
+            true,
+            Some(200),
+            false,
+        );
         assert!(acc.into_stats().is_none());
     }
 
@@ -365,6 +406,7 @@ mod tests {
             Duration::from_millis(10),
             true,
             Some(200),
+            false,
         );
         acc.record(
             Some(&scenario_a),
@@ -372,6 +414,7 @@ mod tests {
             Duration::from_millis(15),
             true,
             Some(200),
+            false,
         );
 
         // 3 requests for scenario B / step login
@@ -381,6 +424,7 @@ mod tests {
             Duration::from_millis(20),
             true,
             Some(200),
+            false,
         );
         acc.record(
             Some(&scenario_b),
@@ -388,6 +432,7 @@ mod tests {
             Duration::from_millis(25),
             true,
             Some(200),
+            false,
         );
         acc.record(
             Some(&scenario_b),
@@ -395,6 +440,7 @@ mod tests {
             Duration::from_millis(30),
             true,
             Some(200),
+            false,
         );
 
         let stats = acc.into_stats().expect("should have scenario stats");
@@ -433,12 +479,61 @@ mod tests {
             extraction: None,
             scenario: None,
             step: None,
+            skipped: false,
         };
 
         acc.record_request(&record);
 
         assert_eq!(acc.total_requests, 1);
         assert!(acc.finalize_scenario_stats().is_none());
+    }
+
+    #[test]
+    fn drain_accumulator_skipped_records() {
+        let mut acc = DrainMetricsAccumulator::new(false);
+
+        let scenario: Arc<str> = Arc::from("checkout");
+        let step: Arc<str> = Arc::from("pay");
+
+        // Normal record
+        let normal = RequestRecord {
+            duration: Duration::from_millis(50),
+            completed_at: Instant::now(),
+            success: true,
+            status_code: Some(200),
+            extraction: None,
+            scenario: Some(Arc::clone(&scenario)),
+            step: Some(Arc::clone(&step)),
+            skipped: false,
+        };
+        acc.record_request(&normal);
+
+        // Skipped record
+        let skipped = RequestRecord {
+            duration: Duration::ZERO,
+            completed_at: Instant::now(),
+            success: false,
+            status_code: None,
+            extraction: None,
+            scenario: Some(Arc::clone(&scenario)),
+            step: Some(Arc::clone(&step)),
+            skipped: true,
+        };
+        acc.record_request(&skipped);
+
+        assert_eq!(acc.total_requests, 2);
+        assert_eq!(acc.total_failures, 0, "skipped records are not failures");
+        assert_eq!(acc.total_skipped, 1);
+
+        let scenarios = acc.finalize_scenario_stats().unwrap();
+        let checkout = &scenarios[0];
+        assert_eq!(checkout.requests.total_requests, 2);
+        assert_eq!(checkout.requests.total_skipped, 1);
+        assert_eq!(checkout.requests.total_failures, 0);
+
+        let pay_step = checkout.steps.iter().find(|s| s.name == "pay").unwrap();
+        assert_eq!(pay_step.requests.total_requests, 2);
+        assert_eq!(pay_step.requests.total_skipped, 1);
     }
 
     // ── assign_scenario ───────────────────────────────────────────────────────

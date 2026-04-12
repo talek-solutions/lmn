@@ -48,7 +48,7 @@ pub fn extract(body: &Value, fields: &[TrackedField]) -> ExtractionResult {
     ExtractionResult { values, mismatches }
 }
 
-fn resolve_path<'a>(value: &'a Value, path: &[String]) -> Option<&'a Value> {
+pub fn resolve_path<'a>(value: &'a Value, path: &[String]) -> Option<&'a Value> {
     let mut current = value;
     for key in path {
         current = current.get(key)?;

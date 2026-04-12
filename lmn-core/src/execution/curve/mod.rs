@@ -39,6 +39,7 @@ pub struct CurveExecutionResult {
     pub status_codes: StatusCodeHistogram,
     pub total_requests: u64,
     pub total_failures: u64,
+    pub total_skipped: u64,
     pub response_stats: Option<ResponseStats>,
     pub stage_stats: Vec<StageStats>,
     pub scenario_stats: Option<Vec<ScenarioStats>>,
@@ -139,13 +140,15 @@ impl CurveExecutor {
                     .unwrap_or_default();
                 let stage_idx = stage_index_at(&drain_stages, elapsed);
 
-                stage_stats[stage_idx].latency.record(record.duration);
-                stage_stats[stage_idx]
-                    .status_codes
-                    .record(record.status_code);
                 stage_stats[stage_idx].total_requests += 1;
-                if !record.success {
-                    stage_stats[stage_idx].total_failures += 1;
+                if !record.skipped {
+                    stage_stats[stage_idx].latency.record(record.duration);
+                    stage_stats[stage_idx]
+                        .status_codes
+                        .record(record.status_code);
+                    if !record.success {
+                        stage_stats[stage_idx].total_failures += 1;
+                    }
                 }
 
                 acc.record_extraction(record.extraction);
@@ -157,6 +160,7 @@ impl CurveExecutor {
                 status_codes: acc.status_codes,
                 total_requests: acc.total_requests,
                 total_failures: acc.total_failures,
+                total_skipped: acc.total_skipped,
                 response_stats: acc.response_stats,
                 stage_stats,
                 scenario_stats,
@@ -215,6 +219,9 @@ impl CurveExecutor {
                                                 .response_template
                                                 .as_ref()
                                                 .map(Arc::clone),
+                                            captures: step.captures.clone(),
+                                            inline_body: step.inline_body.clone(),
+                                            has_capture_headers: step.has_capture_headers,
                                         })
                                         .collect();
                                     ScenarioVu {

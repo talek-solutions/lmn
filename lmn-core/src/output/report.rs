@@ -56,10 +56,18 @@ pub struct RequestSummary {
     pub total: usize,
     pub ok: usize,
     pub failed: usize,
+    /// Number of requests skipped (step not executed due to capture dependency
+    /// failure or iteration abort). `0` in non-scenario runs.
+    #[serde(skip_serializing_if = "is_zero_usize")]
+    pub skipped: usize,
     /// Fraction of failed requests: `failed / total`. `0.0` when `total == 0`.
     pub error_rate: f64,
     /// Requests per second: `total / elapsed_seconds`. `0.0` when elapsed is zero.
     pub throughput_rps: f64,
+}
+
+fn is_zero_usize(v: &usize) -> bool {
+    *v == 0
 }
 
 // ── LatencyStats ──────────────────────────────────────────────────────────────

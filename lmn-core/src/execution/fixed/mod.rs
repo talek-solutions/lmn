@@ -38,6 +38,7 @@ pub struct FixedExecutionResult {
     pub status_codes: StatusCodeHistogram,
     pub total_requests: u64,
     pub total_failures: u64,
+    pub total_skipped: u64,
     pub response_stats: Option<ResponseStats>,
     pub scenario_stats: Option<Vec<ScenarioStats>>,
 }
@@ -110,6 +111,7 @@ impl FixedExecutor {
                     status_codes: acc.status_codes,
                     total_requests: acc.total_requests,
                     total_failures: acc.total_failures,
+                    total_skipped: acc.total_skipped,
                     response_stats: acc.response_stats,
                     scenario_stats,
                 }
@@ -131,6 +133,9 @@ impl FixedExecutor {
                                 plain_headers: Arc::clone(&step.plain_headers),
                                 request_template: step.request_template.as_ref().map(Arc::clone),
                                 response_template: step.response_template.as_ref().map(Arc::clone),
+                                captures: step.captures.clone(),
+                                inline_body: step.inline_body.clone(),
+                                has_capture_headers: step.has_capture_headers,
                             })
                             .collect();
                         ScenarioVu {
@@ -196,6 +201,7 @@ mod tests {
             status_codes: StatusCodeHistogram::new(),
             total_requests: 10,
             total_failures: 1,
+            total_skipped: 0,
             response_stats: None,
             scenario_stats: None,
         };

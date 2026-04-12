@@ -24,6 +24,12 @@ pub struct ScenarioStepConfig {
     pub headers: Option<HashMap<String, String>>,
     pub request_template: Option<String>,
     pub response_template: Option<String>,
+    /// Inline request body. Mutually exclusive with `request_template`.
+    /// Supports `{{capture.KEY}}` injection.
+    pub body: Option<String>,
+    /// Capture definitions: alias → JSON path (`$.`-prefixed).
+    /// Extracts values from the response body for use in subsequent steps.
+    pub capture: Option<HashMap<String, String>>,
 }
 
 fn default_get_method() -> String {
@@ -243,6 +249,37 @@ pub fn parse_config(yaml: &str) -> Result<LumenConfig, ConfigError> {
                         "scenario '{}', step '{}': host must not be empty",
                         scenario.name, step.name
                     )));
+                }
+
+                // body and request_template are mutually exclusive
+                if step.body.is_some() && step.request_template.is_some() {
+                    return Err(ConfigError::ValidationError(format!(
+                        "scenario '{}', step '{}': 'body' and 'request_template' \
+                         are mutually exclusive",
+                        scenario.name, step.name
+                    )));
+                }
+
+                // Validate capture definitions
+                if let Some(ref captures) = step.capture {
+                    for (alias, path) in captures {
+                        if alias.is_empty()
+                            || !alias.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                        {
+                            return Err(ConfigError::ValidationError(format!(
+                                "scenario '{}', step '{}': capture alias '{}' must \
+                                 match [a-zA-Z0-9_]+",
+                                scenario.name, step.name, alias
+                            )));
+                        }
+                        if !path.starts_with("$.") {
+                            return Err(ConfigError::ValidationError(format!(
+                                "scenario '{}', step '{}': capture path '{}' must \
+                                 start with '$.'",
+                                scenario.name, step.name, path
+                            )));
+                        }
+                    }
                 }
             }
         }
@@ -789,6 +826,94 @@ scenarios:
             msg.contains("duplicate step name"),
             "expected duplicate step error, got: {msg}"
         );
+    }
+
+    #[test]
+    fn scenario_step_body_and_request_template_is_error() {
+        let yaml = r#"
+scenarios:
+  - name: browse
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+        method: post
+        body: '{"user": "test"}'
+        request_template: templates/login.json
+"#;
+        let result = parse_config(yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+        let msg = result.err().unwrap().to_string();
+        assert!(msg.contains("mutually exclusive"), "got: {msg}");
+    }
+
+    #[test]
+    fn scenario_step_capture_invalid_alias_is_error() {
+        let yaml = r#"
+scenarios:
+  - name: browse
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+        capture:
+          "bad-alias": "$.data.token"
+"#;
+        let result = parse_config(yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+        let msg = result.err().unwrap().to_string();
+        assert!(msg.contains("capture alias"), "got: {msg}");
+    }
+
+    #[test]
+    fn scenario_step_capture_invalid_path_is_error() {
+        let yaml = r#"
+scenarios:
+  - name: browse
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+        capture:
+          token: "data.token"
+"#;
+        let result = parse_config(yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+        let msg = result.err().unwrap().to_string();
+        assert!(msg.contains("start with '$.'"), "got: {msg}");
+    }
+
+    #[test]
+    fn scenario_step_with_body_parses() {
+        let yaml = r#"
+scenarios:
+  - name: checkout
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+        method: post
+        body: '{"user": "test"}'
+"#;
+        let config = parse_config(yaml).expect("should parse");
+        let step = &config.scenarios.unwrap()[0].steps[0];
+        assert_eq!(step.body.as_deref(), Some("{\"user\": \"test\"}"));
+    }
+
+    #[test]
+    fn scenario_step_with_capture_parses() {
+        let yaml = r#"
+scenarios:
+  - name: checkout
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+        method: post
+        capture:
+          token: "$.data.access_token"
+          user_id: "$.data.user.id"
+"#;
+        let config = parse_config(yaml).expect("should parse");
+        let step = &config.scenarios.unwrap()[0].steps[0];
+        let captures = step.capture.as_ref().unwrap();
+        assert_eq!(captures.len(), 2);
+        assert_eq!(captures["token"], "$.data.access_token");
     }
 
     #[test]

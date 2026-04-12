@@ -63,6 +63,7 @@ mod tests {
                 total: 10,
                 ok: 10,
                 failed: 0,
+                skipped: 0,
                 error_rate: 0.0,
                 throughput_rps: 100.0,
             },

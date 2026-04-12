@@ -133,6 +133,7 @@ impl Vu {
                             extraction,
                             scenario: self.scenario_label.as_ref().map(Arc::clone),
                             step: self.step_label.as_ref().map(Arc::clone),
+                            skipped: false,
                         };
 
                         if self.result_tx.send(record).is_err() {

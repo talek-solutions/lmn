@@ -1,13 +1,18 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Instant;
 
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use crate::capture::{
+    CaptureDefinition, CaptureState, inject_captures, inject_captures_into_headers, value_to_string,
+};
 use crate::execution::OnStepFailure;
 use crate::http::{Request, RequestConfig, RequestRecord};
 use crate::request_template::Template;
+use crate::response_template::extractor::resolve_path;
 use crate::response_template::field::TrackedField;
 
 // ── StepExec ──────────────────────────────────────────────────────────────────
@@ -21,6 +26,12 @@ pub struct StepExec {
     pub request_template: Option<Arc<Template>>,
     /// Tracked fields parsed from the response template, if present.
     pub response_template: Option<Arc<Vec<TrackedField>>>,
+    /// Capture definitions to extract from the response body.
+    pub captures: Vec<CaptureDefinition>,
+    /// Inline request body (mutually exclusive with `request_template`).
+    pub inline_body: Option<Arc<str>>,
+    /// True if any header value contains `{{capture.` references.
+    pub has_capture_headers: bool,
 }
 
 // ── ScenarioVu ────────────────────────────────────────────────────────────────
@@ -63,6 +74,20 @@ impl ScenarioVu {
         }
     }
 
+    /// Emits a skipped `RequestRecord` for the given step.
+    fn emit_skipped(&self, step: &StepExec) {
+        let _ = self.result_tx.send(RequestRecord {
+            duration: std::time::Duration::ZERO,
+            completed_at: Instant::now(),
+            success: false,
+            status_code: None,
+            extraction: None,
+            scenario: Some(Arc::clone(&self.scenario_name)),
+            step: Some(Arc::clone(&step.step_name)),
+            skipped: true,
+        });
+    }
+
     /// Consumes the `ScenarioVu` and spawns it as a Tokio task.
     ///
     /// Returns a `JoinHandle` that resolves when the VU exits — either because
@@ -70,6 +95,8 @@ impl ScenarioVu {
     /// channel is closed.
     pub fn spawn(self) -> JoinHandle<()> {
         tokio::spawn(async move {
+            let mut captures = CaptureState::new();
+
             loop {
                 // Check cancellation before claiming the budget so we don't
                 // consume a unit we won't use.
@@ -82,50 +109,104 @@ impl ScenarioVu {
                     break;
                 }
 
+                // Clear capture state at the start of each iteration.
+                captures.clear();
+
                 // Execute steps sequentially.
-                let mut abort_iteration = false;
-                for step in &self.steps {
+                let mut abort_remaining = false;
+                for (step_idx, step) in self.steps.iter().enumerate() {
                     if self.cancellation_token.is_cancelled() {
                         return;
                     }
 
-                    // Generate request body from the request template, if present.
-                    let body = match step.request_template.as_ref().map(|t| t.generate_one()) {
-                        None => None,
-                        Some(Ok(s)) => Some(s),
-                        Some(Err(e)) => {
-                            tracing::error!(
-                                scenario = %self.scenario_name,
-                                step = %step.step_name,
-                                error = %e,
-                                "template serialization failed, skipping step"
-                            );
-                            continue;
+                    // If a previous step triggered abort, emit skipped for remaining steps.
+                    if abort_remaining {
+                        self.emit_skipped(step);
+                        continue;
+                    }
+
+                    // 1. Generate body (from request_template, inline_body, or none).
+                    let mut body_string: Option<String> =
+                        match step.request_template.as_ref().map(|t| t.generate_one()) {
+                            None => step.inline_body.as_ref().map(|b| b.to_string()),
+                            Some(Ok(s)) => Some(s),
+                            Some(Err(e)) => {
+                                tracing::error!(
+                                    scenario = %self.scenario_name,
+                                    step = %step.step_name,
+                                    error = %e,
+                                    "template serialization failed, skipping step"
+                                );
+                                continue;
+                            }
+                        };
+
+                    // 2. Inject {{capture.KEY}} into body.
+                    if let Some(ref body) = body_string {
+                        match inject_captures(body, &captures) {
+                            Ok(injected) => body_string = Some(injected),
+                            Err(e) => {
+                                tracing::warn!(
+                                    scenario = %self.scenario_name,
+                                    step = %step.step_name,
+                                    error = %e,
+                                    "capture injection into body failed, aborting iteration"
+                                );
+                                // Emit skipped for this step and all remaining, then
+                                // break out of the step loop (no abort_remaining needed).
+                                for remaining in &self.steps[step_idx..] {
+                                    self.emit_skipped(remaining);
+                                }
+                                break;
+                            }
                         }
+                    }
+
+                    // 3. Inject {{capture.KEY}} into headers (if needed).
+                    let headers = if step.has_capture_headers {
+                        match inject_captures_into_headers(&step.plain_headers, &captures) {
+                            Ok(injected) => {
+                                if injected.is_empty() {
+                                    None
+                                } else {
+                                    Some(Arc::new(injected))
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    scenario = %self.scenario_name,
+                                    step = %step.step_name,
+                                    error = %e,
+                                    "capture injection into headers failed, aborting iteration"
+                                );
+                                for remaining in &self.steps[step_idx..] {
+                                    self.emit_skipped(remaining);
+                                }
+                                break;
+                            }
+                        }
+                    } else if step.plain_headers.is_empty() {
+                        None
+                    } else {
+                        Some(Arc::clone(&step.plain_headers))
                     };
 
-                    let resolved = step.request_config.resolve_body(body);
+                    // 4. Build and execute the HTTP request.
+                    // Resolve body through request_config (handles Body::Formatted).
+                    let resolved = step.request_config.resolve_body(body_string);
 
                     let client = step.request_config.client.clone();
                     let url = Arc::clone(&step.request_config.host);
                     let method = step.request_config.method;
                     let tracked_fields = step.response_template.clone();
-                    let capture_body = tracked_fields.is_some();
-
-                    // Only clone the Arc when there are headers — avoids an atomic op on
-                    // the common no-headers path.
-                    let headers = if step.plain_headers.is_empty() {
-                        None
-                    } else {
-                        Some(Arc::clone(&step.plain_headers))
-                    };
+                    let needs_response_body = tracked_fields.is_some() || !step.captures.is_empty();
 
                     let result_fut = async {
                         let mut req = Request::new(client, url, method);
                         if let Some((content, content_type)) = resolved {
                             req = req.body(content, content_type);
                         }
-                        if capture_body {
+                        if needs_response_body {
                             req = req.read_response();
                         }
                         if let Some(h) = headers {
@@ -137,25 +218,35 @@ impl ScenarioVu {
                     tokio::select! {
                         _ = self.cancellation_token.cancelled() => return,
                         result = result_fut => {
-                            // Perform response body extraction inline in the VU before
-                            // sending over the channel, so raw response bodies never
-                            // transit the channel.
+                            // Parse response body once — shared by extraction and capture.
+                            let parsed_body: Option<serde_json::Value> =
+                                result.response_body.as_deref().and_then(|s| {
+                                    serde_json::from_str(s).ok()
+                                });
+
+                            // 5. Extract response_template fields (existing, for stats).
                             let extraction = if let Some(ref fields) = tracked_fields {
-                                if let Some(ref body_str) = result.response_body {
-                                    if let Ok(val) = serde_json::from_str::<serde_json::Value>(body_str) {
-                                        Some(crate::response_template::extractor::extract(&val, fields))
-                                    } else {
-                                        None
-                                    }
-                                } else {
-                                    None
-                                }
+                                parsed_body
+                                    .as_ref()
+                                    .map(|val| crate::response_template::extractor::extract(val, fields))
                             } else {
                                 None
                             };
 
+                            // 6. Extract captures from response JSON.
+                            if !step.captures.is_empty()
+                                && let Some(ref body_val) = parsed_body {
+                                    for cap in &step.captures {
+                                        if let Some(matched) = resolve_path(body_val, &cap.path)
+                                            && let Some(s) = value_to_string(matched) {
+                                                captures.insert(cap.alias.clone(), s);
+                                            }
+                                    }
+                                }
+
                             let step_failed = !result.success;
 
+                            // 7. Send RequestRecord through channel.
                             let record = RequestRecord {
                                 duration: result.duration,
                                 completed_at: result.completed_at,
@@ -164,25 +255,22 @@ impl ScenarioVu {
                                 extraction,
                                 scenario: Some(Arc::clone(&self.scenario_name)),
                                 step: Some(Arc::clone(&step.step_name)),
+                                skipped: false,
                             };
 
                             if self.result_tx.send(record).is_err() {
                                 return;
                             }
 
+                            // 8. If step failed + on_step_failure == AbortIteration → skip remaining.
                             if step_failed
                                 && matches!(self.on_step_failure, OnStepFailure::AbortIteration)
                             {
-                                abort_iteration = true;
-                                break;
+                                abort_remaining = true;
                             }
                         }
                     }
                 }
-
-                // `abort_iteration` is only used to break out of the step loop;
-                // the outer loop always continues to the next iteration.
-                let _ = abort_iteration;
             }
         })
     }
@@ -217,6 +305,9 @@ mod tests {
             plain_headers: Arc::new(vec![]),
             request_template: None,
             response_template: None,
+            captures: vec![],
+            inline_body: None,
+            has_capture_headers: false,
         };
 
         assert_eq!(&*step.step_name, "login");
@@ -250,6 +341,9 @@ mod tests {
                 plain_headers: Arc::new(vec![]),
                 request_template: None,
                 response_template: None,
+                captures: vec![],
+                inline_body: None,
+                has_capture_headers: false,
             }],
             on_step_failure: OnStepFailure::Continue,
             cancellation_token: CancellationToken::new(),

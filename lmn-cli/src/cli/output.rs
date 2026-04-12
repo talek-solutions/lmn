@@ -29,8 +29,9 @@ pub fn print_stats(params: PrintStatsParams<'_>) {
     } = params;
 
     let total = stats.total_requests as usize;
-    let ok = total.saturating_sub(stats.total_failures as usize);
     let fail = stats.total_failures as usize;
+    let skipped = stats.total_skipped as usize;
+    let ok = total.saturating_sub(fail).saturating_sub(skipped);
     let throughput = if stats.elapsed.as_secs_f64() > 0.0 {
         total as f64 / stats.elapsed.as_secs_f64()
     } else {
@@ -88,7 +89,11 @@ pub fn print_stats(params: PrintStatsParams<'_>) {
         RunMode::Curve => println!("  mode       curve"),
         RunMode::Fixed => println!("  mode       fixed"),
     }
-    println!("  requests   {total}  ({ok} ok · {fail} failed)");
+    if skipped > 0 {
+        println!("  requests   {total}  ({ok} ok · {fail} failed · {skipped} skipped)");
+    } else {
+        println!("  requests   {total}  ({ok} ok · {fail} failed)");
+    }
     println!("  duration   {}", fmt_total_duration(stats.elapsed));
     if let Some(ref cs) = stats.curve_stats {
         println!("  curve      {}", fmt_total_duration(cs.duration));
@@ -241,7 +246,8 @@ fn print_scenario_stats(scenarios: &[ScenarioStats], elapsed: Duration, rule: &s
     for scenario in scenarios {
         let total = scenario.requests.total_requests as usize;
         let failed = scenario.requests.total_failures as usize;
-        let ok = total.saturating_sub(failed);
+        let skipped = scenario.requests.total_skipped as usize;
+        let ok = total.saturating_sub(failed).saturating_sub(skipped);
         let throughput = if elapsed.as_secs_f64() > 0.0 {
             total as f64 / elapsed.as_secs_f64()
         } else {
@@ -253,7 +259,11 @@ fn print_scenario_stats(scenarios: &[ScenarioStats], elapsed: Duration, rule: &s
         let p99 = Duration::from_secs_f64(scenario.requests.latency.quantile_ms(0.99) / 1000.0);
 
         println!(" Scenario: {} {rule}", scenario.name);
-        println!("  requests   {total}  ({ok} ok · {failed} failed)");
+        if skipped > 0 {
+            println!("  requests   {total}  ({ok} ok · {failed} failed · {skipped} skipped)");
+        } else {
+            println!("  requests   {total}  ({ok} ok · {failed} failed)");
+        }
         println!("  throughput {throughput:.1} req/s");
         println!(
             "  latency    p50 {} · p95 {} · p99 {}",
@@ -267,6 +277,7 @@ fn print_scenario_stats(scenarios: &[ScenarioStats], elapsed: Duration, rule: &s
             for step in &scenario.steps {
                 let step_total = step.requests.total_requests as usize;
                 let step_failed = step.requests.total_failures as usize;
+                let step_skipped = step.requests.total_skipped as usize;
                 let step_error_rate = if step_total == 0 {
                     0.0
                 } else {
@@ -274,13 +285,24 @@ fn print_scenario_stats(scenarios: &[ScenarioStats], elapsed: Duration, rule: &s
                 };
                 let step_p95 =
                     Duration::from_secs_f64(step.requests.latency.quantile_ms(0.95) / 1000.0);
-                println!(
-                    "    {:<16} {:>6} req  {:>5.1}% err  p95 {}",
-                    step.name,
-                    step_total,
-                    step_error_rate * 100.0,
-                    fmt_latency(step_p95),
-                );
+                if step_skipped > 0 {
+                    println!(
+                        "    {:<16} {:>6} req  {:>5.1}% err  {} skip  p95 {}",
+                        step.name,
+                        step_total,
+                        step_error_rate * 100.0,
+                        step_skipped,
+                        fmt_latency(step_p95),
+                    );
+                } else {
+                    println!(
+                        "    {:<16} {:>6} req  {:>5.1}% err  p95 {}",
+                        step.name,
+                        step_total,
+                        step_error_rate * 100.0,
+                        fmt_latency(step_p95),
+                    );
+                }
             }
         }
         println!();

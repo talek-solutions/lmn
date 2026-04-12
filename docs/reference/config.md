@@ -107,6 +107,16 @@ scenarios:
 | `headers` | map | No | Step-level headers. Merged on top of scenario headers (last-wins, case-insensitive) |
 | `request_template` | path | No | Path to a JSON request body template for this step |
 | `response_template` | path | No | Path to a JSON response extraction template for this step |
+| `body` | string | No | Inline request body string. Mutually exclusive with `request_template`. Supports `{{capture.KEY}}` injection |
+| `capture` | map | No | Capture definitions: alias → JSON path. Aliases must match `[a-zA-Z0-9_]+`. Paths must start with `$.` |
+
+### Capture injection
+
+Step `headers` values and `body` strings support `{{capture.KEY}}` references. The value is replaced at runtime with the string captured from a preceding step's response.
+
+References are validated at config load time: if a step references `{{capture.token}}`, a preceding step must define `capture.token`. Runtime extraction failures (missing JSON path in response) cause the iteration to abort and remaining steps to be marked as skipped.
+
+See [Scenarios guide — Step chaining](../guides/scenarios.md#step-chaining) for examples.
 
 ### Header merge order
 

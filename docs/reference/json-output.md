@@ -48,6 +48,7 @@ The schema is versioned. The current version is `2`.
 | `total` | integer | Total requests sent |
 | `ok` | integer | Requests with a 2xx response |
 | `failed` | integer | Requests with a non-2xx response or connection error |
+| `skipped` | integer | Steps skipped due to capture injection failure or `abort_iteration`. Omitted from JSON when `0` |
 | `error_rate` | float | `failed / total`. `0.0` when `total == 0` |
 | `throughput_rps` | float | `total / elapsed_seconds`. `0.0` when elapsed is zero |
 
@@ -169,7 +170,7 @@ Each entry in `float_fields`:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "run": {
     "mode": "fixed",
     "elapsed_ms": 2074.3,

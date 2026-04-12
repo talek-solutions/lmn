@@ -80,13 +80,17 @@ pub fn error_rate(total_requests: usize, total_failures: usize) -> f64 {
 pub fn request_summary(
     total_requests: usize,
     total_failures: usize,
+    total_skipped: usize,
     elapsed: Duration,
 ) -> RequestSummary {
-    let ok = total_requests.saturating_sub(total_failures);
+    let ok = total_requests
+        .saturating_sub(total_failures)
+        .saturating_sub(total_skipped);
     RequestSummary {
         total: total_requests,
         ok,
         failed: total_failures,
+        skipped: total_skipped,
         error_rate: error_rate(total_requests, total_failures),
         throughput_rps: throughput(total_requests, elapsed),
     }
@@ -207,9 +211,10 @@ pub fn scenario_reports(scenarios: &[ScenarioStats], elapsed: Duration) -> Vec<S
                 .map(|step| {
                     let total = step.requests.total_requests as usize;
                     let failed = step.requests.total_failures as usize;
+                    let skipped = step.requests.total_skipped as usize;
                     ScenarioStepReport {
                         name: step.name.clone(),
-                        requests: request_summary(total, failed, elapsed),
+                        requests: request_summary(total, failed, skipped, elapsed),
                         latency: latency_stats(&step.requests.latency),
                         status_codes: status_code_map(&step.requests.status_codes),
                     }
@@ -218,9 +223,10 @@ pub fn scenario_reports(scenarios: &[ScenarioStats], elapsed: Duration) -> Vec<S
 
             let total = scenario.requests.total_requests as usize;
             let failed = scenario.requests.total_failures as usize;
+            let skipped = scenario.requests.total_skipped as usize;
             ScenarioReport {
                 name: scenario.name.clone(),
-                requests: request_summary(total, failed, elapsed),
+                requests: request_summary(total, failed, skipped, elapsed),
                 latency: latency_stats(&scenario.requests.latency),
                 status_codes: status_code_map(&scenario.requests.status_codes),
                 steps,

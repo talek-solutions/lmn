@@ -126,6 +126,101 @@ steps:
     method: get
 ```
 
+## Step chaining
+
+Steps can capture values from response bodies and inject them into subsequent steps. This enables realistic multi-step flows where each request depends on a previous response — login returns a token, subsequent steps use it.
+
+### Capturing values
+
+Add a `capture` map to a step. Each entry maps an alias to a JSON path (`$.`-prefixed):
+
+```yaml
+- name: login
+  host: https://api.example.com/auth
+  method: post
+  body: '{"email": "test@example.com", "password": "secret"}'
+  capture:
+    token: "$.data.access_token"
+    user_id: "$.data.user.id"
+```
+
+If the response body is `{"data": {"access_token": "abc", "user": {"id": "42"}}}`, then `token` = `"abc"` and `user_id` = `"42"`.
+
+### Injecting captured values
+
+Use `{{capture.KEY}}` in header values or `body` strings of subsequent steps:
+
+```yaml
+- name: get_profile
+  host: https://api.example.com/me
+  method: get
+  headers:
+    Authorization: "Bearer {{capture.token}}"
+
+- name: update_profile
+  host: https://api.example.com/users
+  method: put
+  body: '{"user_id": "{{capture.user_id}}", "name": "New Name"}'
+```
+
+### Inline body vs request template
+
+Steps support two mutually exclusive ways to provide a request body:
+
+- **`request_template`** — a JSON template file with randomised placeholders (e.g. `{{username}}`). Use this when each request needs a unique payload.
+- **`body`** — a static string defined directly in the config. Use this for simple or capture-driven payloads.
+
+Both support `{{capture.KEY}}` injection. Specifying both on the same step is a config error.
+
+### Full example
+
+```yaml
+scenarios:
+  - name: checkout
+    on_step_failure: abort_iteration
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+        method: post
+        body: '{"email": "test@example.com", "password": "secret"}'
+        capture:
+          token: "$.data.access_token"
+          user_id: "$.data.user.id"
+
+      - name: add_to_cart
+        host: https://api.example.com/cart
+        method: post
+        headers:
+          Authorization: "Bearer {{capture.token}}"
+        body: '{"user_id": "{{capture.user_id}}", "item": "widget"}'
+        capture:
+          cart_id: "$.id"
+
+      - name: pay
+        host: https://api.example.com/checkout
+        method: post
+        headers:
+          Authorization: "Bearer {{capture.token}}"
+        body: '{"cart_id": "{{capture.cart_id}}"}'
+
+execution:
+  request_count: 1000
+  concurrency: 10
+```
+
+### Failure handling
+
+If a captured value is missing at injection time (the earlier step failed or the JSON path didn't match), the current iteration **aborts immediately** regardless of `on_step_failure`. Remaining steps are marked as skipped — they appear in metrics with `skipped: true` but don't affect latency or error rate.
+
+Capture references are validated at config load time: referencing `{{capture.token}}` without a preceding step that defines `token` in its `capture` map is a startup error.
+
+### Constraints
+
+- Only response bodies are supported — no capture from response headers.
+- JSON paths use dot notation only (`$.data.user.id`) — no array indexing (`$.items[0]`).
+- All captured values are stored as strings. JSON numbers and booleans are stringified.
+- Capture aliases must match `[a-zA-Z0-9_]+`.
+
 ## Scenarios with load curves
 
 Scenarios work with curve mode. The curve controls how many VUs are active; each VU runs its assigned scenario.

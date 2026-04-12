@@ -161,6 +161,7 @@ mod tests {
             status_codes,
             total_requests: 100,
             total_failures: 5,
+            total_skipped: 0,
             template_stats: None,
             response_stats: None,
             curve_stats: None,

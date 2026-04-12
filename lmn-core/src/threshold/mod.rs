@@ -62,6 +62,7 @@ mod tests {
             status_codes,
             total_requests: total,
             total_failures: failed,
+            total_skipped: 0,
             template_stats: None,
             response_stats: None,
             curve_stats: None,

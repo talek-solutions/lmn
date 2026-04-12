@@ -93,6 +93,7 @@ async fn execute_fixed(
                 status_codes: result.status_codes,
                 total_requests: result.total_requests,
                 total_failures: result.total_failures,
+                total_skipped: result.total_skipped,
                 template_stats: None,
                 response_stats: result.response_stats,
                 curve_stats: None,
@@ -159,6 +160,7 @@ async fn execute_fixed_scenarios(
         status_codes: result.status_codes,
         total_requests: result.total_requests,
         total_failures: result.total_failures,
+        total_skipped: result.total_skipped,
         template_stats: None,
         response_stats: result.response_stats,
         curve_stats: None,
@@ -232,6 +234,7 @@ async fn execute_curve(
                 status_codes: curve_result.status_codes,
                 total_requests: curve_result.total_requests,
                 total_failures: curve_result.total_failures,
+                total_skipped: curve_result.total_skipped,
                 template_stats: None,
                 response_stats: curve_result.response_stats,
                 curve_stats: Some(CurveStats {
@@ -299,6 +302,7 @@ async fn execute_curve_scenarios(
         status_codes: curve_result.status_codes,
         total_requests: curve_result.total_requests,
         total_failures: curve_result.total_failures,
+        total_skipped: curve_result.total_skipped,
         template_stats: None,
         response_stats: curve_result.response_stats,
         curve_stats: Some(CurveStats {
@@ -328,6 +332,7 @@ mod tests {
             status_codes: StatusCodeHistogram::new(),
             total_requests: 10,
             total_failures: 0,
+            total_skipped: 0,
             template_stats: None,
             response_stats: None,
             curve_stats: None,
@@ -345,6 +350,7 @@ mod tests {
             status_codes: StatusCodeHistogram::new(),
             total_requests: 100,
             total_failures: 2,
+            total_skipped: 0,
             template_stats: None,
             response_stats: None,
             curve_stats: Some(CurveStats {

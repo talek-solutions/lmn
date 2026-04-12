@@ -51,7 +51,8 @@ impl RunReport {
                 .map(|ts| ts.generation_duration.as_secs_f64() * 1000.0),
         };
 
-        let requests = request_summary(total, failed, stats.elapsed);
+        let skipped = stats.total_skipped as usize;
+        let requests = request_summary(total, failed, skipped, stats.elapsed);
 
         let latency = latency_stats(&stats.latency);
         let status_codes = status_code_map(&stats.status_codes);
@@ -99,6 +100,7 @@ mod tests {
             status_codes: StatusCodeHistogram::new(),
             total_requests,
             total_failures,
+            total_skipped: 0,
             template_stats: None,
             response_stats: None,
             curve_stats: if mode == RunMode::Curve {
