@@ -148,8 +148,9 @@ If the response body is `{"data": {"access_token": "abc", "user": {"id": "42"}}}
 
 ### Injecting captured values
 
-Use `{{capture.KEY}}` in header values or `body` strings of subsequent steps:
+Use `{% raw %}{{capture.KEY}}{% endraw %}` in header values or `body` strings of subsequent steps:
 
+{% raw %}
 ```yaml
 - name: get_profile
   host: https://api.example.com/me
@@ -162,18 +163,22 @@ Use `{{capture.KEY}}` in header values or `body` strings of subsequent steps:
   method: put
   body: '{"user_id": "{{capture.user_id}}", "name": "New Name"}'
 ```
+{% endraw %}
 
 ### Inline body vs request template
 
 Steps support two mutually exclusive ways to provide a request body:
 
+{% raw %}
 - **`request_template`** — a JSON template file with randomised placeholders (e.g. `{{username}}`). Use this when each request needs a unique payload.
 - **`body`** — a static string defined directly in the config. Use this for simple or capture-driven payloads.
 
 Both support `{{capture.KEY}}` injection. Specifying both on the same step is a config error.
+{% endraw %}
 
 ### Full example
 
+{% raw %}
 ```yaml
 scenarios:
   - name: checkout
@@ -207,12 +212,13 @@ execution:
   request_count: 1000
   concurrency: 10
 ```
+{% endraw %}
 
 ### Failure handling
 
 If a captured value is missing at injection time (the earlier step failed or the JSON path didn't match), the current iteration **aborts immediately** regardless of `on_step_failure`. Remaining steps are marked as skipped — they appear in metrics with `skipped: true` but don't affect latency or error rate.
 
-Capture references are validated at config load time: referencing `{{capture.token}}` without a preceding step that defines `token` in its `capture` map is a startup error.
+Capture references are validated at config load time: referencing `{% raw %}{{capture.token}}{% endraw %}` without a preceding step that defines `token` in its `capture` map is a startup error.
 
 ### Constraints
 
@@ -267,3 +273,7 @@ JSON output includes the same data under the `scenarios` key.
 ## Full reference
 
 See [Config File Reference](../reference/config.md#scenarios) for every field, type, and constraint.
+
+## How it works under the hood
+
+For the engine-level view — VU-to-scenario assignment, iteration loop, capture state lifecycle, header merging, and startup validation pipeline (with diagrams) — see [Scenarios Internals](scenarios-internals.md).

@@ -11,6 +11,46 @@ const MAX_REQUEST_COUNT: usize = 100_000_000;
 const MAX_HEADERS: usize = 64;
 const MAX_HEADER_NAME_LEN: usize = 256;
 const MAX_HEADER_VALUE_LEN: usize = 8192;
+/// Maximum number of scenarios per config.
+///
+/// Combined with `MAX_SCENARIO_WEIGHT`, bounds the total weight sum well
+/// below `u32::MAX`, preventing integer overflow in `assign_scenario`.
+const MAX_SCENARIOS: usize = 64;
+/// Maximum weight value for a single scenario.
+const MAX_SCENARIO_WEIGHT: u32 = 10_000;
+/// Maximum inline step body size, in bytes. Guards the config parser against
+/// pathological inputs and gives predictable memory behaviour per-VU.
+const MAX_BODY_LEN: usize = 1_048_576;
+
+// ── Header validation helper ──────────────────────────────────────────────────
+
+/// Validates a header map against `MAX_HEADERS`, `MAX_HEADER_NAME_LEN`,
+/// and `MAX_HEADER_VALUE_LEN`. `context` is prepended to error messages to
+/// identify where the invalid header lives (e.g. "scenario 'checkout' headers").
+fn validate_headers_map(
+    headers: &HashMap<String, String>,
+    context: &str,
+) -> Result<(), ConfigError> {
+    if headers.len() > MAX_HEADERS {
+        return Err(ConfigError::ValidationError(format!(
+            "{context}: headers count {} exceeds maximum ({MAX_HEADERS})",
+            headers.len()
+        )));
+    }
+    for (name, value) in headers {
+        if name.len() > MAX_HEADER_NAME_LEN {
+            return Err(ConfigError::ValidationError(format!(
+                "{context}: header name '{name}' exceeds maximum length ({MAX_HEADER_NAME_LEN})"
+            )));
+        }
+        if value.len() > MAX_HEADER_VALUE_LEN {
+            return Err(ConfigError::ValidationError(format!(
+                "{context}: header value for '{name}' exceeds maximum length ({MAX_HEADER_VALUE_LEN})"
+            )));
+        }
+    }
+    Ok(())
+}
 
 // ── ScenarioStepConfig ────────────────────────────────────────────────────────
 
@@ -143,6 +183,12 @@ pub fn parse_config(yaml: &str) -> Result<LumenConfig, ConfigError> {
 
     // Validate scenarios if present.
     if let Some(ref scenarios) = config.scenarios {
+        if scenarios.len() > MAX_SCENARIOS {
+            return Err(ConfigError::ValidationError(format!(
+                "scenarios count {} exceeds maximum ({MAX_SCENARIOS})",
+                scenarios.len()
+            )));
+        }
         // Scenarios are mutually exclusive with run.host, run.method, top-level templates.
         if config.run.as_ref().and_then(|r| r.host.as_ref()).is_some() {
             return Err(ConfigError::ValidationError(
@@ -197,13 +243,24 @@ pub fn parse_config(yaml: &str) -> Result<LumenConfig, ConfigError> {
             }
             seen_names.push(scenario.name.clone());
 
-            if let Some(w) = scenario.weight
-                && w < 1
-            {
-                return Err(ConfigError::ValidationError(format!(
-                    "scenario '{}': weight must be >= 1, got {w}",
-                    scenario.name
-                )));
+            if let Some(w) = scenario.weight {
+                if w < 1 {
+                    return Err(ConfigError::ValidationError(format!(
+                        "scenario '{}': weight must be >= 1, got {w}",
+                        scenario.name
+                    )));
+                }
+                if w > MAX_SCENARIO_WEIGHT {
+                    return Err(ConfigError::ValidationError(format!(
+                        "scenario '{}': weight {w} exceeds maximum ({MAX_SCENARIO_WEIGHT})",
+                        scenario.name
+                    )));
+                }
+            }
+
+            // Validate scenario-level headers.
+            if let Some(ref headers) = scenario.headers {
+                validate_headers_map(headers, &format!("scenario '{}' headers", scenario.name))?;
             }
 
             if let Some(ref osf) = scenario.on_step_failure
@@ -260,6 +317,26 @@ pub fn parse_config(yaml: &str) -> Result<LumenConfig, ConfigError> {
                     )));
                 }
 
+                // Validate inline body size
+                if let Some(ref body) = step.body
+                    && body.len() > MAX_BODY_LEN
+                {
+                    return Err(ConfigError::ValidationError(format!(
+                        "scenario '{}', step '{}': body length {} exceeds maximum ({MAX_BODY_LEN})",
+                        scenario.name,
+                        step.name,
+                        body.len()
+                    )));
+                }
+
+                // Validate step-level headers.
+                if let Some(ref headers) = step.headers {
+                    validate_headers_map(
+                        headers,
+                        &format!("scenario '{}', step '{}' headers", scenario.name, step.name),
+                    )?;
+                }
+
                 // Validate capture definitions
                 if let Some(ref captures) = step.capture {
                     for (alias, path) in captures {
@@ -286,28 +363,10 @@ pub fn parse_config(yaml: &str) -> Result<LumenConfig, ConfigError> {
     }
 
     // Validate numeric bounds.
-    if let Some(ref run) = config.run {
-        // Validate headers if present.
-        if let Some(ref headers) = run.headers {
-            if headers.len() > MAX_HEADERS {
-                return Err(ConfigError::ValidationError(format!(
-                    "headers count {} exceeds maximum ({MAX_HEADERS})",
-                    headers.len()
-                )));
-            }
-            for (name, value) in headers {
-                if name.len() > MAX_HEADER_NAME_LEN {
-                    return Err(ConfigError::ValidationError(format!(
-                        "header name '{name}' exceeds maximum length ({MAX_HEADER_NAME_LEN})"
-                    )));
-                }
-                if value.len() > MAX_HEADER_VALUE_LEN {
-                    return Err(ConfigError::ValidationError(format!(
-                        "header value for '{name}' exceeds maximum length ({MAX_HEADER_VALUE_LEN})"
-                    )));
-                }
-            }
-        }
+    if let Some(ref run) = config.run
+        && let Some(ref headers) = run.headers
+    {
+        validate_headers_map(headers, "run.headers")?;
     }
     if let Some(ref exec) = config.execution {
         if let Some(v) = exec.request_count
@@ -927,5 +986,158 @@ scenarios:
 "#;
         let result = parse_config(yaml);
         assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+    }
+
+    // ── scenario size-cap tests ───────────────────────────────────────────────
+
+    #[test]
+    fn scenario_weight_above_max_is_error() {
+        let yaml = format!(
+            r#"
+scenarios:
+  - name: browse
+    weight: {}
+    steps:
+      - name: list
+        host: https://api.example.com/products
+"#,
+            MAX_SCENARIO_WEIGHT + 1
+        );
+        let result = parse_config(&yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+        let msg = result.err().unwrap().to_string();
+        assert!(
+            msg.contains("exceeds maximum"),
+            "expected weight cap error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn scenario_weight_at_max_is_ok() {
+        let yaml = format!(
+            r#"
+scenarios:
+  - name: browse
+    weight: {}
+    steps:
+      - name: list
+        host: https://api.example.com/products
+"#,
+            MAX_SCENARIO_WEIGHT
+        );
+        parse_config(&yaml).expect("weight at max should be accepted");
+    }
+
+    #[test]
+    fn scenario_weight_u32_max_does_not_panic() {
+        // Regression for VULN-002: u32::MAX + 1 would wrap total_weight to 0
+        // in release and panic on `% 0`. Parse-time cap makes this unreachable.
+        let yaml = format!(
+            r#"
+scenarios:
+  - name: a
+    weight: {}
+    steps:
+      - name: list
+        host: https://api.example.com/a
+  - name: b
+    weight: 1
+    steps:
+      - name: list
+        host: https://api.example.com/b
+"#,
+            u32::MAX
+        );
+        let result = parse_config(&yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+    }
+
+    #[test]
+    fn scenarios_above_max_count_is_error() {
+        let mut yaml = String::from("scenarios:\n");
+        for i in 0..=MAX_SCENARIOS {
+            yaml.push_str(&format!(
+                "  - name: s{i}\n    steps:\n      - name: list\n        host: https://api.example.com/{i}\n"
+            ));
+        }
+        let result = parse_config(&yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+        let msg = result.err().unwrap().to_string();
+        assert!(
+            msg.contains("scenarios count"),
+            "expected scenarios count error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn scenario_step_body_above_max_len_is_error() {
+        let big = "x".repeat(MAX_BODY_LEN + 1);
+        let yaml = format!(
+            r#"
+scenarios:
+  - name: checkout
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+        method: post
+        body: "{big}"
+"#,
+        );
+        let result = parse_config(&yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+        let msg = result.err().unwrap().to_string();
+        assert!(
+            msg.contains("body length"),
+            "expected body length error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn scenario_headers_count_above_max_is_error() {
+        let mut headers = String::new();
+        for i in 0..=MAX_HEADERS {
+            headers.push_str(&format!("      H{i}: v\n"));
+        }
+        let yaml = format!(
+            r#"
+scenarios:
+  - name: checkout
+    headers:
+{headers}
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+"#,
+        );
+        let result = parse_config(&yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+        let msg = result.err().unwrap().to_string();
+        assert!(
+            msg.contains("scenario 'checkout' headers"),
+            "expected scenario header context in error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn scenario_step_header_value_above_max_len_is_error() {
+        let big = "x".repeat(MAX_HEADER_VALUE_LEN + 1);
+        let yaml = format!(
+            r#"
+scenarios:
+  - name: checkout
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+        headers:
+          X-Big: "{big}"
+"#,
+        );
+        let result = parse_config(&yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+        let msg = result.err().unwrap().to_string();
+        assert!(
+            msg.contains("step 'login' headers"),
+            "expected step header context in error, got: {msg}"
+        );
     }
 }

@@ -17,8 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`scenarios` field in JSON output** — new top-level array in the report schema with nested step data.
 - **ScenarioVu execution engine** — new VU type that loops through steps sequentially, with budget claiming per iteration (not per request) in fixed mode.
 - **ScenarioResolver** — structured config resolution with `${ENV_VAR}` expansion, method parsing, and template loading per step.
-- **Scenario config validation** — scenarios are mutually exclusive with `run.host`/`run.method`; unique names enforced; weight >= 1.
-- Scenarios guide, recipe, and config reference documentation.
+- **Scenario config validation** — scenarios are mutually exclusive with `run.host`/`run.method`; unique names enforced; weight in [1, 10_000]; scenarios count capped at 64.
+- **Step chaining with response captures** — new `capture` map on steps extracts values from response bodies via JSON paths (`$.data.access_token`) into a per-iteration, per-VU `CaptureState`. Captured values are injected into subsequent step headers, inline bodies, and template output via `{{capture.KEY}}` placeholders. Captures are string-valued (objects/arrays stringified as compact JSON).
+- **Inline `body` field on steps** — mutually exclusive with `request_template`. Supports `{{capture.KEY}}` injection and is capped at 1 MiB.
+- **Startup static validation of capture references** — during config resolution, every `{{capture.KEY}}` reference in step headers and bodies is checked against the cumulative set of aliases defined by preceding steps. Undefined references fail the run before any load is generated.
+- **Skipped-step accounting** — new `skipped: bool` field on `RequestRecord` and `total_skipped: u64` on `RequestStats`. Steps skipped due to unresolvable captures or `abort_iteration` emit skipped records that contribute to request counts but not to latency histograms or status-code breakdowns. Surfaced in both CLI output (`0 skip`) and JSON output (`requests.skipped`).
+- **Dependency-aware iteration abort** — if a step references `{{capture.KEY}}` that isn't in the capture state (prior step failed or server omitted the field), the iteration aborts immediately regardless of `on_step_failure`.
+- Scenarios guide, recipe, and config reference documentation (including the capture feature and size caps).
 - 5 new functional tests covering scenarios in fixed, curve, abort, JSON output, and per-step stats modes.
 
 ### Changed

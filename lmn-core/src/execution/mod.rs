@@ -349,13 +349,29 @@ pub enum ExecutionMode {
 /// For example, with weights `[3, 1]` and 8 VUs: VUs 0–2 → scenario 0,
 /// VU 3 → scenario 1, VU 4–6 → scenario 0, VU 7 → scenario 1.
 ///
+/// Parse-time caps (`MAX_SCENARIOS` × `MAX_SCENARIO_WEIGHT`) keep the total
+/// weight well inside `u32`. As defense in depth for programmatic callers that
+/// bypass `parse_config`, the running sum is accumulated as `u64` and we fall
+/// back to `vu_index % scenarios.len()` if the total weight does not fit or is
+/// zero. The `vu_index` is also widened to `u64` to avoid truncation on
+/// 64-bit platforms.
+///
 /// Panics if `scenarios` is empty — callers must ensure at least one scenario exists.
 pub fn assign_scenario(vu_index: usize, scenarios: &[ResolvedScenario]) -> usize {
-    let total_weight: u32 = scenarios.iter().map(|s| s.weight).sum();
-    let slot = (vu_index as u32) % total_weight;
-    let mut cumulative = 0u32;
+    // Accumulate in u64 to make overflow impossible for any realistic number
+    // of scenarios. Saturate on the (unreachable under parse-time caps) overflow.
+    let total_weight: u64 = scenarios
+        .iter()
+        .fold(0u64, |acc, s| acc.saturating_add(s.weight as u64));
+    if total_weight == 0 {
+        // Pathological input (zero weights, or empty after caps). Fall back to
+        // a deterministic round-robin across scenario indices.
+        return vu_index % scenarios.len();
+    }
+    let slot = (vu_index as u64) % total_weight;
+    let mut cumulative: u64 = 0;
     for (i, s) in scenarios.iter().enumerate() {
-        cumulative += s.weight;
+        cumulative = cumulative.saturating_add(s.weight as u64);
         if slot < cumulative {
             return i;
         }
@@ -582,6 +598,35 @@ mod tests {
         for i in 0..8 {
             assert_eq!(assign_scenario(i, &scenarios), i % 2);
         }
+    }
+
+    #[test]
+    fn assign_scenario_u32_max_weights_does_not_panic() {
+        // Regression for VULN-002: with the old u32 accumulator, summing two
+        // `u32::MAX` weights would wrap to 0xFFFF_FFFE in release (or panic in
+        // debug) and `% 0` could crash. The u64 accumulator handles it safely;
+        // parse_config's cap prevents this shape of input in practice, but the
+        // function itself is public and callable by library users bypassing
+        // parse_config.
+        let scenarios = vec![make_scenario("A", u32::MAX), make_scenario("B", u32::MAX)];
+        // Should not panic. Any index in [0, 2) is acceptable — we just need
+        // the function to terminate cleanly.
+        let assignment = assign_scenario(0, &scenarios);
+        assert!(assignment < 2);
+        let assignment = assign_scenario(usize::MAX, &scenarios);
+        assert!(assignment < 2);
+    }
+
+    #[test]
+    fn assign_scenario_zero_weights_falls_back_to_round_robin() {
+        // Pathological input: every scenario has weight 0 (not reachable via
+        // parse_config, but possible via programmatic ResolvedScenario
+        // construction). Must not divide-by-zero.
+        let scenarios = vec![make_scenario("A", 0), make_scenario("B", 0)];
+        assert_eq!(assign_scenario(0, &scenarios), 0);
+        assert_eq!(assign_scenario(1, &scenarios), 1);
+        assert_eq!(assign_scenario(2, &scenarios), 0);
+        assert_eq!(assign_scenario(3, &scenarios), 1);
     }
 }
 
