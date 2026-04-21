@@ -18,6 +18,12 @@ const MAX_HEADER_VALUE_LEN: usize = 8192;
 const MAX_SCENARIOS: usize = 64;
 /// Maximum weight value for a single scenario.
 const MAX_SCENARIO_WEIGHT: u32 = 10_000;
+/// Maximum number of steps per scenario.
+const MAX_STEPS_PER_SCENARIO: usize = 128;
+/// Maximum number of capture definitions per step.
+const MAX_CAPTURES_PER_STEP: usize = 32;
+/// Maximum length of a capture alias.
+const MAX_CAPTURE_ALIAS_LEN: usize = 64;
 /// Maximum inline step body size, in bytes. Guards the config parser against
 /// pathological inputs and gives predictable memory behaviour per-VU.
 const MAX_BODY_LEN: usize = 1_048_576;
@@ -280,6 +286,13 @@ pub fn parse_config(yaml: &str) -> Result<LumenConfig, ConfigError> {
                     scenario.name
                 )));
             }
+            if scenario.steps.len() > MAX_STEPS_PER_SCENARIO {
+                return Err(ConfigError::ValidationError(format!(
+                    "scenario '{}': steps count {} exceeds maximum ({MAX_STEPS_PER_SCENARIO})",
+                    scenario.name,
+                    scenario.steps.len()
+                )));
+            }
 
             let mut seen_step_names: Vec<String> = Vec::new();
             for step in &scenario.steps {
@@ -339,6 +352,15 @@ pub fn parse_config(yaml: &str) -> Result<LumenConfig, ConfigError> {
 
                 // Validate capture definitions
                 if let Some(ref captures) = step.capture {
+                    if captures.len() > MAX_CAPTURES_PER_STEP {
+                        return Err(ConfigError::ValidationError(format!(
+                            "scenario '{}', step '{}': captures count {} exceeds \
+                             maximum ({MAX_CAPTURES_PER_STEP})",
+                            scenario.name,
+                            step.name,
+                            captures.len()
+                        )));
+                    }
                     for (alias, path) in captures {
                         if alias.is_empty()
                             || !alias.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
@@ -346,6 +368,13 @@ pub fn parse_config(yaml: &str) -> Result<LumenConfig, ConfigError> {
                             return Err(ConfigError::ValidationError(format!(
                                 "scenario '{}', step '{}': capture alias '{}' must \
                                  match [a-zA-Z0-9_]+",
+                                scenario.name, step.name, alias
+                            )));
+                        }
+                        if alias.len() > MAX_CAPTURE_ALIAS_LEN {
+                            return Err(ConfigError::ValidationError(format!(
+                                "scenario '{}', step '{}': capture alias '{}' exceeds \
+                                 maximum length ({MAX_CAPTURE_ALIAS_LEN})",
                                 scenario.name, step.name, alias
                             )));
                         }
@@ -1138,6 +1167,85 @@ scenarios:
         assert!(
             msg.contains("step 'login' headers"),
             "expected step header context in error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn scenario_steps_above_max_count_is_error() {
+        let mut steps = String::new();
+        for i in 0..=MAX_STEPS_PER_SCENARIO {
+            steps.push_str(&format!(
+                "      - name: s{i}\n        host: https://api.example.com/{i}\n"
+            ));
+        }
+        let yaml = format!("scenarios:\n  - name: big\n    steps:\n{steps}");
+        let result = parse_config(&yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+        let msg = result.err().unwrap().to_string();
+        assert!(
+            msg.contains("steps count"),
+            "expected steps count error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn scenario_steps_at_max_count_is_ok() {
+        let mut steps = String::new();
+        for i in 0..MAX_STEPS_PER_SCENARIO {
+            steps.push_str(&format!(
+                "      - name: s{i}\n        host: https://api.example.com/{i}\n"
+            ));
+        }
+        let yaml = format!("scenarios:\n  - name: big\n    steps:\n{steps}");
+        parse_config(&yaml).expect("steps at max should be accepted");
+    }
+
+    #[test]
+    fn scenario_captures_above_max_count_is_error() {
+        let mut captures = String::new();
+        for i in 0..=MAX_CAPTURES_PER_STEP {
+            captures.push_str(&format!("          cap{i}: \"$.field{i}\"\n"));
+        }
+        let yaml = format!(
+            r#"
+scenarios:
+  - name: checkout
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+        capture:
+{captures}
+"#,
+        );
+        let result = parse_config(&yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+        let msg = result.err().unwrap().to_string();
+        assert!(
+            msg.contains("captures count"),
+            "expected captures count error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn scenario_capture_alias_too_long_is_error() {
+        let long_alias = "a".repeat(MAX_CAPTURE_ALIAS_LEN + 1);
+        let yaml = format!(
+            r#"
+scenarios:
+  - name: checkout
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+        capture:
+          {long_alias}: "$.data.token"
+"#,
+        );
+        let result = parse_config(&yaml);
+        assert!(matches!(result, Err(ConfigError::ValidationError(_))));
+        let msg = result.err().unwrap().to_string();
+        assert!(
+            msg.contains("exceeds maximum length"),
+            "expected alias length error, got: {msg}"
         );
     }
 }

@@ -135,9 +135,12 @@ impl ScenarioVu {
                                     scenario = %self.scenario_name,
                                     step = %step.step_name,
                                     error = %e,
-                                    "template serialization failed, skipping step"
+                                    "template serialization failed, aborting iteration"
                                 );
-                                continue;
+                                for remaining in &self.steps[step_idx..] {
+                                    self.emit_skipped(remaining);
+                                }
+                                break;
                             }
                         };
 

@@ -77,13 +77,30 @@ pub fn parse_json_path(path: &str) -> Result<Vec<String>, String> {
 /// - `Bool(b)` → `b.to_string()`
 /// - `Null` → `None` (capture not inserted)
 /// - `Object` / `Array` → compact JSON via `serde_json::to_string()`
+///
+/// Control characters (`\r`, `\n`, `\0`) are stripped from the result to
+/// prevent HTTP header injection when captured values are injected into
+/// subsequent request headers. This is defense-in-depth — `reqwest` also
+/// rejects bare CRLF in header values, but we sanitize here to keep the
+/// invariant close to the data source.
 pub fn value_to_string(value: &Value) -> Option<String> {
-    match value {
+    let raw = match value {
         Value::String(s) => Some(s.clone()),
         Value::Number(n) => Some(n.to_string()),
         Value::Bool(b) => Some(b.to_string()),
-        Value::Null => None,
+        Value::Null => return None,
         other => serde_json::to_string(other).ok(),
+    };
+    raw.map(sanitize_captured_value)
+}
+
+/// Strips control characters that could cause HTTP header injection or
+/// request smuggling if a captured value is later injected into headers.
+fn sanitize_captured_value(s: String) -> String {
+    if s.bytes().any(|b| b == b'\r' || b == b'\n' || b == b'\0') {
+        s.replace(['\r', '\n', '\0'], "")
+    } else {
+        s
     }
 }
 
@@ -334,6 +351,31 @@ mod tests {
     }
 
     // ── CaptureState ─────────────────────────────────────────────────────────
+
+    // ── sanitize_captured_value ───────────────────────────────────────────
+
+    #[test]
+    fn value_to_string_strips_crlf() {
+        let val = json!("evil\r\nX-Injected: true");
+        assert_eq!(
+            value_to_string(&val),
+            Some("evilX-Injected: true".to_string())
+        );
+    }
+
+    #[test]
+    fn value_to_string_strips_null_byte() {
+        let val = json!("hello\0world");
+        assert_eq!(value_to_string(&val), Some("helloworld".to_string()));
+    }
+
+    #[test]
+    fn value_to_string_clean_string_unchanged() {
+        let val = json!("clean-value");
+        assert_eq!(value_to_string(&val), Some("clean-value".to_string()));
+    }
+
+    // ── CaptureState ─────────────────────────────────────────────────────
 
     #[test]
     fn capture_state_clear() {

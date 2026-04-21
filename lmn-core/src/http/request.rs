@@ -6,6 +6,11 @@ use crate::command::{Body, HttpMethod};
 use crate::config::secret::SensitiveString;
 use crate::response_template::field::TrackedField;
 
+/// Maximum response body size read into memory for capture extraction or
+/// response template processing. Prevents OOM when a target server returns
+/// unexpectedly large responses (e.g. 100 VUs × 100 MB = 10 GB).
+const MAX_RESPONSE_BODY_SIZE: usize = 10 * 1024 * 1024; // 10 MiB
+
 // ── Body format ───────────────────────────────────────────────────────────────
 
 pub enum BodyFormat {
@@ -168,7 +173,22 @@ impl Request {
             Ok(resp) => {
                 let status = resp.status();
                 let response_body = if self.capture_response {
-                    resp.text().await.ok()
+                    // Pre-check content-length when available to reject oversized
+                    // responses before buffering. Chunked responses without
+                    // content-length fall through to the post-read check.
+                    let too_large = resp
+                        .content_length()
+                        .is_some_and(|len| len > MAX_RESPONSE_BODY_SIZE as u64);
+                    if too_large {
+                        None
+                    } else {
+                        match resp.bytes().await {
+                            Ok(bytes) if bytes.len() <= MAX_RESPONSE_BODY_SIZE => {
+                                String::from_utf8(bytes.to_vec()).ok()
+                            }
+                            _ => None,
+                        }
+                    }
                 } else {
                     None
                 };
