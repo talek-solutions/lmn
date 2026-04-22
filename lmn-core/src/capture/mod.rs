@@ -236,7 +236,7 @@ mod tests {
 
     #[test]
     fn value_to_string_float() {
-        assert_eq!(value_to_string(&json!(3.14)), Some("3.14".to_string()));
+        assert_eq!(value_to_string(&json!(2.72)), Some("2.72".to_string()));
     }
 
     #[test]

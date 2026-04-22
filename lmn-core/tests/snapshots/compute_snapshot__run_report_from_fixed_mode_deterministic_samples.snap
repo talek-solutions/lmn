@@ -1,0 +1,42 @@
+---
+source: lmn-core/tests/compute_snapshot.rs
+assertion_line: 85
+expression: report
+---
+{
+  "version": 2,
+  "run": {
+    "mode": "fixed",
+    "elapsed_ms": 10000.0,
+    "curve_duration_ms": null,
+    "template_generation_ms": null
+  },
+  "requests": {
+    "total": 100,
+    "ok": 95,
+    "failed": 5,
+    "error_rate": 0.05,
+    "throughput_rps": 10.0
+  },
+  "latency": {
+    "min_ms": 5.0,
+    "p10_ms": 5.003,
+    "p25_ms": 5.003,
+    "p50_ms": 5.003,
+    "p75_ms": 20.015,
+    "p90_ms": 50.015,
+    "p95_ms": 50.015,
+    "p99_ms": 200.063,
+    "max_ms": 200.063,
+    "avg_ms": 26.003400000000003
+  },
+  "status_codes": {
+    "200": 95,
+    "500": 3,
+    "error": 2
+  },
+  "response_stats": null,
+  "curve_stages": null,
+  "scenarios": null,
+  "thresholds": null
+}

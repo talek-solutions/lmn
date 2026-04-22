@@ -379,6 +379,38 @@ pub fn assign_scenario(vu_index: usize, scenarios: &[ResolvedScenario]) -> usize
     scenarios.len() - 1
 }
 
+pub(crate) fn resolve_tracked_fields(
+    path: Option<PathBuf>,
+) -> Result<Option<Arc<Vec<TrackedField>>>, Box<dyn std::error::Error>> {
+    path.map(|p| {
+        ResponseTemplate::parse(&p)
+            .map(|rt| Arc::new(rt.fields))
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+    })
+    .transpose()
+}
+
+pub(crate) fn build_request_config(
+    host: String,
+    method: HttpMethod,
+    body: Option<Body>,
+    tracked_fields: Option<Arc<Vec<TrackedField>>>,
+    headers: Vec<(String, SensitiveString)>,
+    concurrency: usize,
+) -> Result<Arc<RequestConfig>, RunError> {
+    let client = reqwest::Client::builder()
+        .pool_max_idle_per_host(concurrency)
+        .build()?;
+    Ok(Arc::new(RequestConfig {
+        client,
+        host: Arc::new(host),
+        method,
+        body: Arc::new(body),
+        tracked_fields,
+        headers: Arc::new(headers),
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -628,36 +660,4 @@ mod tests {
         assert_eq!(assign_scenario(2, &scenarios), 0);
         assert_eq!(assign_scenario(3, &scenarios), 1);
     }
-}
-
-pub(crate) fn resolve_tracked_fields(
-    path: Option<PathBuf>,
-) -> Result<Option<Arc<Vec<TrackedField>>>, Box<dyn std::error::Error>> {
-    path.map(|p| {
-        ResponseTemplate::parse(&p)
-            .map(|rt| Arc::new(rt.fields))
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
-    })
-    .transpose()
-}
-
-pub(crate) fn build_request_config(
-    host: String,
-    method: HttpMethod,
-    body: Option<Body>,
-    tracked_fields: Option<Arc<Vec<TrackedField>>>,
-    headers: Vec<(String, SensitiveString)>,
-    concurrency: usize,
-) -> Result<Arc<RequestConfig>, RunError> {
-    let client = reqwest::Client::builder()
-        .pool_max_idle_per_host(concurrency)
-        .build()?;
-    Ok(Arc::new(RequestConfig {
-        client,
-        host: Arc::new(host),
-        method,
-        body: Arc::new(body),
-        tracked_fields,
-        headers: Arc::new(headers),
-    }))
 }

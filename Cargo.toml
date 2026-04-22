@@ -26,3 +26,4 @@ opentelemetry_sdk = "0.31.0"
 clap = { version = "4.5.60", features = ["derive", "unstable-doc"] }
 clap-cargo = "0.18.3"
 tempfile = "3"
+insta = { version = "1.41", features = ["json", "yaml", "redactions"] }
