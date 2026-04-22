@@ -858,7 +858,7 @@ checksum = "6373607a59f0be73a39b6fe456b8192fcc3585f602af20751600e974dd455e77"
 
 [[package]]
 name = "lmn"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "clap",
  "clap-cargo",
@@ -877,7 +877,7 @@ dependencies = [
 
 [[package]]
 name = "lmn-core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "hdrhistogram",
  "rand",

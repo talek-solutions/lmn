@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0]
+
+### Added
+
+- **Multi-step scenarios** — define named sequences of HTTP steps (login → browse → checkout) that VUs execute in order. Each step has its own host, method, headers, and request/response templates.
+- **Weighted VU distribution** — assign relative weights to scenarios to control what proportion of VUs run each flow. Assignment is deterministic by VU index.
+- **Step failure handling** — configurable `on_step_failure` per scenario: `continue` (default) completes all steps, `abort_iteration` skips remaining steps and starts the next iteration.
+- **Three-layer header merging** — headers cascade global → scenario → step with case-insensitive last-wins semantics.
+- **Per-scenario and per-step metrics** — CLI output and JSON reports include latency, throughput, error rate, and status code breakdowns at both scenario and step granularity.
+- **`scenarios` field in JSON output** — new top-level array in the report schema with nested step data.
+- **ScenarioVu execution engine** — new VU type that loops through steps sequentially, with budget claiming per iteration (not per request) in fixed mode.
+- **ScenarioResolver** — structured config resolution with `${ENV_VAR}` expansion, method parsing, and template loading per step.
+- **Scenario config validation** — scenarios are mutually exclusive with `run.host`/`run.method`; unique names enforced; weight in [1, 10_000]; scenarios count capped at 64.
+- **Step chaining with response captures** — new `capture` map on steps extracts values from response bodies via JSON paths (`$.data.access_token`) into a per-iteration, per-VU `CaptureState`. Captured values are injected into subsequent step headers, inline bodies, and template output via `{{capture.KEY}}` placeholders. Captures are string-valued (objects/arrays stringified as compact JSON).
+- **Inline `body` field on steps** — mutually exclusive with `request_template`. Supports `{{capture.KEY}}` injection and is capped at 1 MiB.
+- **Startup static validation of capture references** — during config resolution, every `{{capture.KEY}}` reference in step headers and bodies is checked against the cumulative set of aliases defined by preceding steps. Undefined references fail the run before any load is generated.
+- **Skipped-step accounting** — new `skipped: bool` field on `RequestRecord` and `total_skipped: u64` on `RequestStats`. Steps skipped due to unresolvable captures or `abort_iteration` emit skipped records that contribute to request counts but not to latency histograms or status-code breakdowns. Surfaced in both CLI output (`0 skip`) and JSON output (`requests.skipped`).
+- **Dependency-aware iteration abort** — if a step references `{{capture.KEY}}` that isn't in the capture state (prior step failed or server omitted the field), the iteration aborts immediately regardless of `on_step_failure`.
+- Scenarios guide, recipe, and config reference documentation (including the capture feature and size caps).
+- 5 new functional tests covering scenarios in fixed, curve, abort, JSON output, and per-step stats modes.
+
+### Changed
+
+- **`RequestSpec` is now an enum** — `Single { ... }` for single-endpoint mode, `Scenarios(Vec<ResolvedScenario>)` for multi-step mode. This is a breaking change for programmatic users of `lmn-core`.
+- **`DrainMetricsAccumulator`** — extracted shared drain logic from both fixed and curve executors, eliminating code duplication.
+- **HashMap keys use `Arc<str>`** — scenario/step accumulator maps avoid per-request `String` heap allocation on the hot path.
+- **Single canonical sort** — scenarios and steps are sorted once in `into_stats()` rather than redundantly in three layers.
+- JSON output schema version bumped to `2`.
+
 ## [0.2.0]
 
 ### Breaking

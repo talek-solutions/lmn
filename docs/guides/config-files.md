@@ -83,6 +83,41 @@ execution:
       ramp: linear
 ```
 
+## Scenarios
+
+Define multi-step user flows instead of a single endpoint. When `scenarios` is present, `run.host` and `run.method` are not used — each step defines its own target.
+
+```yaml
+run:
+  headers:
+    Authorization: "Bearer ${API_TOKEN}"    # global headers apply to all steps
+
+scenarios:
+  - name: checkout
+    weight: 3                               # 75% of VUs run this scenario
+    on_step_failure: abort_iteration        # skip remaining steps on failure
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+        method: post
+      - name: pay
+        host: https://api.example.com/checkout
+        method: post
+  - name: browse
+    weight: 1                               # 25% of VUs
+    steps:
+      - name: list
+        host: https://api.example.com/products
+
+execution:
+  request_count: 1000                       # 1000 scenario iterations (not requests)
+  concurrency: 20
+```
+
+Headers merge in three layers: **global** (`run.headers` + CLI) → **scenario** → **step**, with case-insensitive last-wins. Each step can also have its own `request_template` and `response_template`.
+
+Scenarios work with both fixed and curve modes. See [Config File Reference](../reference/config.md#scenarios) for the full schema.
+
 ## Full reference
 
 See [Config File Reference](../reference/config.md) for every field, type, default, and constraint.

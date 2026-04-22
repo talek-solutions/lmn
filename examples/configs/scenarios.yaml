@@ -1,0 +1,61 @@
+# lmn scenarios config — multi-step scenario load test
+#
+# Scenarios are mutually exclusive with run.host/run.method.
+# VUs are distributed across scenarios proportionally by weight.
+# With weights [3, 1] and 4 VUs: 3 run "checkout", 1 runs "browse".
+
+# Global headers applied to all scenarios and steps.
+# Scenario/step headers take precedence (case-insensitive last-wins).
+run:
+  headers:
+    Authorization: "Bearer ${API_TOKEN}"
+
+scenarios:
+  - name: checkout
+    weight: 3
+    on_step_failure: abort_iteration   # stop iteration on first step failure
+    headers:
+      X-Session: "${SESSION_ID}"       # scenario-level header applied to all steps
+    steps:
+      - name: login
+        host: https://api.example.com/auth/login
+        method: post
+        headers:
+          Content-Type: application/json
+        request_template: examples/request-bodies/login.json
+        response_template: examples/response-extractions/login_resp.json
+
+      - name: add_to_cart
+        host: https://api.example.com/cart
+        method: post
+        headers:
+          Content-Type: application/json
+        request_template: examples/request-bodies/cart.json
+
+      - name: checkout
+        host: https://api.example.com/checkout
+        method: post
+
+  - name: browse
+    weight: 1
+    on_step_failure: continue   # continue remaining steps even on failure (default)
+    steps:
+      - name: list_products
+        host: https://api.example.com/products
+        method: get
+
+      - name: get_product_detail
+        host: https://api.example.com/products/1
+        method: get
+
+execution:
+  request_count: 1000
+  concurrency: 50
+
+thresholds:
+  - metric: error_rate
+    operator: lt
+    value: 0.02     # < 2% errors
+  - metric: latency_p95
+    operator: lt
+    value: 1000.0   # p95 under 1 s
