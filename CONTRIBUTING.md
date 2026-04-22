@@ -48,6 +48,28 @@ docker compose up -d
 - Prefer structs over long parameter lists for extensibility
 - No unsafe code without explicit justification
 
+## Snapshot Tests
+
+Tests under `lmn-core/tests/` use [`insta`](https://insta.rs) to snapshot
+serialized output such as `RunReport`. A snapshot mismatch surfaces as a
+failing test with a readable diff.
+
+Install the CLI once per workstation:
+
+```bash
+cargo install cargo-insta
+```
+
+When a snapshot diff is expected (you changed the output on purpose):
+
+1. Run `cargo insta review` at the workspace root.
+2. Inspect each pending snapshot and either accept (`a`) or reject (`r`).
+3. Commit the updated `.snap` file alongside the code change.
+
+CI runs with `INSTA_UPDATE=no` — snapshot changes must be accepted and
+committed locally, never silently updated in CI. Treat snapshot diffs in
+review with the same scrutiny as code diffs.
+
 ## Commit Messages
 
 Use conventional commit prefixes: `feat:`, `fix:`, `refactor:`, `chore:`, `docs:`

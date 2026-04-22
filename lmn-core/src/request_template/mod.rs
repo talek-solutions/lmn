@@ -183,8 +183,8 @@ mod tests {
 
     #[test]
     fn parse_env_placeholder_resolved_from_env() {
-        unsafe { std::env::set_var("LUMEN_TEST_TOKEN", "secret123") };
-        let f = write_temp(r#"{"token": "{{ENV:LUMEN_TEST_TOKEN}}"}"#);
+        unsafe { std::env::set_var("LUMEN_TEST_RESOLVE_TOKEN", "secret123") };
+        let f = write_temp(r#"{"token": "{{ENV:LUMEN_TEST_RESOLVE_TOKEN}}"}"#);
         let template = Template::parse(f.path()).unwrap();
         let result = template.generate_one().unwrap();
         assert!(

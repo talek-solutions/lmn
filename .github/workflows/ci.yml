@@ -46,6 +46,12 @@ jobs:
           toolchain: stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
       - run: cargo test --workspace --locked
+        env:
+          # Never let CI silently accept or auto-update insta snapshots.
+          # Snapshot changes must be reviewed locally via `cargo insta review`
+          # and committed alongside the code change that caused them.
+          INSTA_UPDATE: "no"
+          INSTA_FORCE_PASS: "0"
 
   doc:
     name: Docs

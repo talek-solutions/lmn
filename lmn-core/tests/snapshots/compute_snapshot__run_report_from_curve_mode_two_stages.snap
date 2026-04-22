@@ -1,0 +1,89 @@
+---
+source: lmn-core/tests/compute_snapshot.rs
+assertion_line: 161
+expression: report
+---
+{
+  "version": 2,
+  "run": {
+    "mode": "curve",
+    "elapsed_ms": 10000.0,
+    "curve_duration_ms": 10000.0,
+    "template_generation_ms": null
+  },
+  "requests": {
+    "total": 100,
+    "ok": 95,
+    "failed": 5,
+    "error_rate": 0.05,
+    "throughput_rps": 10.0
+  },
+  "latency": {
+    "min_ms": 10.0,
+    "p10_ms": 10.007,
+    "p25_ms": 10.007,
+    "p50_ms": 20.015,
+    "p75_ms": 20.015,
+    "p90_ms": 20.015,
+    "p95_ms": 100.031,
+    "p99_ms": 100.031,
+    "max_ms": 100.031,
+    "avg_ms": 24.005599999999998
+  },
+  "status_codes": {
+    "200": 95,
+    "500": 3,
+    "error": 2
+  },
+  "response_stats": null,
+  "curve_stages": [
+    {
+      "index": 0,
+      "duration_ms": 4000.0,
+      "target_vus": 10,
+      "ramp": "linear",
+      "requests": 40,
+      "ok": 40,
+      "failed": 0,
+      "error_rate": 0.0,
+      "throughput_rps": 10.0,
+      "latency": {
+        "min_ms": 10.0,
+        "p10_ms": 10.007,
+        "p25_ms": 10.007,
+        "p50_ms": 10.007,
+        "p75_ms": 10.007,
+        "p90_ms": 10.007,
+        "p95_ms": 10.007,
+        "p99_ms": 10.007,
+        "max_ms": 10.007,
+        "avg_ms": 10.004
+      }
+    },
+    {
+      "index": 1,
+      "duration_ms": 6000.0,
+      "target_vus": 50,
+      "ramp": "step",
+      "requests": 60,
+      "ok": 55,
+      "failed": 5,
+      "error_rate": 0.08333333333333333,
+      "throughput_rps": 10.0,
+      "latency": {
+        "min_ms": 20.0,
+        "p10_ms": 20.015,
+        "p25_ms": 20.015,
+        "p50_ms": 20.015,
+        "p75_ms": 20.015,
+        "p90_ms": 100.031,
+        "p95_ms": 100.031,
+        "p99_ms": 100.031,
+        "max_ms": 100.031,
+        "avg_ms": 33.34
+      }
+    }
+  ],
+  "scenarios": null,
+  "thresholds": null
+}
