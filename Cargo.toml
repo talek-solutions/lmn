@@ -26,6 +26,7 @@ opentelemetry_sdk = "0.31.0"
 clap = { version = "4.5.60", features = ["derive", "unstable-doc"] }
 clap-cargo = "0.18.3"
 tempfile = "3"
+insta = { version = "1.41", features = ["json", "yaml", "redactions"] }
 time = { version = "0.3", features = ["serde-well-known"], default-features = false }
 uuid = { version = "1", features = ["v7", "serde"] }
 wiremock = "0.6"

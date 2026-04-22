@@ -32,6 +32,7 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+insta.workspace = true
 
 [package.metadata.deb]
 depends = "$auto"

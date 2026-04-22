@@ -25,5 +25,6 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [dev-dependencies]
 tempfile.workspace = true
+insta.workspace = true
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync", "signal", "time"] }
 wiremock.workspace = true
