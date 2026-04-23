@@ -43,4 +43,12 @@ thresholds:
     operator: gte
     value: 10.0        # at least 10 req/s
 
+# Publish — push run reports to the Lumen platform.
+# Requires LUMEN_API_KEY env var when enabled.
+# CLI: --publish flag overrides this setting.
+# URL: --publish-url flag > LUMEN_API_URL env > publish.url > default.
+# publish:
+#   enabled: true
+#   url: https://api.talek.cloud      # host-only; client appends /v1/runs
+
 request_template: examples/request-bodies/static-body.json
