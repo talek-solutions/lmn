@@ -102,7 +102,6 @@ impl Template {
     /// Generates a single request body on demand.
     /// Thread-safe: each call creates its own RNG state, so concurrent VU tasks
     /// can call this simultaneously without contention.
-    #[instrument(name = "lmn.template.generate_one", skip(self))]
     pub fn generate_one(&self) -> Result<String, TemplateError> {
         let mut rng = rand::rng();
         self.compiled.render(&self.context, &mut rng)

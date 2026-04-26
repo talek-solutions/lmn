@@ -8,17 +8,16 @@ Tracing is built on the [`tracing`](https://docs.rs/tracing) crate, exported via
 
 ## Span Registry
 
-All named spans are defined as constants on `SpanName` in `loadtest-core/src/monitoring/spans.rs`.
+All named spans are defined as constants on `SpanName` in `lmn-core/src/monitoring/spans.rs`.
 
 | Constant | Span name | Where emitted |
 |---|---|---|
-| `SpanName::RUN` | `loadtest.run` | `loadtest-cli/src/main.rs` — root span for the entire process |
-| `SpanName::TEMPLATE_PARSE` | `loadtest.template.parse` | `#[instrument]` on `Template::parse()` |
-| `SpanName::TEMPLATE_RENDER` | `loadtest.template.render` | `#[instrument]` on `Template::pre_generate()` |
-| `SpanName::TEMPLATE_VALIDATE_PLACEHOLDERS` | `loadtest.template.validate_placeholders` | `#[instrument]` on `renderer::validate_placeholders()` |
-| `SpanName::TEMPLATE_CHECK_CIRCULAR_REFS` | `loadtest.template.check_circular_refs` | `#[instrument]` on `definition::check_circular_refs()` |
-| `SpanName::RESPONSE_TEMPLATE_PARSE` | `loadtest.response_template.parse` | `#[instrument]` on `ResponseTemplate::parse()` |
-| `SpanName::REQUESTS` | `loadtest.requests` | `loadtest-core/src/command/run.rs` — wraps the full worker dispatch and result collection |
+| `SpanName::RUN` | `lmn.run` | `lmn-cli/src/main.rs` — root span for the entire process |
+| `SpanName::TEMPLATE_PARSE` | `lmn.template.parse` | `#[instrument]` on `Template::parse()` |
+| `SpanName::TEMPLATE_VALIDATE_PLACEHOLDERS` | `lmn.template.validate_placeholders` | `#[instrument]` on `renderer::validate_placeholders()` |
+| `SpanName::TEMPLATE_CHECK_CIRCULAR_REFS` | `lmn.template.check_circular_refs` | `#[instrument]` on `definition::check_circular_refs()` |
+| `SpanName::RESPONSE_TEMPLATE_PARSE` | `lmn.response_template.parse` | `#[instrument]` on `ResponseTemplate::parse()` |
+| `SpanName::REQUESTS` | `lmn.requests` | `lmn-core/src/execution/fixed/mod.rs` — wraps the full worker dispatch and result collection |
 
 ---
 
@@ -30,24 +29,23 @@ The following functions carry `#[instrument]` attributes and produce spans autom
 
 | Function | Module | Span name | Fields |
 |---|---|---|---|
-| `Template::parse` | `request_template` | `loadtest.template.parse` | `path` |
-| `Template::pre_generate` | `request_template` | `loadtest.template.render` | `n` (request count) |
-| `renderer::validate_placeholders` | `request_template::renderer` | `loadtest.template.validate_placeholders` | `def_count` |
-| `definition::check_circular_refs` | `request_template::definition` | `loadtest.template.check_circular_refs` | `def_count` |
+| `Template::parse` | `request_template` | `lmn.template.parse` | `path` |
+| `renderer::validate_placeholders` | `request_template::renderer` | `lmn.template.validate_placeholders` | `def_count` |
+| `definition::check_circular_refs` | `request_template::definition` | `lmn.template.check_circular_refs` | `def_count` |
 
 ### Response template parsing
 
 | Function | Module | Span name | Fields |
 |---|---|---|---|
-| `ResponseTemplate::parse` | `response_template` | `loadtest.response_template.parse` | `path` |
+| `ResponseTemplate::parse` | `response_template` | `lmn.response_template.parse` | `path` |
 
-### Generation
+---
 
-| Function | Module | Instrumentation |
-|---|---|---|
-| `GeneratorContext::generate_by_name` | `request_template::generator` | `debug!` event when an unknown placeholder resolves to `null` |
+## Design: No Per-Request Tracing
 
-`render()` and `resolve()` are intentionally not spanned — they are called once per placeholder per request body and the overhead would exceed the work done.
+Per-request body generation (`Template::generate_one`) and placeholder resolution are intentionally **not** instrumented. Creating a span per HTTP request would add overhead to the hot path and distort the latency measurements that lmn exists to collect.
+
+Errors during request execution (template serialization failures, capture injection failures) are reported via `eprintln!` so they are always visible to the operator regardless of whether an OTLP collector is running.
 
 ---
 
@@ -56,16 +54,15 @@ The following functions carry `#[instrument]` attributes and produce spans autom
 During a run with a request template and response template, the span tree looks like:
 
 ```
-loadtest.run                                  ← root, main.rs
-  loadtest.template.parse                     ← #[instrument]
-    loadtest.template.validate_placeholders   ← #[instrument]
-    loadtest.template.check_circular_refs     ← #[instrument]
-  loadtest.template.render                    ← #[instrument]
-  loadtest.response_template.parse            ← #[instrument]
-  loadtest.requests                           ← manual span, run.rs
+lmn.run                                  ← root, main.rs
+  lmn.template.parse                     ← #[instrument]
+    lmn.template.validate_placeholders   ← #[instrument]
+    lmn.template.check_circular_refs     ← #[instrument]
+  lmn.response_template.parse            ← #[instrument]
+  lmn.requests                           ← manual span, fixed/mod.rs
 ```
 
-> Note: `loadtest.requests` and its worker threads run in separate OS threads and do not inherit the `loadtest.run` span context. They appear as a sibling span in the same trace only if span context is explicitly propagated — this is a known limitation and planned for a future improvement.
+> Note: `lmn.requests` and its worker threads run in separate OS threads and do not inherit the `lmn.run` span context. They appear as a sibling span in the same trace only if span context is explicitly propagated — this is a known limitation and planned for a future improvement.
 
 ---
 
@@ -88,6 +85,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://my-collector:4318 cargo run -- run ...
 
 ## Adding New Spans
 
-1. Add a `pub const` to `SpanName` in `loadtest-core/src/monitoring/spans.rs` following the `loadtest.<domain>.<operation>` naming convention
-2. Prefer `#[instrument(name = "loadtest.<domain>.<operation>", ...)]` on the function directly; use a manual `info_span!` only for spans that don't map cleanly to a single function
-3. Update the span registry table and hierarchy in this file
+1. Add a `pub const` to `SpanName` in `lmn-core/src/monitoring/spans.rs` following the `lmn.<domain>.<operation>` naming convention
+2. Prefer `#[instrument(name = "lmn.<domain>.<operation>", ...)]` on the function directly; use a manual `info_span!` only for spans that don't map cleanly to a single function
+3. Avoid instrumenting hot-path code (anything called once per request) — the overhead distorts measurements
+4. Update the span registry table and hierarchy in this file

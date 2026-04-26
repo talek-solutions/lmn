@@ -126,34 +126,33 @@ impl ScenarioVu {
                     }
 
                     // 1. Generate body (from request_template, inline_body, or none).
-                    let mut body_string: Option<String> =
-                        match step.request_template.as_ref().map(|t| t.generate_one()) {
-                            None => step.inline_body.as_ref().map(|b| b.to_string()),
-                            Some(Ok(s)) => Some(s),
-                            Some(Err(e)) => {
-                                tracing::error!(
-                                    scenario = %self.scenario_name,
-                                    step = %step.step_name,
-                                    error = %e,
-                                    "template serialization failed, aborting iteration"
-                                );
-                                for remaining in &self.steps[step_idx..] {
-                                    self.emit_skipped(remaining);
-                                }
-                                break;
+                    let mut body_string: Option<String> = match step
+                        .request_template
+                        .as_ref()
+                        .map(|t| t.generate_one())
+                    {
+                        None => step.inline_body.as_ref().map(|b| b.to_string()),
+                        Some(Ok(s)) => Some(s),
+                        Some(Err(e)) => {
+                            eprintln!(
+                                "error: template serialization failed in {}/{}, aborting iteration: {e}",
+                                self.scenario_name, step.step_name
+                            );
+                            for remaining in &self.steps[step_idx..] {
+                                self.emit_skipped(remaining);
                             }
-                        };
+                            break;
+                        }
+                    };
 
                     // 2. Inject {{capture.KEY}} into body.
                     if let Some(ref body) = body_string {
                         match inject_captures(body, &captures) {
                             Ok(injected) => body_string = Some(injected),
                             Err(e) => {
-                                tracing::warn!(
-                                    scenario = %self.scenario_name,
-                                    step = %step.step_name,
-                                    error = %e,
-                                    "capture injection into body failed, aborting iteration"
+                                eprintln!(
+                                    "warning: capture injection into body failed in {}/{}, aborting iteration: {e}",
+                                    self.scenario_name, step.step_name
                                 );
                                 // Emit skipped for this step and all remaining, then
                                 // break out of the step loop (no abort_remaining needed).
@@ -176,11 +175,9 @@ impl ScenarioVu {
                                 }
                             }
                             Err(e) => {
-                                tracing::warn!(
-                                    scenario = %self.scenario_name,
-                                    step = %step.step_name,
-                                    error = %e,
-                                    "capture injection into headers failed, aborting iteration"
+                                eprintln!(
+                                    "warning: capture injection into headers failed in {}/{}, aborting iteration: {e}",
+                                    self.scenario_name, step.step_name
                                 );
                                 for remaining in &self.steps[step_idx..] {
                                     self.emit_skipped(remaining);

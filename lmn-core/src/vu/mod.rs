@@ -71,7 +71,7 @@ impl Vu {
                     None => None,
                     Some(Ok(s)) => Some(s),
                     Some(Err(e)) => {
-                        tracing::error!(error = %e, "template serialization failed, skipping request");
+                        eprintln!("error: template serialization failed, skipping request: {e}");
                         continue;
                     }
                 };
