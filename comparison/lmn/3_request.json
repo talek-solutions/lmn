@@ -1,0 +1,34 @@
+{
+  "fieldString": "{{field_string}}",
+  "fieldInteger": "{{field_integer}}",
+  "objectField": {
+    "nestedField1": "{{nested_string}}",
+    "nestedField2": "{{nested_float}}"
+  },
+  "_lmn_metadata_templates": {
+    "field_string": {
+      "type": "string",
+      "details": {
+        "choice": ["alpha", "beta", "gamma", "delta", "epsilon"]
+      }
+    },
+    "field_integer": {
+      "type": "float",
+      "min": 1,
+      "max": 1000,
+      "details": { "decimals": 0 }
+    },
+    "nested_string": {
+      "type": "string",
+      "min": 5,
+      "max": 15,
+      "details": { "lowercase": true }
+    },
+    "nested_float": {
+      "type": "float",
+      "min": 0,
+      "max": 100,
+      "details": { "decimals": 1 }
+    }
+  }
+}
