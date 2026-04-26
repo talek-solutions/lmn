@@ -49,6 +49,6 @@ thresholds:
 # URL: --publish-url flag > LUMEN_API_URL env > publish.url > default.
 # publish:
 #   enabled: true
-#   url: https://api.talek.cloud      # host-only; client appends /v1/runs
+#   url: https://api.talek.cloud/v1/runs
 
 request_template: examples/request-bodies/static-body.json

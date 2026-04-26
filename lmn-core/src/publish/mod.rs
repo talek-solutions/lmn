@@ -24,12 +24,10 @@
 //! };
 //!
 //! let config = PublishConfigBuilder {
-//!     flag_enabled: true,
 //!     env_api_key: std::env::var("LUMEN_API_KEY").ok(),
 //!     ..Default::default()
 //! }
-//! .build()?
-//! .expect("publishing enabled");
+//! .build()?;
 //!
 //! let sink = HttpSink::new(config, env!("CARGO_PKG_VERSION"))?;
 //! let envelope = PublishEnvelope::new(env!("CARGO_PKG_VERSION"), &report);
@@ -52,5 +50,5 @@ pub use config::{
 };
 pub use envelope::{ENVELOPE_VERSION, PublishEnvelope, PublishSource};
 pub use error::PublishError;
-pub use http_sink::{HttpSink, PUBLISH_PATH};
+pub use http_sink::HttpSink;
 pub use sink::{PublishOutcome, ResultSink};

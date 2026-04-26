@@ -36,6 +36,7 @@ lmn run [OPTIONS] -H <HOST>
 | — | `--output-file` | — | Write JSON result to `<path>` (always JSON regardless of `--output`) |
 | `-f` | `--config` | — | Path to a YAML config file. CLI flags take precedence over config values. |
 | — | `--header` | — | Custom HTTP header in `'Name: Value'` format (repeatable) |
+| — | `--publish-url` | — | Publish run results to a custom endpoint (e.g. `https://api.example.com/v1/runs`) |
 
 ### Conflicts
 

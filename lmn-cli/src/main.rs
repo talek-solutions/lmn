@@ -5,6 +5,10 @@ use cli::output::{PrintStatsParams, print_stats};
 use lmn_core::command::{Command, Commands, ConfigureTemplateCommand};
 use lmn_core::monitoring::SpanName;
 use lmn_core::output::{RunReport, RunReportParams};
+use lmn_core::publish::{
+    HttpSink, PublishConfigBuilder, PublishConfigYaml, PublishEnvelope, PublishError,
+    PublishOutcome, ResultSink,
+};
 use lmn_core::threshold::{EvaluateParams, evaluate};
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_sdk::Resource;
@@ -61,12 +65,14 @@ fn main() {
                     let output_format = resolved.output;
                     let output_file = resolved.output_file.clone();
                     let thresholds = resolved.thresholds.clone();
+                    let publish_config = resolved.publish_config.clone();
                     let run_cmd = resolved.into_run_command();
                     (
                         Commands::Run(run_cmd),
                         thresholds,
                         output_format,
                         output_file,
+                        publish_config,
                     )
                 }
                 Err(e) => {
@@ -79,16 +85,18 @@ fn main() {
                 None,
                 OutputFormat::Table,
                 None,
+                None,
             ),
             LoadTestRunCli::ConfigureResponse(args) => (
                 Commands::ConfigureResponse(ConfigureTemplateCommand::from(args)),
                 None,
                 OutputFormat::Table,
                 None,
+                None,
             ),
         };
 
-        let (commands, thresholds, output_format, output_file) = cmd;
+        let (commands, thresholds, output_format, output_file, publish_config) = cmd;
 
         let result = commands.execute().await;
 
@@ -145,6 +153,28 @@ fn main() {
                     }
                 }
 
+                // Publish results if enabled. Publishing is best-effort: errors
+                // are warnings and never change the exit code.
+                if publish_config
+                    .as_ref()
+                    .and_then(|y| y.enabled)
+                    .unwrap_or(false)
+                {
+                    match try_publish(publish_config, &report).await {
+                        Ok(outcome) => {
+                            if let Some(url) = outcome.view_url {
+                                eprintln!("Run published: {url}");
+                            } else {
+                                eprintln!(
+                                    "Run {} published ({} attempt(s))",
+                                    outcome.run_id, outcome.attempts
+                                );
+                            }
+                        }
+                        Err(e) => eprintln!("warning: {e}"),
+                    }
+                }
+
                 // Exit code 2 when thresholds were evaluated and one or more failed.
                 if threshold_failed { 2 } else { 0 }
             }
@@ -162,4 +192,20 @@ fn main() {
 
     let _ = provider.shutdown();
     std::process::exit(exit_code);
+}
+
+async fn try_publish(
+    yaml: Option<PublishConfigYaml>,
+    report: &RunReport,
+) -> Result<PublishOutcome, PublishError> {
+    let config = PublishConfigBuilder {
+        env_api_key: std::env::var("LUMEN_API_KEY").ok(),
+        yaml,
+        ..Default::default()
+    }
+    .build()?;
+
+    let sink = HttpSink::new(config, env!("CARGO_PKG_VERSION"))?;
+    let envelope = PublishEnvelope::new(env!("CARGO_PKG_VERSION"), report);
+    sink.publish(&envelope).await
 }

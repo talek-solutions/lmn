@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 use crate::config::error::ConfigError;
+use crate::publish::PublishConfigYaml;
 use crate::threshold::Threshold;
 use crate::threshold::parse::validate_thresholds;
 
@@ -151,6 +152,7 @@ pub struct LumenConfig {
     pub request_template: Option<String>,
     pub response_template: Option<String>,
     pub scenarios: Option<Vec<ScenarioConfig>>,
+    pub publish: Option<PublishConfigYaml>,
 }
 
 // ── parse_config ──────────────────────────────────────────────────────────────

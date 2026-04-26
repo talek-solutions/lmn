@@ -15,9 +15,6 @@ pub enum PublishError {
     /// for loopback hosts).
     InvalidUrl(String),
 
-    /// `LUMEN_API_KEY` was not set or was empty. Publishing requires an API key.
-    MissingApiKey,
-
     /// The serialized payload exceeds the hard 5 MB limit. Contains the
     /// actual serialized size in bytes for diagnostics.
     PayloadTooLarge {
@@ -65,10 +62,6 @@ impl fmt::Display for PublishError {
             Self::InvalidUrl(msg) => {
                 write!(f, "publish URL is invalid: {msg}")
             }
-            Self::MissingApiKey => write!(
-                f,
-                "LUMEN_API_KEY is not set — required when --publish or publish.enabled is on"
-            ),
             Self::PayloadTooLarge {
                 size_bytes,
                 limit_bytes,
@@ -134,12 +127,6 @@ mod tests {
     fn invalid_url_display() {
         let e = PublishError::InvalidUrl("not https".into());
         assert_eq!(e.to_string(), "publish URL is invalid: not https");
-    }
-
-    #[test]
-    fn missing_api_key_display() {
-        let e = PublishError::MissingApiKey;
-        assert!(e.to_string().contains("LUMEN_API_KEY"));
     }
 
     #[test]
@@ -214,7 +201,7 @@ mod tests {
 
     #[test]
     fn debug_impl_does_not_panic() {
-        let e = PublishError::MissingApiKey;
+        let e = PublishError::InvalidUrl("test".into());
         let _ = format!("{e:?}");
     }
 }

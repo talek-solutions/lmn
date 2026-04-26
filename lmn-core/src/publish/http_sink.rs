@@ -11,10 +11,6 @@ use crate::publish::sink::{PublishOutcome, ResultSink};
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Path appended to the configured base URL. Client-owned versioning so
-/// config stays host-only and a future API v2 does not break existing configs.
-pub const PUBLISH_PATH: &str = "/v1/runs";
-
 /// Maximum retry attempts for transient (network / 5xx) failures. First
 /// attempt is attempt #1, so `MAX_ATTEMPTS = 3` means up to 2 retries.
 pub const MAX_ATTEMPTS: u32 = 3;
@@ -67,19 +63,23 @@ impl HttpSink {
         })
     }
 
-    fn target_url(&self) -> String {
-        format!("{}{}", self.config.base_url, PUBLISH_PATH)
+    fn target_url(&self) -> &str {
+        &self.config.base_url
     }
 
     async fn post_once(&self, body: &[u8]) -> Result<PublishOutcome, PublishError> {
         let url = self.target_url();
-        let auth_value = format!("Bearer {}", self.config.api_key.as_str());
 
-        let resp = self
+        let mut req = self
             .client
-            .post(&url)
-            .header(AUTHORIZATION, auth_value)
-            .header(CONTENT_TYPE, "application/json")
+            .post(url)
+            .header(CONTENT_TYPE, "application/json");
+
+        if let Some(ref api_key) = self.config.api_key {
+            req = req.header(AUTHORIZATION, format!("Bearer {}", api_key.as_str()));
+        }
+
+        let resp = req
             .body(body.to_vec())
             .send()
             .await
@@ -251,7 +251,7 @@ mod tests {
     fn test_config(base_url: &str) -> PublishConfig {
         PublishConfig {
             base_url: base_url.to_string(),
-            api_key: SensitiveString::new("test-api-key".into()),
+            api_key: Some(SensitiveString::new("test-api-key".into())),
             timeout: Duration::from_secs(5),
         }
     }
@@ -319,7 +319,7 @@ mod tests {
     async fn publish_happy_path_200() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/v1/runs"))
+            .and(path("/"))
             .and(header("authorization", "Bearer test-api-key"))
             .and(header("content-type", "application/json"))
             .respond_with(
@@ -349,7 +349,7 @@ mod tests {
     async fn publish_200_empty_body() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/v1/runs"))
+            .and(path("/"))
             .respond_with(ResponseTemplate::new(200))
             .expect(1)
             .mount(&server)
@@ -368,7 +368,7 @@ mod tests {
     async fn publish_401_returns_auth_failed() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/v1/runs"))
+            .and(path("/"))
             .respond_with(ResponseTemplate::new(401))
             .expect(1)
             .mount(&server)
@@ -391,7 +391,7 @@ mod tests {
     async fn publish_403_returns_auth_failed() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/v1/runs"))
+            .and(path("/"))
             .respond_with(ResponseTemplate::new(403))
             .expect(1)
             .mount(&server)
@@ -412,7 +412,7 @@ mod tests {
     async fn publish_400_returns_bad_request_with_snippet() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/v1/runs"))
+            .and(path("/"))
             .respond_with(ResponseTemplate::new(400).set_body_string("invalid schema version"))
             .expect(1)
             .mount(&server)
@@ -445,7 +445,7 @@ mod tests {
 
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/v1/runs"))
+            .and(path("/"))
             .respond_with(ResponseTemplate::new(503))
             .expect(3) // MAX_ATTEMPTS = 3
             .mount(&server)
@@ -476,14 +476,14 @@ mod tests {
 
         // First two calls return 503, third returns 200.
         Mock::given(method("POST"))
-            .and(path("/v1/runs"))
+            .and(path("/"))
             .respond_with(ResponseTemplate::new(503))
             .up_to_n_times(2)
             .expect(2)
             .mount(&server)
             .await;
         Mock::given(method("POST"))
-            .and(path("/v1/runs"))
+            .and(path("/"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({})))
             .expect(1)
             .mount(&server)
@@ -505,7 +505,7 @@ mod tests {
     async fn publish_413_returns_payload_too_large() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/v1/runs"))
+            .and(path("/"))
             .respond_with(ResponseTemplate::new(413))
             .expect(1)
             .mount(&server)
@@ -526,7 +526,7 @@ mod tests {
     async fn publish_unexpected_status_no_retry() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/v1/runs"))
+            .and(path("/"))
             .respond_with(ResponseTemplate::new(302))
             .expect(1) // should NOT retry
             .mount(&server)
@@ -550,7 +550,7 @@ mod tests {
     async fn publish_200_malformed_json_view_url_is_none() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/v1/runs"))
+            .and(path("/"))
             .respond_with(ResponseTemplate::new(200).set_body_string("not json"))
             .expect(1)
             .mount(&server)
@@ -563,5 +563,49 @@ mod tests {
 
         let outcome = sink.publish(&envelope).await.unwrap();
         assert!(outcome.view_url.is_none());
+    }
+
+    #[tokio::test]
+    async fn publish_without_api_key_sends_no_auth_header() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/"))
+            .and(header("content-type", "application/json"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = PublishConfig {
+            base_url: server.uri(),
+            api_key: None,
+            timeout: Duration::from_secs(5),
+        };
+        let sink = HttpSink::new(config, "0.3.0").unwrap();
+        let report = sample_report();
+        let envelope = PublishEnvelope::new("0.3.0", &report);
+
+        let outcome = sink.publish(&envelope).await.unwrap();
+        assert_eq!(outcome.attempts, 1);
+    }
+
+    #[tokio::test]
+    async fn publish_with_path_in_url() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/runs"))
+            .and(header("content-type", "application/json"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = test_config(&format!("{}/v1/runs", server.uri()));
+        let sink = HttpSink::new(config, "0.3.0").unwrap();
+        let report = sample_report();
+        let envelope = PublishEnvelope::new("0.3.0", &report);
+
+        let outcome = sink.publish(&envelope).await.unwrap();
+        assert_eq!(outcome.attempts, 1);
     }
 }
