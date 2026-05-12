@@ -1215,6 +1215,7 @@ scenarios:
     #[test]
     fn publish_config_from_yaml_preserves_yaml_fields() {
         use std::io::Write;
+        let _env_lock = lock_lumen_api_url();
         let mut f = tempfile::NamedTempFile::new().unwrap();
         f.write_all(b"run:\n  host: http://localhost:3000\npublish:\n  enabled: true\n  url: https://yaml.example.com\n")
             .unwrap();
@@ -1272,9 +1273,20 @@ scenarios:
         }
     }
 
+    /// Serializes tests that read or write `LUMEN_API_URL`. Rust runs unit
+    /// tests in parallel within one process, and the env var is process-global,
+    /// so without this lock a test that sets `LUMEN_API_URL` can race with a
+    /// test that asserts the YAML url is used.
+    static LUMEN_API_URL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn lock_lumen_api_url() -> std::sync::MutexGuard<'static, ()> {
+        LUMEN_API_URL_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     #[test]
     fn publish_config_env_url_wins_over_yaml_url() {
         use std::io::Write;
+        let _env_lock = lock_lumen_api_url();
         let _guard = EnvGuard::set("LUMEN_API_URL", "https://env.example.com");
         let mut f = tempfile::NamedTempFile::new().unwrap();
         f.write_all(b"run:\n  host: http://localhost:3000\npublish:\n  enabled: true\n  url: https://yaml.example.com\n")
@@ -1295,6 +1307,7 @@ scenarios:
 
     #[test]
     fn publish_config_cli_flag_wins_over_env_url() {
+        let _env_lock = lock_lumen_api_url();
         let _guard = EnvGuard::set("LUMEN_API_URL", "https://env.example.com");
 
         let mut args = make_run_args(None);
