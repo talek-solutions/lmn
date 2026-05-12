@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Functional tests for the lmn CLI against localhost:3000/load-test
+# Functional tests for the lmn CLI against https://httpbin.org
 # Usage: ./lmn-cli/tests/functional.sh
 # Requires: cargo, jq
 
@@ -104,7 +104,7 @@ EOF
 # YAML config — fixed mode
 cat > "$TMPDIR/config-fixed.yaml" << 'EOF'
 run:
-  host: http://localhost:3000/load-test/success
+  host: https://httpbin.org/get
   method: get
 
 execution:
@@ -115,28 +115,28 @@ EOF
 # YAML config — curve mode
 cat > "$TMPDIR/config-curve.yaml" << 'EOF'
 run:
-  host: http://localhost:3000/load-test/success
+  host: https://httpbin.org/get
   method: get
 
 execution:
   stages:
     - duration: "5s"
-      target_vus: 1000
+      target_vus: 2
       ramp: linear
     - duration: "3s"
-      target_vus: 600
+      target_vus: 0
       ramp: linear
 EOF
 
 # YAML config — thresholds that should PASS (very lenient)
 cat > "$TMPDIR/config-thresholds-pass.yaml" << 'EOF'
 run:
-  host: http://localhost:3000/load-test/random-error
+  host: https://httpbin.org/get
   method: get
 
 execution:
-  request_count: 1000
-  concurrency: 20
+  request_count: 10
+  concurrency: 2
 
 thresholds:
   - metric: error_rate
@@ -150,7 +150,7 @@ EOF
 # YAML config — thresholds that should FAIL (impossible values)
 cat > "$TMPDIR/config-thresholds-fail.yaml" << 'EOF'
 run:
-  host: http://localhost:3000/load-test/success
+  host: https://httpbin.org/get
   method: get
 
 execution:
@@ -171,16 +171,16 @@ scenarios:
     on_step_failure: continue
     steps:
       - name: post_data
-        host: http://localhost:3000/load-test/echo
+        host: https://httpbin.org/post
         method: post
       - name: get_data
-        host: http://localhost:3000/load-test/success
+        host: https://httpbin.org/get
         method: get
   - name: status_check
     weight: 1
     steps:
       - name: health
-        host: http://localhost:3000/load-test/success
+        host: https://httpbin.org/status/200
         method: get
 
 execution:
@@ -194,7 +194,7 @@ scenarios:
   - name: api_flow
     steps:
       - name: ping
-        host:  http://localhost:3000/load-test/success
+        host: https://httpbin.org/get
         method: get
 
 execution:
@@ -214,10 +214,10 @@ scenarios:
     on_step_failure: abort_iteration
     steps:
       - name: will_fail
-        host:  http://localhost:3000/load-test/random-error
+        host: https://httpbin.org/status/500
         method: get
       - name: should_skip
-        host:  http://localhost:3000/load-test/success
+        host: https://httpbin.org/get
         method: get
 
 execution:
@@ -231,7 +231,7 @@ scenarios:
   - name: simple
     steps:
       - name: ping
-        host: http://localhost:3000/load-test/success
+        host: https://httpbin.org/get
 
 execution:
   request_count: 5
@@ -245,31 +245,31 @@ echo
 
 # 1. Fixed GET — no body
 run_test "fixed GET no body" 0 \
-    run --host  http://localhost:3000/load-test/success \
+    run --host https://httpbin.org/get \
     --request-count 20 --concurrency 3
 
 # 2. Fixed POST — inline JSON body
 run_test "fixed POST inline body" 0 \
-    run --host  http://localhost:3000/load-test/echo \
+    run --host https://httpbin.org/post \
     --method post \
     --body '{"hello":"world"}' \
     --request-count 20 --concurrency 3
 
 # 3. Fixed POST — request template file
 run_test "fixed POST request template" 0 \
-    run --host http://localhost:3000/load-test/echo \
+    run --host https://httpbin.org/post \
     --method post \
     --request-template "$TMPDIR/request-template.json" \
     --request-count 20 --concurrency 3
 
 # 4. Curve mode
 run_test "curve mode" 0 \
-    run --host http://localhost:3000/load-test/success \
+    run --host https://httpbin.org/get \
     --load-curve "$TMPDIR/curve.json"
 
 # 5. Custom header
 run_test "custom header" 0 \
-    run --host http://localhost:3000/load-test/success \
+    run --host https://httpbin.org/get \
     --header "X-Test: lmn-functional" \
     --request-count 10 --concurrency 2
 
@@ -287,13 +287,13 @@ check_json_output() {
     jq -e '.requests.total > 0' "$file" > /dev/null 2>&1
 }
 run_test_with_check "json output format" 0 check_json_output \
-    run --host http://localhost:3000/load-test/success \
+    run --host https://httpbin.org/get \
     --request-count 10 --concurrency 2 \
     --output json
 
 # 9. JSON output to file
 run_test "json output to file" 0 \
-    run --host http://localhost:3000/load-test/success \
+    run --host https://httpbin.org/get \
     --request-count 10 --concurrency 2 \
     --output-file "$TMPDIR/report.json"
 
