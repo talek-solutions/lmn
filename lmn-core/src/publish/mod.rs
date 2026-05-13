@@ -36,7 +36,7 @@
 //! # Ok::<_, lmn_core::publish::PublishError>(())
 //! ```
 //!
-//! [`RunReport`]: crate::output::report::RunReport
+//! [`RunReport`]: crate::output::RunReport
 
 pub mod config;
 pub mod envelope;
