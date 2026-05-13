@@ -1,0 +1,25 @@
+# Test 3 — POST with generated body, 5_000 requests at 20 VUs
+# Body fields are randomised per request via request_template placeholders.
+
+run:
+  host: http://localhost:3000/load-test/process
+  method: post
+  output: table
+  output_file: comparison/lmn/result/3_run_report.json
+
+execution:
+  request_count: 5000
+  concurrency: 20
+
+thresholds:
+  - metric: error_rate
+    operator: lt
+    value: 0.01
+  - metric: latency_p95
+    operator: lt
+    value: 2000.0
+  - metric: throughput_rps
+    operator: gte
+    value: 10.0
+
+request_template: comparison/lmn/3_request.json

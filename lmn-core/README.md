@@ -104,9 +104,6 @@ let template = Template::parse(Path::new("request.json")).unwrap();
 
 // Generate on demand — thread-safe, used by both fixed and curve executors
 let body = template.generate_one();
-
-// Or pre-generate N bodies upfront (e.g. for deterministic replay)
-let bodies = template.pre_generate(1000);
 ```
 
 Template files embed placeholder definitions under `_loadtest_metadata_templates`:

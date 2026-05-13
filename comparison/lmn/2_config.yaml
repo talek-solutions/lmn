@@ -1,0 +1,30 @@
+# Test 2 — Curve execution, GET, 30s ramp 0→20 / 1m hold @20 / 30s ramp 20→0
+# Endpoint is intentionally flaky (~50% 500s), so error_rate threshold is relaxed.
+
+run:
+  host: http://localhost:3000/load-test/random-error
+  method: get
+  output: table
+  output_file: comparison/lmn/result/2_run_report.json
+
+execution:
+  stages:
+    - duration: 30s
+      target_vus: 20
+      ramp: linear
+    - duration: 1m
+      target_vus: 20
+    - duration: 30s
+      target_vus: 0
+      ramp: linear
+
+thresholds:
+  - metric: error_rate
+    operator: lt
+    value: 0.7
+  - metric: latency_p95
+    operator: lt
+    value: 2000.0
+  - metric: throughput_rps
+    operator: gte
+    value: 10.0

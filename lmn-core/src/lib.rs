@@ -9,6 +9,7 @@ pub mod http;
 pub mod load_curve;
 pub mod monitoring;
 pub mod output;
+pub mod publish;
 pub mod request_template;
 pub mod response_template;
 pub mod stats;

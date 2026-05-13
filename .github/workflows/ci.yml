@@ -45,9 +45,11 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32  # v2
-      - uses: taiki-e/install-action@735e5933943122c5ac182670a935f54a949265c1  # v2
+      - uses: taiki-e/install-action@3235f8901fd37ffed0052b276cec25a362fb82e9  # v2
         with:
-          tool: cargo-nextest
+          tool: cargo-nextest@0.9.133
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: cargo nextest run --workspace --locked --profile ci
         env:
           # Never let CI silently accept or auto-update insta snapshots.

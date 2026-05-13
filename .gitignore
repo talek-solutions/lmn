@@ -6,7 +6,6 @@
 .docs
 CLAUDE.md
 .venv
-
 # insta: pending snapshots are reviewed interactively, never committed
 **/*.snap.new
 **/*.pending-snap

@@ -1,0 +1,45 @@
+---
+source: lmn-core/tests/publish_snapshot.rs
+assertion_line: 213
+expression: envelope
+---
+{
+  "envelope_version": 1,
+  "run_id": "[uuid]",
+  "cli_version": "0.3.0",
+  "published_at": "[timestamp]",
+  "source": "cli",
+  "report": {
+    "version": 2,
+    "run": {
+      "mode": "fixed",
+      "elapsed_ms": 100.0,
+      "curve_duration_ms": null,
+      "template_generation_ms": null
+    },
+    "requests": {
+      "total": 10,
+      "ok": 10,
+      "failed": 0,
+      "error_rate": 0.0,
+      "throughput_rps": 100.0
+    },
+    "latency": {
+      "min_ms": 1.0,
+      "p10_ms": 1.0,
+      "p25_ms": 1.0,
+      "p50_ms": 2.0,
+      "p75_ms": 3.0,
+      "p90_ms": 4.0,
+      "p95_ms": 5.0,
+      "p99_ms": 8.0,
+      "max_ms": 10.0,
+      "avg_ms": 2.5
+    },
+    "status_codes": {},
+    "response_stats": null,
+    "curve_stages": null,
+    "scenarios": null,
+    "thresholds": null
+  }
+}

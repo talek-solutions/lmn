@@ -14,10 +14,11 @@ reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_norway.workspace = true
+time.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
-
+uuid.workspace = true
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--cfg", "docsrs"]
@@ -25,3 +26,5 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dev-dependencies]
 tempfile.workspace = true
 insta.workspace = true
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync", "signal", "time"] }
+wiremock.workspace = true

@@ -10,6 +10,7 @@ use lmn_core::config::{ExecutionConfig, LumenConfig, parse_config, resolve_scena
 use lmn_core::execution::{ExecutionMode, RequestSpec};
 use lmn_core::http::BodyFormat;
 use lmn_core::load_curve::LoadCurve;
+use lmn_core::publish::PublishConfigYaml;
 use lmn_core::threshold::Threshold;
 
 impl From<HttpMethod> for lmn_core::command::HttpMethod {
@@ -70,6 +71,7 @@ pub struct RunArgsResolved {
     pub thresholds: Option<Vec<Threshold>>,
     pub output: OutputFormat,
     pub output_file: Option<PathBuf>,
+    pub publish_config: Option<PublishConfigYaml>,
 }
 
 impl RunArgsResolved {
@@ -343,12 +345,40 @@ impl TryFrom<RunArgs> for RunArgsResolved {
                 }
             };
 
+        let publish_yaml = cfg.as_ref().and_then(|c| c.publish.clone());
+        let flag_url = args.publish_url;
+        // URL precedence: --publish-url flag > LUMEN_API_URL env > yaml url.
+        // Resolved here so the builder receives a single, already-resolved URL.
+        let resolved_url = flag_url
+            .clone()
+            .or_else(|| {
+                std::env::var("LUMEN_API_URL")
+                    .ok()
+                    .filter(|s| !s.trim().is_empty())
+            })
+            .or_else(|| publish_yaml.as_ref().and_then(|y| y.url.clone()));
+        let publish_config = match (&flag_url, &publish_yaml) {
+            // CLI flag: implicitly enabled.
+            (Some(_), _) => Some(PublishConfigYaml {
+                enabled: Some(true),
+                url: resolved_url,
+            }),
+            // YAML section present, no CLI flag.
+            (None, Some(yaml)) => Some(PublishConfigYaml {
+                enabled: yaml.enabled,
+                url: resolved_url,
+            }),
+            // Nothing configured.
+            (None, None) => None,
+        };
+
         Ok(RunArgsResolved {
             request,
             execution,
             thresholds,
             output,
             output_file,
+            publish_config,
         })
     }
 }
@@ -500,6 +530,7 @@ mod tests {
             output_file: None,
             config: None,
             headers: vec![],
+            publish_url: None,
         }
     }
 
@@ -1155,5 +1186,161 @@ scenarios:
             .find(|(k, _)| k == "X-Custom")
             .map(|(_, v)| v.as_str());
         assert_eq!(custom, Some("keep"));
+    }
+
+    // ── publish_config merge tests ───────────────────────────────────────────
+
+    #[test]
+    fn publish_config_none_when_no_flag_and_no_yaml() {
+        let resolved = RunArgsResolved::try_from(make_run_args(None)).unwrap();
+        assert!(
+            resolved.publish_config.is_none(),
+            "expected None when neither CLI flag nor YAML publish section is set"
+        );
+    }
+
+    #[test]
+    fn publish_config_from_cli_flag_enables_and_sets_url() {
+        let mut args = make_run_args(None);
+        args.publish_url = Some("https://custom.example.com".into());
+
+        let resolved = RunArgsResolved::try_from(args).unwrap();
+        let pc = resolved
+            .publish_config
+            .expect("expected Some when --publish-url is set");
+        assert_eq!(pc.enabled, Some(true));
+        assert_eq!(pc.url.as_deref(), Some("https://custom.example.com"));
+    }
+
+    #[test]
+    fn publish_config_from_yaml_preserves_yaml_fields() {
+        use std::io::Write;
+        let _env_lock = lock_lumen_api_url();
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\npublish:\n  enabled: true\n  url: https://yaml.example.com\n")
+            .unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+
+        let resolved = RunArgsResolved::try_from(args).unwrap();
+        let pc = resolved.publish_config.expect("expected Some from YAML");
+        assert_eq!(pc.enabled, Some(true));
+        assert_eq!(pc.url.as_deref(), Some("https://yaml.example.com"));
+    }
+
+    #[test]
+    fn publish_config_cli_flag_overrides_yaml() {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\npublish:\n  enabled: false\n  url: https://yaml.example.com\n")
+            .unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+        args.publish_url = Some("https://cli.example.com".into());
+
+        let resolved = RunArgsResolved::try_from(args).unwrap();
+        let pc = resolved
+            .publish_config
+            .expect("expected Some when CLI flag is set");
+        assert_eq!(
+            pc.enabled,
+            Some(true),
+            "CLI flag should force enabled=true even when YAML says false"
+        );
+        assert_eq!(
+            pc.url.as_deref(),
+            Some("https://cli.example.com"),
+            "CLI flag URL should override YAML URL"
+        );
+    }
+
+    /// RAII guard that sets an env var on creation and removes it on drop,
+    /// ensuring cleanup even if the test panics.
+    struct EnvGuard(&'static str);
+    impl EnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            unsafe { std::env::set_var(key, value) };
+            Self(key)
+        }
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            unsafe { std::env::remove_var(self.0) };
+        }
+    }
+
+    /// Serializes tests that read or write `LUMEN_API_URL`. Rust runs unit
+    /// tests in parallel within one process, and the env var is process-global,
+    /// so without this lock a test that sets `LUMEN_API_URL` can race with a
+    /// test that asserts the YAML url is used.
+    static LUMEN_API_URL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn lock_lumen_api_url() -> std::sync::MutexGuard<'static, ()> {
+        LUMEN_API_URL_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[test]
+    fn publish_config_env_url_wins_over_yaml_url() {
+        use std::io::Write;
+        let _env_lock = lock_lumen_api_url();
+        let _guard = EnvGuard::set("LUMEN_API_URL", "https://env.example.com");
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\npublish:\n  enabled: true\n  url: https://yaml.example.com\n")
+            .unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+
+        let resolved = RunArgsResolved::try_from(args).unwrap();
+        let pc = resolved.publish_config.expect("expected Some");
+        assert_eq!(
+            pc.url.as_deref(),
+            Some("https://env.example.com"),
+            "LUMEN_API_URL env should override YAML url"
+        );
+    }
+
+    #[test]
+    fn publish_config_cli_flag_wins_over_env_url() {
+        let _env_lock = lock_lumen_api_url();
+        let _guard = EnvGuard::set("LUMEN_API_URL", "https://env.example.com");
+
+        let mut args = make_run_args(None);
+        args.publish_url = Some("https://cli.example.com".into());
+
+        let resolved = RunArgsResolved::try_from(args).unwrap();
+        let pc = resolved.publish_config.expect("expected Some");
+        assert_eq!(
+            pc.url.as_deref(),
+            Some("https://cli.example.com"),
+            "--publish-url flag should override LUMEN_API_URL env"
+        );
+    }
+
+    #[test]
+    fn publish_config_yaml_disabled_without_flag_stays_disabled() {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\npublish:\n  enabled: false\n")
+            .unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+
+        let resolved = RunArgsResolved::try_from(args).unwrap();
+        let pc = resolved
+            .publish_config
+            .expect("expected Some from YAML section");
+        assert_eq!(
+            pc.enabled,
+            Some(false),
+            "YAML enabled=false should be preserved when no CLI flag"
+        );
     }
 }
