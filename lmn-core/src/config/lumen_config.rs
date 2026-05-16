@@ -120,6 +120,9 @@ pub struct RunConfig {
 pub struct ExecutionConfig {
     pub request_count: Option<usize>,
     pub concurrency: Option<usize>,
+    /// Optional aggregate requests-per-second cap. Applies in both fixed and
+    /// curve modes. `None`/absent means no rate limit.
+    pub rps: Option<usize>,
     pub stages: Option<Vec<crate::load_curve::Stage>>,
 }
 

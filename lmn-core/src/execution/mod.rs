@@ -1,8 +1,10 @@
 pub mod curve;
 pub mod error;
 pub mod fixed;
+pub mod rate_limit;
 
 pub use error::RunError;
+pub use rate_limit::RpsLimiter;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -336,9 +338,17 @@ pub enum ExecutionMode {
     Fixed {
         request_count: usize,
         concurrency: usize,
+        /// Optional upper bound on aggregate requests-per-second.
+        /// `None` means no rate limit.
+        rps: Option<usize>,
     },
     /// Time-based dynamic VU execution driven by a `LoadCurve`.
-    Curve(LoadCurve),
+    Curve {
+        curve: LoadCurve,
+        /// Optional upper bound on aggregate requests-per-second.
+        /// `None` means no rate limit.
+        rps: Option<usize>,
+    },
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────

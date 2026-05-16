@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dependency-aware iteration abort** — if a step references `{{capture.KEY}}` that isn't in the capture state (prior step failed or server omitted the field), the iteration aborts immediately regardless of `on_step_failure`.
 - Scenarios guide, recipe, and config reference documentation (including the capture feature and size caps).
 - 5 new functional tests covering scenarios in fixed, curve, abort, JSON output, and per-step stats modes.
+- **`--rps` flag and `execution.rps` config field** — cap aggregate requests-per-second across all VUs. Implemented as a shared token-bucket limiter (via `governor`), so output is smoothed rather than bursted at the boundary of each second. Works in both fixed and curve modes; in scenario mode the cap applies per HTTP request, not per iteration. Omit for no rate limit (full-throttle behaviour unchanged).
+- Functional test coverage for `--rps` (CLI flag with timed-elapsed assertion + YAML config form).
 
 ### Changed
 

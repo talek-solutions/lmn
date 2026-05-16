@@ -366,6 +366,7 @@ mod tests {
             ]),
             request_count: None,
             concurrency: None,
+            rps: None,
         };
         let curve = LoadCurve::try_from(cfg).expect("should succeed");
         assert_eq!(curve.stages.len(), 2);
@@ -379,6 +380,7 @@ mod tests {
             stages: Some(vec![]),
             request_count: None,
             concurrency: None,
+            rps: None,
         };
         let result = LoadCurve::try_from(cfg);
         assert!(result.is_err());
@@ -395,6 +397,7 @@ mod tests {
             stages: None,
             request_count: Some(100),
             concurrency: Some(10),
+            rps: None,
         };
         let result = LoadCurve::try_from(cfg);
         assert!(result.is_err());

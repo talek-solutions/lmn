@@ -60,7 +60,7 @@ If thresholds pass, you'll see a green summary and exit code `0`. If they fail, 
 - Resource contention at high concurrency — try reducing `-C` to isolate
 
 **High error rate** is usually caused by:
-- Rate limiting (429s) — reduce concurrency or add a lower request count
+- Rate limiting (429s) — reduce concurrency, or add `--rps` to throttle aggregate throughput regardless of how fast the server replies
 - Server overload (503s) — your concurrency is too high for the server
 - Auth failures (401s) — check your headers
 

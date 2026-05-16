@@ -31,12 +31,14 @@ thresholds: # Pass/fail rules (optional)
 |---|---|---|---|
 | `request_count` | int | Yes | Total requests to send (or scenario iterations, when `scenarios` is set). Max: `100_000_000` |
 | `concurrency` | int | Yes | Concurrent workers. Max: `10_000` |
+| `rps` | int | No | Aggregate requests-per-second cap across all VUs. Values are token-bucket-smoothed, so a `rps: 100` run produces ~100 req/s rather than a once-per-second burst. Omit (or set `null`) for no rate limit. |
 
 **Curve mode** — `stages` only (cannot mix with fixed mode fields):
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `stages` | array | Yes | List of load curve stages |
+| `rps` | int | No | Aggregate requests-per-second cap, also valid in curve mode. Acts as a ceiling on top of the curve — if the curve would produce more than `rps` req/s, VUs wait. |
 
 Each stage:
 

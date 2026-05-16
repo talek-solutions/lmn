@@ -24,6 +24,7 @@ opentelemetry = "0.31.0"
 opentelemetry-otlp = { version = "0.31.0", features = ["http-proto", "reqwest-blocking-client", "trace"], default-features = false }
 opentelemetry_sdk = "0.31.0"
 clap = { version = "4.5.60", features = ["derive", "unstable-doc"] }
+governor = "0.7"
 clap-cargo = "0.18.3"
 tempfile = "3"
 insta = { version = "1.41", features = ["json", "yaml", "redactions"] }

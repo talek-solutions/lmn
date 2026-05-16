@@ -7,7 +7,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::debug;
 
 use crate::execution::{
-    DrainMetricsAccumulator, ResolvedScenario, ScenarioStats, StageStats, assign_scenario,
+    DrainMetricsAccumulator, ResolvedScenario, RpsLimiter, ScenarioStats, StageStats,
+    assign_scenario,
 };
 use crate::histogram::{LatencyHistogram, StatusCodeHistogram};
 use crate::http::{RequestConfig, RequestRecord};
@@ -25,6 +26,10 @@ pub struct CurveExecutorParams {
     pub request_config: Arc<RequestConfig>,
     pub template: Option<Arc<Template>>,
     pub cancellation_token: CancellationToken,
+    /// Optional upper bound on aggregate requests-per-second across all VUs.
+    /// `None` means no rate limit. Values that overflow `u32` or equal zero
+    /// are treated as unset.
+    pub rps: Option<usize>,
     /// When present, the executor spawns `ScenarioVu` instances instead of
     /// plain `Vu` instances. VUs are assigned via weighted round-robin using a
     /// monotonically increasing counter. Budget is always `None` in curve mode.
@@ -80,8 +85,13 @@ impl CurveExecutor {
             request_config,
             template,
             cancellation_token,
+            rps,
             scenarios,
         } = self.params;
+
+        // Build the shared RPS limiter once. Every VU spawned during the curve
+        // receives the same `Arc` clone so the cap is genuinely aggregate.
+        let rate_limiter = rps.and_then(RpsLimiter::new);
 
         let total_duration = curve.total_duration();
         let run_start = Instant::now();
@@ -231,6 +241,7 @@ impl CurveExecutor {
                                         cancellation_token: vu_token.clone(),
                                         result_tx: tx.clone(),
                                         budget: None, // curve mode: no budget
+                                        rate_limiter: rate_limiter.as_ref().map(Arc::clone),
                                     }
                                     .spawn()
                                 } else {
@@ -243,6 +254,7 @@ impl CurveExecutor {
                                         cancellation_token: vu_token.clone(),
                                         result_tx: tx.clone(),
                                         budget: None,
+                                        rate_limiter: rate_limiter.as_ref().map(Arc::clone),
                                     }
                                     .spawn()
                                 };
