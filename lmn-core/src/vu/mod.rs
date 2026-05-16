@@ -7,6 +7,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use crate::execution::RpsLimiter;
 use crate::http::{Request, RequestConfig, RequestRecord};
 use crate::request_template::Template;
 
@@ -34,6 +35,10 @@ pub struct Vu {
     /// when the counter reaches zero. `None` means run until the cancellation
     /// token is triggered (curve mode).
     pub budget: Option<Arc<AtomicUsize>>,
+    /// Optional shared RPS limiter. When present, each VU awaits one permit
+    /// before dispatching a request, capping aggregate throughput across all
+    /// VUs. `None` means no rate limit (full-throttle).
+    pub rate_limiter: Option<Arc<RpsLimiter>>,
 }
 
 impl Vu {
@@ -65,6 +70,16 @@ impl Vu {
             loop {
                 if !self.claim_budget() {
                     break;
+                }
+
+                // Wait for an RPS permit if a limiter is configured. Use
+                // `select!` against the cancellation token so we don't block
+                // past the end of the run.
+                if let Some(ref rl) = self.rate_limiter {
+                    tokio::select! {
+                        _ = self.cancellation_token.cancelled() => break,
+                        _ = rl.acquire() => {}
+                    }
                 }
 
                 let body = match self.template.as_ref().map(|t| t.generate_one()) {
@@ -178,6 +193,7 @@ mod tests {
             cancellation_token: CancellationToken::new(),
             result_tx: tx,
             budget: None,
+            rate_limiter: None,
         };
 
         assert!(vu.template.is_none());
@@ -213,6 +229,7 @@ mod tests {
             cancellation_token: CancellationToken::new(),
             result_tx: tx,
             budget: Some(Arc::clone(&budget)),
+            rate_limiter: None,
         };
 
         assert_eq!(vu.budget.unwrap().load(Ordering::Relaxed), 100);

@@ -8,6 +8,7 @@ repository = "https://github.com/talek-solutions/lmn"
 readme = "README.md"
 
 [dependencies]
+governor.workspace = true
 hdrhistogram.workspace = true
 rand.workspace = true
 reqwest.workspace = true

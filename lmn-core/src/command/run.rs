@@ -26,8 +26,9 @@ impl Command for RunCommand {
             ExecutionMode::Fixed {
                 request_count,
                 concurrency,
-            } => execute_fixed(self.request, request_count, concurrency).await,
-            ExecutionMode::Curve(curve) => execute_curve(self.request, curve).await,
+                rps,
+            } => execute_fixed(self.request, request_count, concurrency, rps).await,
+            ExecutionMode::Curve { curve, rps } => execute_curve(self.request, curve, rps).await,
         }
     }
 }
@@ -39,6 +40,7 @@ async fn execute_fixed(
     request_spec: RequestSpec,
     total: usize,
     concurrency: usize,
+    rps: Option<usize>,
 ) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
     match request_spec {
         RequestSpec::Single {
@@ -80,6 +82,7 @@ async fn execute_fixed(
                 template,
                 total,
                 concurrency,
+                rps,
                 cancellation_token,
                 scenarios: None,
             })
@@ -101,7 +104,7 @@ async fn execute_fixed(
             }))
         }
         RequestSpec::Scenarios(scenarios) => {
-            execute_fixed_scenarios(scenarios, total, concurrency).await
+            execute_fixed_scenarios(scenarios, total, concurrency, rps).await
         }
     }
 }
@@ -111,6 +114,7 @@ async fn execute_fixed_scenarios(
     scenarios: Vec<ResolvedScenario>,
     total: usize,
     concurrency: usize,
+    rps: Option<usize>,
 ) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
     use crate::command::HttpMethod;
 
@@ -147,6 +151,7 @@ async fn execute_fixed_scenarios(
         template: None,
         total,
         concurrency,
+        rps,
         cancellation_token,
         scenarios: Some(scenarios),
     })
@@ -174,6 +179,7 @@ async fn execute_fixed_scenarios(
 async fn execute_curve(
     request_spec: RequestSpec,
     curve: LoadCurve,
+    rps: Option<usize>,
 ) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
     match request_spec {
         RequestSpec::Single {
@@ -222,6 +228,7 @@ async fn execute_curve(
                 request_config: Arc::clone(&request_config),
                 template,
                 cancellation_token,
+                rps,
                 scenarios: None,
             });
 
@@ -245,7 +252,7 @@ async fn execute_curve(
                 scenario_stats: curve_result.scenario_stats,
             }))
         }
-        RequestSpec::Scenarios(scenarios) => execute_curve_scenarios(scenarios, curve).await,
+        RequestSpec::Scenarios(scenarios) => execute_curve_scenarios(scenarios, curve, rps).await,
     }
 }
 
@@ -253,6 +260,7 @@ async fn execute_curve(
 async fn execute_curve_scenarios(
     scenarios: Vec<ResolvedScenario>,
     curve: LoadCurve,
+    rps: Option<usize>,
 ) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
     use crate::command::HttpMethod;
 
@@ -290,6 +298,7 @@ async fn execute_curve_scenarios(
         request_config: placeholder_config,
         template: None,
         cancellation_token,
+        rps,
         scenarios: Some(scenarios),
     });
 

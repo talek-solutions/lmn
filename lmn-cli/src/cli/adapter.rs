@@ -164,6 +164,13 @@ impl TryFrom<RunArgs> for RunArgsResolved {
             .or_else(|| cfg.as_ref().and_then(|c| c.execution.as_ref()?.concurrency))
             .unwrap_or(100);
 
+        // ── rps ───────────────────────────────────────────────────────────────
+        // CLI --rps wins; else config execution.rps; else None (no rate limit).
+        let rps: Option<usize> = args
+            .rps
+            .map(|v| v as usize)
+            .or_else(|| cfg.as_ref().and_then(|c| c.execution.as_ref()?.rps));
+
         // ── execution mode ────────────────────────────────────────────────────
         // Priority:
         //   1. CLI --load-curve flag → ExecutionMode::Curve (from file)
@@ -193,7 +200,7 @@ impl TryFrom<RunArgs> for RunArgsResolved {
             curve
                 .validate()
                 .map_err(|e| format!("invalid load curve '{}': {e}", path.display()))?;
-            ExecutionMode::Curve(curve)
+            ExecutionMode::Curve { curve, rps }
         } else if let Some(ref c) = cfg {
             let exec_cfg: Option<&ExecutionConfig> = c.execution.as_ref();
             if exec_cfg.and_then(|e| e.stages.as_ref()).is_some() {
@@ -202,17 +209,19 @@ impl TryFrom<RunArgs> for RunArgsResolved {
                     .clone();
                 let curve =
                     LoadCurve::try_from(exec).map_err(Box::<dyn std::error::Error>::from)?;
-                ExecutionMode::Curve(curve)
+                ExecutionMode::Curve { curve, rps }
             } else {
                 ExecutionMode::Fixed {
                     request_count,
                     concurrency,
+                    rps,
                 }
             }
         } else {
             ExecutionMode::Fixed {
                 request_count,
                 concurrency,
+                rps,
             }
         };
 
@@ -519,6 +528,7 @@ mod tests {
             host: Some("http://localhost:3000".to_string()),
             request_count: Some(100),
             concurrency: Some(10),
+            rps: None,
             method: Some(HttpMethod::Get),
             body: None,
             request_template: None,
@@ -664,7 +674,10 @@ mod tests {
 
         let result = RunArgsResolved::try_from(make_run_args(Some(f.path().to_path_buf())));
         assert!(result.is_ok());
-        assert!(matches!(result.unwrap().execution, ExecutionMode::Curve(_)));
+        assert!(matches!(
+            result.unwrap().execution,
+            ExecutionMode::Curve { .. }
+        ));
     }
 
     #[test]
@@ -831,7 +844,7 @@ mod tests {
 
         let result = RunArgsResolved::try_from(args).expect("should succeed");
         assert!(
-            matches!(result.execution, ExecutionMode::Curve(_)),
+            matches!(result.execution, ExecutionMode::Curve { .. }),
             "expected Curve execution mode from config stages"
         );
     }

@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 use crate::capture::{
     CaptureDefinition, CaptureState, inject_captures, inject_captures_into_headers, value_to_string,
 };
-use crate::execution::OnStepFailure;
+use crate::execution::{OnStepFailure, RpsLimiter};
 use crate::http::{Request, RequestConfig, RequestRecord};
 use crate::request_template::Template;
 use crate::response_template::extractor::resolve_path;
@@ -53,6 +53,10 @@ pub struct ScenarioVu {
     /// One unit is claimed per full iteration (not per step). `None` means the
     /// VU runs until the cancellation token fires (curve mode).
     pub budget: Option<Arc<AtomicUsize>>,
+    /// Optional shared RPS limiter. When present, one permit is awaited per
+    /// HTTP step (not per iteration), so the cap reflects requests-per-second
+    /// regardless of how many steps a scenario has.
+    pub rate_limiter: Option<Arc<RpsLimiter>>,
 }
 
 impl ScenarioVu {
@@ -190,6 +194,16 @@ impl ScenarioVu {
                     } else {
                         Some(Arc::clone(&step.plain_headers))
                     };
+
+                    // Wait for an RPS permit if a limiter is configured.
+                    // Awaited per-step so the cap is requests-per-second, not
+                    // iterations-per-second.
+                    if let Some(ref rl) = self.rate_limiter {
+                        tokio::select! {
+                            _ = self.cancellation_token.cancelled() => return,
+                            _ = rl.acquire() => {}
+                        }
+                    }
 
                     // 4. Build and execute the HTTP request.
                     // Resolve body through request_config (handles Body::Formatted).
@@ -349,6 +363,7 @@ mod tests {
             cancellation_token: CancellationToken::new(),
             result_tx: tx,
             budget: None,
+            rate_limiter: None,
         };
 
         assert_eq!(&*vu.scenario_name, "checkout");
@@ -370,6 +385,7 @@ mod tests {
             cancellation_token: CancellationToken::new(),
             result_tx: tx,
             budget: Some(Arc::clone(&budget)),
+            rate_limiter: None,
         };
 
         assert_eq!(vu.budget.unwrap().load(Ordering::Relaxed), 50);

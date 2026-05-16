@@ -6,7 +6,9 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use tracing::info_span;
 
-use crate::execution::{DrainMetricsAccumulator, ResolvedScenario, ScenarioStats, assign_scenario};
+use crate::execution::{
+    DrainMetricsAccumulator, ResolvedScenario, RpsLimiter, ScenarioStats, assign_scenario,
+};
 use crate::histogram::{LatencyHistogram, StatusCodeHistogram};
 use crate::http::{RequestConfig, RequestRecord};
 use crate::monitoring::SpanName;
@@ -23,6 +25,10 @@ pub struct FixedExecutorParams {
     pub template: Option<Arc<Template>>,
     pub total: usize,
     pub concurrency: usize,
+    /// Optional upper bound on aggregate requests-per-second across all VUs.
+    /// `None` means no rate limit. Values that overflow `u32` or equal zero
+    /// are treated as unset.
+    pub rps: Option<usize>,
     pub cancellation_token: CancellationToken,
     /// When present, the executor spawns `ScenarioVu` instances instead of
     /// plain `Vu` instances. Each VU is assigned a scenario via weighted
@@ -66,6 +72,7 @@ impl FixedExecutor {
             template,
             total,
             concurrency,
+            rps,
             cancellation_token,
             scenarios,
         } = self.params;
@@ -88,6 +95,10 @@ impl FixedExecutor {
         } else {
             request_config.tracked_fields.is_some()
         };
+
+        // Build the shared RPS limiter up front so every VU receives the same
+        // `Arc` clone. `None` means no rate limit configured.
+        let rate_limiter = rps.and_then(RpsLimiter::new);
 
         async {
             let budget = Arc::new(AtomicUsize::new(total));
@@ -145,6 +156,7 @@ impl FixedExecutor {
                             cancellation_token: cancellation_token.clone(),
                             result_tx: tx.clone(),
                             budget: Some(Arc::clone(&budget)),
+                            rate_limiter: rate_limiter.as_ref().map(Arc::clone),
                         }
                         .spawn()
                     })
@@ -162,6 +174,7 @@ impl FixedExecutor {
                             cancellation_token: cancellation_token.clone(),
                             result_tx: tx.clone(),
                             budget: Some(Arc::clone(&budget)),
+                            rate_limiter: rate_limiter.as_ref().map(Arc::clone),
                         }
                         .spawn()
                     })
@@ -234,6 +247,7 @@ mod tests {
             template: None,
             total: 5,
             concurrency: 2,
+            rps: None,
             cancellation_token: CancellationToken::new(),
             scenarios: None,
         };
@@ -242,6 +256,7 @@ mod tests {
         assert_eq!(params.concurrency, 2);
         assert!(params.template.is_none());
         assert!(params.scenarios.is_none());
+        assert!(params.rps.is_none());
     }
 
     // ── fixed_executor_new_stores_params ─────────────────────────────────────
@@ -266,11 +281,13 @@ mod tests {
             template: None,
             total: 1,
             concurrency: 1,
+            rps: Some(50),
             cancellation_token: CancellationToken::new(),
             scenarios: None,
         });
 
         assert_eq!(executor.params.total, 1);
         assert_eq!(executor.params.concurrency, 1);
+        assert_eq!(executor.params.rps, Some(50));
     }
 }
