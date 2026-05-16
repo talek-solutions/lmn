@@ -6,13 +6,17 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 use tracing::debug;
 
-use crate::execution::StageStats;
+use crate::execution::{
+    DrainMetricsAccumulator, ResolvedScenario, RpsLimiter, ScenarioStats, StageStats,
+    assign_scenario,
+};
 use crate::histogram::{LatencyHistogram, StatusCodeHistogram};
 use crate::http::{RequestConfig, RequestRecord};
 use crate::load_curve::{LoadCurve, Stage};
 use crate::request_template::Template;
 use crate::response_template::stats::ResponseStats;
 use crate::vu::Vu;
+use crate::vu::scenario::{ScenarioVu, StepExec};
 
 // ── CurveExecutorParams ───────────────────────────────────────────────────────
 
@@ -22,6 +26,14 @@ pub struct CurveExecutorParams {
     pub request_config: Arc<RequestConfig>,
     pub template: Option<Arc<Template>>,
     pub cancellation_token: CancellationToken,
+    /// Optional upper bound on aggregate requests-per-second across all VUs.
+    /// `None` means no rate limit. Values that overflow `u32` or equal zero
+    /// are treated as unset.
+    pub rps: Option<usize>,
+    /// When present, the executor spawns `ScenarioVu` instances instead of
+    /// plain `Vu` instances. VUs are assigned via weighted round-robin using a
+    /// monotonically increasing counter. Budget is always `None` in curve mode.
+    pub scenarios: Option<Vec<ResolvedScenario>>,
 }
 
 // ── CurveExecutionResult ──────────────────────────────────────────────────────
@@ -32,8 +44,10 @@ pub struct CurveExecutionResult {
     pub status_codes: StatusCodeHistogram,
     pub total_requests: u64,
     pub total_failures: u64,
+    pub total_skipped: u64,
     pub response_stats: Option<ResponseStats>,
     pub stage_stats: Vec<StageStats>,
+    pub scenario_stats: Option<Vec<ScenarioStats>>,
 }
 
 // ── stage_index_at ────────────────────────────────────────────────────────────
@@ -71,7 +85,13 @@ impl CurveExecutor {
             request_config,
             template,
             cancellation_token,
+            rps,
+            scenarios,
         } = self.params;
+
+        // Build the shared RPS limiter once. Every VU spawned during the curve
+        // receives the same `Arc` clone so the cap is genuinely aggregate.
+        let rate_limiter = rps.and_then(RpsLimiter::new);
 
         let total_duration = curve.total_duration();
         let run_start = Instant::now();
@@ -85,7 +105,16 @@ impl CurveExecutor {
                 .collect(),
         );
 
-        let has_tracked_fields = request_config.tracked_fields.is_some();
+        // `has_tracked_fields` is true when the single-request path uses a
+        // response template, OR when any step across any scenario does.
+        let has_tracked_fields = if let Some(ref sc) = scenarios {
+            sc.iter()
+                .flat_map(|s| s.steps.iter())
+                .any(|step| step.response_template.is_some())
+        } else {
+            request_config.tracked_fields.is_some()
+        };
+
         let n_stages = curve.stages.len();
 
         // Clone the stages vec so the drain task can own it without holding onto `curve`.
@@ -98,15 +127,7 @@ impl CurveExecutor {
         // state. It attributes each record to the correct stage via `completed_at`.
         let drain_handle = tokio::spawn(async move {
             let mut rx = rx;
-            let mut latency = LatencyHistogram::new();
-            let mut status_codes = StatusCodeHistogram::new();
-            let mut total_requests: u64 = 0;
-            let mut total_failures: u64 = 0;
-            let mut response_stats: Option<ResponseStats> = if has_tracked_fields {
-                Some(ResponseStats::new())
-            } else {
-                None
-            };
+            let mut acc = DrainMetricsAccumulator::new(has_tracked_fields);
 
             // Pre-allocate per-stage accumulators.
             let mut stage_stats: Vec<StageStats> = (0..n_stages)
@@ -119,12 +140,7 @@ impl CurveExecutor {
                 .collect();
 
             while let Some(record) = rx.recv().await {
-                total_requests += 1;
-                if !record.success {
-                    total_failures += 1;
-                }
-                latency.record(record.duration);
-                status_codes.record(record.status_code);
+                acc.record_request(&record);
 
                 // Determine which stage this record belongs to using its
                 // wall-clock completion time relative to the run start.
@@ -134,34 +150,40 @@ impl CurveExecutor {
                     .unwrap_or_default();
                 let stage_idx = stage_index_at(&drain_stages, elapsed);
 
-                stage_stats[stage_idx].latency.record(record.duration);
-                stage_stats[stage_idx]
-                    .status_codes
-                    .record(record.status_code);
                 stage_stats[stage_idx].total_requests += 1;
-                if !record.success {
-                    stage_stats[stage_idx].total_failures += 1;
+                if !record.skipped {
+                    stage_stats[stage_idx].latency.record(record.duration);
+                    stage_stats[stage_idx]
+                        .status_codes
+                        .record(record.status_code);
+                    if !record.success {
+                        stage_stats[stage_idx].total_failures += 1;
+                    }
                 }
 
-                if let Some(extraction) = record.extraction
-                    && let Some(ref mut rs) = response_stats
-                {
-                    rs.record(extraction);
-                }
+                acc.record_extraction(record.extraction);
             }
+            let scenario_stats = acc.finalize_scenario_stats();
 
             CurveExecutionResult {
-                latency,
-                status_codes,
-                total_requests,
-                total_failures,
-                response_stats,
+                latency: acc.latency,
+                status_codes: acc.status_codes,
+                total_requests: acc.total_requests,
+                total_failures: acc.total_failures,
+                total_skipped: acc.total_skipped,
+                response_stats: acc.response_stats,
                 stage_stats,
+                scenario_stats,
             }
         });
 
         // Track active VU handles and their per-VU cancellation tokens.
         let mut vu_handles: Vec<(JoinHandle<()>, CancellationToken)> = Vec::new();
+
+        // Monotonically increasing counter used for deterministic scenario
+        // assignment. Each spawned VU gets the next index so the weighted
+        // round-robin assignment is stable regardless of despawn/respawn.
+        let mut vu_counter: usize = 0;
 
         let mut ticker = tokio::time::interval(tokio::time::Duration::from_millis(100));
 
@@ -188,15 +210,55 @@ impl CurveExecutor {
                             let to_add = target - current;
                             for _ in 0..to_add {
                                 let vu_token = CancellationToken::new();
-                                let handle = Vu {
-                                    request_config: Arc::clone(&request_config),
-                                    plain_headers: Arc::clone(&plain_headers),
-                                    template: template.as_ref().map(Arc::clone),
-                                    cancellation_token: vu_token.clone(),
-                                    result_tx: tx.clone(),
-                                    budget: None,
-                                }
-                                .spawn();
+                                let handle = if let Some(ref scenarios) = scenarios {
+                                    // Scenario mode: assign scenario by weighted round-robin
+                                    // over the monotonic vu_counter.
+                                    let scenario = &scenarios[assign_scenario(vu_counter, scenarios)];
+                                    let steps = scenario
+                                        .steps
+                                        .iter()
+                                        .map(|step| StepExec {
+                                            step_name: Arc::clone(&step.name),
+                                            request_config: Arc::clone(&step.request_config),
+                                            plain_headers: Arc::clone(&step.plain_headers),
+                                            request_template: step
+                                                .request_template
+                                                .as_ref()
+                                                .map(Arc::clone),
+                                            response_template: step
+                                                .response_template
+                                                .as_ref()
+                                                .map(Arc::clone),
+                                            captures: step.captures.clone(),
+                                            inline_body: step.inline_body.clone(),
+                                            has_capture_headers: step.has_capture_headers,
+                                        })
+                                        .collect();
+                                    ScenarioVu {
+                                        scenario_name: Arc::clone(&scenario.name),
+                                        steps,
+                                        on_step_failure: scenario.on_step_failure,
+                                        cancellation_token: vu_token.clone(),
+                                        result_tx: tx.clone(),
+                                        budget: None, // curve mode: no budget
+                                        rate_limiter: rate_limiter.as_ref().map(Arc::clone),
+                                    }
+                                    .spawn()
+                                } else {
+                                    Vu {
+                                        request_config: Arc::clone(&request_config),
+                                        plain_headers: Arc::clone(&plain_headers),
+                                        template: template.as_ref().map(Arc::clone),
+                                        scenario_label: None,
+                                        step_label: None,
+                                        cancellation_token: vu_token.clone(),
+                                        result_tx: tx.clone(),
+                                        budget: None,
+                                        rate_limiter: rate_limiter.as_ref().map(Arc::clone),
+                                    }
+                                    .spawn()
+                                };
+                                vu_counter += 1;
                                 vu_handles.push((handle, vu_token));
                             }
                         }

@@ -8,3 +8,4 @@ Reference examples for every lmn feature. Each subfolder maps to a CLI flag or c
 | `response-extractions/` | `-S` / `--response-template` | Response field extraction definitions |
 | `load-curves/` | `-L` / `--load-curve` | Time-based VU scaling curve definitions |
 | `configs/` | `-f` / `--config` | Full run configuration files (host, curve, thresholds) |
+| `configs/scenarios.yaml` | `-f` / `--config` | Multi-step scenario config with weighted VU distribution |

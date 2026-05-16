@@ -20,7 +20,7 @@ This crate provides the building blocks for running load tests programmatically:
 
 ```toml
 [dependencies]
-lmn-core = "0.1"
+lmn-core = "0.3"
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
 ```
@@ -31,8 +31,8 @@ serde_json = "1"
 |---|---|---|
 | `RunCommand` | `command::run` | Entry point — owns request spec, execution mode, and sampling config |
 | `ExecutionMode` | `execution` | `Fixed { request_count, concurrency }` or `Curve(LoadCurve)` |
-| `RequestSpec` | `execution` | Host, method, body, template paths, headers |
-| `SamplingConfig` | `execution` | VU threshold and reservoir size |
+| `RequestSpec` | `execution` | `Single { host, method, … }` or `Scenarios(Vec<ResolvedScenario>)` |
+| `ResolvedScenario` | `execution` | Fully resolved multi-step scenario ready for VU assignment |
 | `RunStats` | `execution` | Raw output of a completed run |
 | `RunReport` | `output` | Serializable report built from `RunStats` |
 | `LoadCurve` | `load_curve` | Staged VU ramp definition (parses from JSON) |
@@ -51,7 +51,7 @@ use lmn_core::output::{RunReport, RunReportParams};
 #[tokio::main]
 async fn main() {
     let cmd = RunCommand {
-        request: RequestSpec {
+        request: RequestSpec::Single {
             host: "https://example.com/api/ping".to_string(),
             method: HttpMethod::Get,
             body: None,
@@ -62,6 +62,7 @@ async fn main() {
         execution: ExecutionMode::Fixed {
             request_count: 1000,
             concurrency: 50,
+            rps: None,
         },
     };
 
@@ -88,7 +89,7 @@ let curve: LoadCurve = r#"{
     ]
 }"#.parse().unwrap();
 
-let execution = ExecutionMode::Curve(curve);
+let execution = ExecutionMode::Curve { curve, rps: None };
 ```
 
 Stage `ramp` defaults to `"linear"` if omitted. Use `"step"` for an immediate jump.
@@ -104,9 +105,6 @@ let template = Template::parse(Path::new("request.json")).unwrap();
 
 // Generate on demand — thread-safe, used by both fixed and curve executors
 let body = template.generate_one();
-
-// Or pre-generate N bodies upfront (e.g. for deterministic replay)
-let bodies = template.pre_generate(1000);
 ```
 
 Template files embed placeholder definitions under `_loadtest_metadata_templates`:

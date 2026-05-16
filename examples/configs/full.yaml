@@ -15,6 +15,9 @@ run:
 execution:
   request_count: 200
   concurrency: 20
+  # Optional aggregate requests-per-second cap (token-bucket smoothed).
+  # Omit or set null to run at full throttle.
+  # rps: 50
 
 # Threshold rules — evaluated after the run completes.
 # Exit code 2 is returned when any threshold is not satisfied.
@@ -42,5 +45,13 @@ thresholds:
   - metric: throughput_rps
     operator: gte
     value: 10.0        # at least 10 req/s
+
+# Publish — push run reports to the Lumen platform.
+# Requires LUMEN_API_KEY env var when enabled.
+# CLI: --publish flag overrides this setting.
+# URL: --publish-url flag > LUMEN_API_URL env > publish.url > default.
+# publish:
+#   enabled: true
+#   url: https://api.talek.cloud/v1/runs
 
 request_template: examples/request-bodies/static-body.json

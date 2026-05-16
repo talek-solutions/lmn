@@ -15,7 +15,7 @@ reqwest = { version = "0.13.2", features = ["rustls"], default-features = false 
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 serde_norway = "0.9"
-tokio = { version = "1.51.0", features = ["rt", "rt-multi-thread", "macros", "sync", "signal"] }
+tokio = { version = "1.51.0", features = ["rt", "rt-multi-thread", "macros", "sync", "signal", "time"] }
 tokio-util = "0.7"
 tracing = "0.1.44"
 tracing-opentelemetry = "0.32.1"
@@ -24,5 +24,10 @@ opentelemetry = "0.31.0"
 opentelemetry-otlp = { version = "0.31.0", features = ["http-proto", "reqwest-blocking-client", "trace"], default-features = false }
 opentelemetry_sdk = "0.31.0"
 clap = { version = "4.5.60", features = ["derive", "unstable-doc"] }
+governor = "0.7"
 clap-cargo = "0.18.3"
 tempfile = "3"
+insta = { version = "1.41", features = ["json", "yaml", "redactions"] }
+time = { version = "0.3", features = ["serde-well-known"], default-features = false }
+uuid = { version = "1", features = ["v7", "serde"] }
+wiremock = "0.6"

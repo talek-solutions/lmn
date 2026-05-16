@@ -1,3 +1,5 @@
+pub mod scenario;
+
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -5,6 +7,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use crate::execution::RpsLimiter;
 use crate::http::{Request, RequestConfig, RequestRecord};
 use crate::request_template::Template;
 
@@ -20,6 +23,10 @@ pub struct Vu {
     /// Pre-converted header pairs shared across all VUs — avoids per-request allocation.
     pub plain_headers: Arc<Vec<(String, String)>>,
     pub template: Option<Arc<Template>>,
+    /// Optional scenario label attached to emitted request records.
+    pub scenario_label: Option<Arc<str>>,
+    /// Optional step label attached to emitted request records.
+    pub step_label: Option<Arc<str>>,
     pub cancellation_token: CancellationToken,
     pub result_tx: mpsc::UnboundedSender<RequestRecord>,
     /// Optional request budget shared across all VUs in fixed-count mode.
@@ -28,6 +35,10 @@ pub struct Vu {
     /// when the counter reaches zero. `None` means run until the cancellation
     /// token is triggered (curve mode).
     pub budget: Option<Arc<AtomicUsize>>,
+    /// Optional shared RPS limiter. When present, each VU awaits one permit
+    /// before dispatching a request, capping aggregate throughput across all
+    /// VUs. `None` means no rate limit (full-throttle).
+    pub rate_limiter: Option<Arc<RpsLimiter>>,
 }
 
 impl Vu {
@@ -61,11 +72,21 @@ impl Vu {
                     break;
                 }
 
+                // Wait for an RPS permit if a limiter is configured. Use
+                // `select!` against the cancellation token so we don't block
+                // past the end of the run.
+                if let Some(ref rl) = self.rate_limiter {
+                    tokio::select! {
+                        _ = self.cancellation_token.cancelled() => break,
+                        _ = rl.acquire() => {}
+                    }
+                }
+
                 let body = match self.template.as_ref().map(|t| t.generate_one()) {
                     None => None,
                     Some(Ok(s)) => Some(s),
                     Some(Err(e)) => {
-                        tracing::error!(error = %e, "template serialization failed, skipping request");
+                        eprintln!("error: template serialization failed, skipping request: {e}");
                         continue;
                     }
                 };
@@ -125,6 +146,9 @@ impl Vu {
                             success: result.success,
                             status_code: result.status_code,
                             extraction,
+                            scenario: self.scenario_label.as_ref().map(Arc::clone),
+                            step: self.step_label.as_ref().map(Arc::clone),
+                            skipped: false,
                         };
 
                         if self.result_tx.send(record).is_err() {
@@ -164,12 +188,17 @@ mod tests {
             request_config: Arc::clone(&config),
             plain_headers: Arc::new(vec![]),
             template: None,
+            scenario_label: None,
+            step_label: None,
             cancellation_token: CancellationToken::new(),
             result_tx: tx,
             budget: None,
+            rate_limiter: None,
         };
 
         assert!(vu.template.is_none());
+        assert!(vu.scenario_label.is_none());
+        assert!(vu.step_label.is_none());
         assert!(vu.budget.is_none());
     }
 
@@ -195,9 +224,12 @@ mod tests {
             request_config: Arc::clone(&config),
             plain_headers: Arc::new(vec![]),
             template: None,
+            scenario_label: None,
+            step_label: None,
             cancellation_token: CancellationToken::new(),
             result_tx: tx,
             budget: Some(Arc::clone(&budget)),
+            rate_limiter: None,
         };
 
         assert_eq!(vu.budget.unwrap().load(Ordering::Relaxed), 100);

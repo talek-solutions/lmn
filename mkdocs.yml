@@ -36,7 +36,7 @@ plugins:
   - macros
 
 extra:
-  version: "0.2.0"
+  version: "0.3.0"
 
 markdown_extensions:
   - pymdownx.snippets:
@@ -72,6 +72,8 @@ nav:
     - Dynamic Request Bodies: guides/request-bodies.md
     - Thresholds & CI Gating: guides/thresholds-ci.md
     - Load Curves: guides/load-curves.md
+    - Multi-step Scenarios: guides/scenarios.md
+    - Scenarios Internals: guides/scenarios-internals.md
   - Recipes:
     - recipes/index.md
     - Quick GET test: recipes/quick-get.md
@@ -84,6 +86,7 @@ nav:
     - Traffic ramp-up: recipes/load-curve.md
     - CI artifact output: recipes/ci-artifact.md
     - Track error codes in responses: recipes/response-template.md
+    - Multi-step scenarios: recipes/scenarios.md
   - Reference:
     - CLI Reference: reference/cli.md
     - Config File Reference: reference/config.md

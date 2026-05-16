@@ -87,6 +87,36 @@ Per-stage metrics are available in the JSON output under `curve_stages`. See [JS
 | Pre-release regression gate | Curve — sustained load over 5–10 minutes |
 | Local dev sanity check | Fixed — 100 requests, done in seconds |
 
+## Curves with scenarios
+
+Curve mode works with [scenarios](scenarios.md). VUs are distributed across scenarios by weight, and the curve controls how many VUs are active at each point in time. Each VU runs its assigned scenario's step sequence in a loop until the stage ends.
+
+```yaml
+scenarios:
+  - name: checkout
+    weight: 3
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+        method: post
+      - name: pay
+        host: https://api.example.com/checkout
+        method: post
+
+execution:
+  stages:
+    - duration: 30s
+      target_vus: 10
+      ramp: linear
+    - duration: 2m
+      target_vus: 50
+    - duration: 30s
+      target_vus: 0
+      ramp: linear
+```
+
+No `request_count` budget in curve mode — VUs run until their stage ends.
+
 ## Copy-paste examples
 
 See the [Traffic ramp-up recipe](../recipes/load-curve.md) for ready-to-use YAML configurations.

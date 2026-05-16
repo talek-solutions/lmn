@@ -6,12 +6,16 @@ use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 use tracing::info_span;
 
+use crate::execution::{
+    DrainMetricsAccumulator, ResolvedScenario, RpsLimiter, ScenarioStats, assign_scenario,
+};
 use crate::histogram::{LatencyHistogram, StatusCodeHistogram};
 use crate::http::{RequestConfig, RequestRecord};
 use crate::monitoring::SpanName;
 use crate::request_template::Template;
 use crate::response_template::stats::ResponseStats;
 use crate::vu::Vu;
+use crate::vu::scenario::{ScenarioVu, StepExec};
 
 // ── FixedExecutorParams ───────────────────────────────────────────────────────
 
@@ -21,7 +25,15 @@ pub struct FixedExecutorParams {
     pub template: Option<Arc<Template>>,
     pub total: usize,
     pub concurrency: usize,
+    /// Optional upper bound on aggregate requests-per-second across all VUs.
+    /// `None` means no rate limit. Values that overflow `u32` or equal zero
+    /// are treated as unset.
+    pub rps: Option<usize>,
     pub cancellation_token: CancellationToken,
+    /// When present, the executor spawns `ScenarioVu` instances instead of
+    /// plain `Vu` instances. Each VU is assigned a scenario via weighted
+    /// round-robin. Budget counts iterations (one per full scenario loop).
+    pub scenarios: Option<Vec<ResolvedScenario>>,
 }
 
 // ── FixedExecutionResult ──────────────────────────────────────────────────────
@@ -32,7 +44,9 @@ pub struct FixedExecutionResult {
     pub status_codes: StatusCodeHistogram,
     pub total_requests: u64,
     pub total_failures: u64,
+    pub total_skipped: u64,
     pub response_stats: Option<ResponseStats>,
+    pub scenario_stats: Option<Vec<ScenarioStats>>,
 }
 
 // ── FixedExecutor ─────────────────────────────────────────────────────────────
@@ -58,7 +72,9 @@ impl FixedExecutor {
             template,
             total,
             concurrency,
+            rps,
             cancellation_token,
+            scenarios,
         } = self.params;
 
         // Pre-convert headers once before spawning VUs to avoid per-request allocation.
@@ -70,7 +86,19 @@ impl FixedExecutor {
                 .collect(),
         );
 
-        let has_tracked_fields = request_config.tracked_fields.is_some();
+        // `has_tracked_fields` is true when the single-request path uses a
+        // response template, OR when any step across any scenario does.
+        let has_tracked_fields = if let Some(ref sc) = scenarios {
+            sc.iter()
+                .flat_map(|s| s.steps.iter())
+                .any(|step| step.response_template.is_some())
+        } else {
+            request_config.tracked_fields.is_some()
+        };
+
+        // Build the shared RPS limiter up front so every VU receives the same
+        // `Arc` clone. `None` means no rate limit configured.
+        let rate_limiter = rps.and_then(RpsLimiter::new);
 
         async {
             let budget = Arc::new(AtomicUsize::new(total));
@@ -81,54 +109,77 @@ impl FixedExecutor {
             // channel closes (all VU senders dropped).
             let drain_handle = tokio::spawn(async move {
                 let mut rx = rx;
-                let mut latency = LatencyHistogram::new();
-                let mut status_codes = StatusCodeHistogram::new();
-                let mut total_requests: u64 = 0;
-                let mut total_failures: u64 = 0;
-                let mut response_stats: Option<ResponseStats> = if has_tracked_fields {
-                    Some(ResponseStats::new())
-                } else {
-                    None
-                };
+                let mut acc = DrainMetricsAccumulator::new(has_tracked_fields);
 
                 while let Some(record) = rx.recv().await {
-                    total_requests += 1;
-                    if !record.success {
-                        total_failures += 1;
-                    }
-                    latency.record(record.duration);
-                    status_codes.record(record.status_code);
-                    if let Some(extraction) = record.extraction
-                        && let Some(ref mut rs) = response_stats
-                    {
-                        rs.record(extraction);
-                    }
+                    acc.record_request(&record);
+                    acc.record_extraction(record.extraction);
                 }
+                let scenario_stats = acc.finalize_scenario_stats();
 
                 FixedExecutionResult {
-                    latency,
-                    status_codes,
-                    total_requests,
-                    total_failures,
-                    response_stats,
+                    latency: acc.latency,
+                    status_codes: acc.status_codes,
+                    total_requests: acc.total_requests,
+                    total_failures: acc.total_failures,
+                    total_skipped: acc.total_skipped,
+                    response_stats: acc.response_stats,
+                    scenario_stats,
                 }
             });
 
-            // Spawn exactly `concurrency` VU tasks. Each claims requests from the
-            // shared budget and self-terminates when the budget is exhausted.
-            let vu_handles: Vec<_> = (0..concurrency)
-                .map(|_| {
-                    Vu {
-                        request_config: Arc::clone(&request_config),
-                        plain_headers: Arc::clone(&plain_headers),
-                        template: template.as_ref().map(Arc::clone),
-                        cancellation_token: cancellation_token.clone(),
-                        result_tx: tx.clone(),
-                        budget: Some(Arc::clone(&budget)),
-                    }
-                    .spawn()
-                })
-                .collect();
+            let vu_handles: Vec<_> = if let Some(ref scenarios) = scenarios {
+                // Scenario mode: spawn `ScenarioVu` instances. Each VU is
+                // assigned a scenario via weighted round-robin and claims one
+                // budget unit per full iteration (not per step).
+                (0..concurrency)
+                    .map(|vu_idx| {
+                        let scenario = &scenarios[assign_scenario(vu_idx, scenarios)];
+                        let steps = scenario
+                            .steps
+                            .iter()
+                            .map(|step| StepExec {
+                                step_name: Arc::clone(&step.name),
+                                request_config: Arc::clone(&step.request_config),
+                                plain_headers: Arc::clone(&step.plain_headers),
+                                request_template: step.request_template.as_ref().map(Arc::clone),
+                                response_template: step.response_template.as_ref().map(Arc::clone),
+                                captures: step.captures.clone(),
+                                inline_body: step.inline_body.clone(),
+                                has_capture_headers: step.has_capture_headers,
+                            })
+                            .collect();
+                        ScenarioVu {
+                            scenario_name: Arc::clone(&scenario.name),
+                            steps,
+                            on_step_failure: scenario.on_step_failure,
+                            cancellation_token: cancellation_token.clone(),
+                            result_tx: tx.clone(),
+                            budget: Some(Arc::clone(&budget)),
+                            rate_limiter: rate_limiter.as_ref().map(Arc::clone),
+                        }
+                        .spawn()
+                    })
+                    .collect()
+            } else {
+                // Single-request mode: spawn plain `Vu` instances sharing the budget.
+                (0..concurrency)
+                    .map(|_| {
+                        Vu {
+                            request_config: Arc::clone(&request_config),
+                            plain_headers: Arc::clone(&plain_headers),
+                            template: template.as_ref().map(Arc::clone),
+                            scenario_label: None,
+                            step_label: None,
+                            cancellation_token: cancellation_token.clone(),
+                            result_tx: tx.clone(),
+                            budget: Some(Arc::clone(&budget)),
+                            rate_limiter: rate_limiter.as_ref().map(Arc::clone),
+                        }
+                        .spawn()
+                    })
+                    .collect()
+            };
 
             // Drop the coordinator's sender so the channel closes once all VU
             // senders are also dropped (they are, once each VU task exits).
@@ -163,12 +214,15 @@ mod tests {
             status_codes: StatusCodeHistogram::new(),
             total_requests: 10,
             total_failures: 1,
+            total_skipped: 0,
             response_stats: None,
+            scenario_stats: None,
         };
         assert_eq!(result.total_requests, 10);
         assert_eq!(result.total_failures, 1);
         assert!(result.latency.is_empty());
         assert!(result.response_stats.is_none());
+        assert!(result.scenario_stats.is_none());
     }
 
     // ── struct_shape_fixed_executor_params ────────────────────────────────────
@@ -193,12 +247,16 @@ mod tests {
             template: None,
             total: 5,
             concurrency: 2,
+            rps: None,
             cancellation_token: CancellationToken::new(),
+            scenarios: None,
         };
 
         assert_eq!(params.total, 5);
         assert_eq!(params.concurrency, 2);
         assert!(params.template.is_none());
+        assert!(params.scenarios.is_none());
+        assert!(params.rps.is_none());
     }
 
     // ── fixed_executor_new_stores_params ─────────────────────────────────────
@@ -223,10 +281,13 @@ mod tests {
             template: None,
             total: 1,
             concurrency: 1,
+            rps: Some(50),
             cancellation_token: CancellationToken::new(),
+            scenarios: None,
         });
 
         assert_eq!(executor.params.total, 1);
         assert_eq!(executor.params.concurrency, 1);
+        assert_eq!(executor.params.rps, Some(50));
     }
 }

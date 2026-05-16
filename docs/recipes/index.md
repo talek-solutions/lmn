@@ -18,3 +18,4 @@ Copy-paste solutions for specific tasks — no explanation, just the answer. For
 | [Traffic ramp-up](load-curve.md) | Staged virtual users over time |
 | [CI artifact output](ci-artifact.md) | Write JSON results for dashboards and artifact storage |
 | [Track error codes in responses](response-template.md) | Extract and aggregate API error codes from response bodies |
+| [Multi-step scenarios](scenarios.md) | Define weighted user flows with multiple endpoints per VU |

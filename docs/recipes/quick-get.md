@@ -14,6 +14,14 @@ lmn run -H https://api.example.com/health -R 1000 -C 50
 
 `-R` sets the total request count, `-C` sets concurrency.
 
+## Cap throughput
+
+```bash
+lmn run -H https://api.example.com/health -R 1000 -C 50 --rps 100
+```
+
+`--rps` caps aggregate requests-per-second across all VUs. Useful when you want to probe a service without exceeding its quota or rate limit.
+
 ## What you'll see
 
 ```

@@ -1,6 +1,6 @@
 [package]
 name = "lmn-core"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "Core engine for the lmn HTTP load testing CLI"
 license = "Apache-2.0"
@@ -8,19 +8,24 @@ repository = "https://github.com/talek-solutions/lmn"
 readme = "README.md"
 
 [dependencies]
+governor.workspace = true
 hdrhistogram.workspace = true
 rand.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_norway.workspace = true
+time.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
-
+uuid.workspace = true
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--cfg", "docsrs"]
 
 [dev-dependencies]
 tempfile.workspace = true
+insta.workspace = true
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync", "signal", "time"] }
+wiremock.workspace = true

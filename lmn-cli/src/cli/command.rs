@@ -50,6 +50,11 @@ pub struct RunArgs {
     #[arg(allow_negative_numbers = false)]
     pub concurrency: Option<u32>,
 
+    #[arg(long)]
+    #[arg(help = "Cap aggregate requests-per-second across all VUs. Unset means no rate limit.")]
+    #[arg(allow_negative_numbers = false)]
+    pub rps: Option<u32>,
+
     #[arg(short = 'M')]
     #[arg(long)]
     #[arg(help = "HTTP method to use (default: get)")]
@@ -111,6 +116,12 @@ pub struct RunArgs {
     )]
     #[arg(value_parser = parse_header)]
     pub headers: Vec<String>,
+
+    #[arg(long = "publish-url")]
+    #[arg(
+        help = "Publish run results to a custom endpoint (e.g. https://api.example.com/v1/runs)"
+    )]
+    pub publish_url: Option<String>,
 }
 
 #[derive(clap::Args)]

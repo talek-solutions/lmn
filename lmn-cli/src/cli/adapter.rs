@@ -6,10 +6,11 @@ use crate::cli::command::{
 use lmn_core::command::Body;
 use lmn_core::command::configure_template::{ConfigureTemplateCommand, TemplateKind};
 use lmn_core::command::run::RunCommand;
-use lmn_core::config::{ExecutionConfig, LumenConfig, parse_config};
+use lmn_core::config::{ExecutionConfig, LumenConfig, parse_config, resolve_scenarios};
 use lmn_core::execution::{ExecutionMode, RequestSpec};
 use lmn_core::http::BodyFormat;
 use lmn_core::load_curve::LoadCurve;
+use lmn_core::publish::PublishConfigYaml;
 use lmn_core::threshold::Threshold;
 
 impl From<HttpMethod> for lmn_core::command::HttpMethod {
@@ -70,6 +71,7 @@ pub struct RunArgsResolved {
     pub thresholds: Option<Vec<Threshold>>,
     pub output: OutputFormat,
     pub output_file: Option<PathBuf>,
+    pub publish_config: Option<PublishConfigYaml>,
 }
 
 impl RunArgsResolved {
@@ -162,6 +164,13 @@ impl TryFrom<RunArgs> for RunArgsResolved {
             .or_else(|| cfg.as_ref().and_then(|c| c.execution.as_ref()?.concurrency))
             .unwrap_or(100);
 
+        // ── rps ───────────────────────────────────────────────────────────────
+        // CLI --rps wins; else config execution.rps; else None (no rate limit).
+        let rps: Option<usize> = args
+            .rps
+            .map(|v| v as usize)
+            .or_else(|| cfg.as_ref().and_then(|c| c.execution.as_ref()?.rps));
+
         // ── execution mode ────────────────────────────────────────────────────
         // Priority:
         //   1. CLI --load-curve flag → ExecutionMode::Curve (from file)
@@ -191,7 +200,7 @@ impl TryFrom<RunArgs> for RunArgsResolved {
             curve
                 .validate()
                 .map_err(|e| format!("invalid load curve '{}': {e}", path.display()))?;
-            ExecutionMode::Curve(curve)
+            ExecutionMode::Curve { curve, rps }
         } else if let Some(ref c) = cfg {
             let exec_cfg: Option<&ExecutionConfig> = c.execution.as_ref();
             if exec_cfg.and_then(|e| e.stages.as_ref()).is_some() {
@@ -200,40 +209,23 @@ impl TryFrom<RunArgs> for RunArgsResolved {
                     .clone();
                 let curve =
                     LoadCurve::try_from(exec).map_err(Box::<dyn std::error::Error>::from)?;
-                ExecutionMode::Curve(curve)
+                ExecutionMode::Curve { curve, rps }
             } else {
                 ExecutionMode::Fixed {
                     request_count,
                     concurrency,
+                    rps,
                 }
             }
         } else {
             ExecutionMode::Fixed {
                 request_count,
                 concurrency,
+                rps,
             }
         };
 
         let thresholds = cfg.as_ref().and_then(|c| c.thresholds.clone());
-
-        // Resolve host: CLI flag > config run.host > error.
-        let host = args
-            .host
-            .or_else(|| cfg.as_ref().and_then(|c| c.run.as_ref()?.host.clone()))
-            .ok_or("host is required: set -H or run.host in config file")?;
-
-        // Resolve optional template paths from config
-        let template_path = args
-            .request_template
-            .or_else(|| args.request_alias.map(resolve_alias("requests")))
-            .or_else(|| {
-                cfg.as_ref()
-                    .and_then(|c| c.request_template.as_deref().map(PathBuf::from))
-            });
-
-        let response_template_path = args
-            .response_template
-            .or_else(|| args.response_alias.map(resolve_alias("responses")));
 
         // ── headers ───────────────────────────────────────────────────────────────
         // Merge strategy: config headers as base, CLI --header flags override on
@@ -322,23 +314,94 @@ impl TryFrom<RunArgs> for RunArgsResolved {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e: String| Box::<dyn std::error::Error>::from(e))?;
 
+        // ── RequestSpec resolution ────────────────────────────────────────────
+        // If scenarios are defined in config, resolve them into RequestSpec::Scenarios.
+        // Otherwise fall through to the single-request path (RequestSpec::Single).
+        let request: RequestSpec =
+            if let Some(scenario_configs) = cfg.as_ref().and_then(|c| c.scenarios.as_ref()) {
+                let resolved = resolve_scenarios(scenario_configs, &headers)?;
+                RequestSpec::Scenarios(resolved)
+            } else {
+                // Single-request path: host is required.
+                let host = args
+                    .host
+                    .or_else(|| cfg.as_ref().and_then(|c| c.run.as_ref()?.host.clone()))
+                    .ok_or("host is required: set -H or run.host in config file")?;
+
+                // Resolve optional template paths from config
+                let template_path = args
+                    .request_template
+                    .or_else(|| args.request_alias.map(resolve_alias("requests")))
+                    .or_else(|| {
+                        cfg.as_ref()
+                            .and_then(|c| c.request_template.as_deref().map(PathBuf::from))
+                    });
+
+                let response_template_path = args
+                    .response_template
+                    .or_else(|| args.response_alias.map(resolve_alias("responses")));
+
+                RequestSpec::Single {
+                    host,
+                    method,
+                    body: args.body.map(|s| Body::Formatted {
+                        content: s,
+                        format: BodyFormat::Json,
+                    }),
+                    template_path,
+                    response_template_path,
+                    headers,
+                }
+            };
+
+        let publish_yaml = cfg.as_ref().and_then(|c| c.publish.clone());
+        let flag_url = args.publish_url;
+        // URL precedence: --publish-url flag > LUMEN_API_URL env > yaml url.
+        // Resolved here so the builder receives a single, already-resolved URL.
+        let resolved_url = flag_url
+            .clone()
+            .or_else(|| {
+                std::env::var("LUMEN_API_URL")
+                    .ok()
+                    .filter(|s| !s.trim().is_empty())
+            })
+            .or_else(|| publish_yaml.as_ref().and_then(|y| y.url.clone()));
+        let publish_config = match (&flag_url, &publish_yaml) {
+            // CLI flag: implicitly enabled.
+            (Some(_), _) => Some(PublishConfigYaml {
+                enabled: Some(true),
+                url: resolved_url,
+            }),
+            // YAML section present, no CLI flag.
+            (None, Some(yaml)) => Some(PublishConfigYaml {
+                enabled: yaml.enabled,
+                url: resolved_url,
+            }),
+            // Nothing configured.
+            (None, None) => None,
+        };
+
         Ok(RunArgsResolved {
-            request: RequestSpec {
-                host,
-                method,
-                body: args.body.map(|s| Body::Formatted {
-                    content: s,
-                    format: BodyFormat::Json,
-                }),
-                template_path,
-                response_template_path,
-                headers,
-            },
+            request,
             execution,
             thresholds,
             output,
             output_file,
+            publish_config,
         })
+    }
+}
+
+/// Merges a `HashMap<String, String>` of headers into an existing ordered
+/// `Vec<(String, String)>`, using case-insensitive last-wins semantics.
+#[cfg(test)]
+fn merge_headers_into(
+    base: &mut Vec<(String, String)>,
+    incoming: &std::collections::HashMap<String, String>,
+) {
+    for (name, value) in incoming {
+        base.retain(|(k, _)| !k.eq_ignore_ascii_case(name));
+        base.push((name.clone(), value.clone()));
     }
 }
 
@@ -384,6 +447,7 @@ pub fn resolve_alias(sub_dir: &'static str) -> impl Fn(String) -> PathBuf {
 mod tests {
     use super::*;
     use lmn_core::command::Command;
+    use lmn_core::execution::OnStepFailure;
 
     #[tokio::test]
     async fn execute_creates_file_from_body() {
@@ -464,6 +528,7 @@ mod tests {
             host: Some("http://localhost:3000".to_string()),
             request_count: Some(100),
             concurrency: Some(10),
+            rps: None,
             method: Some(HttpMethod::Get),
             body: None,
             request_template: None,
@@ -475,6 +540,7 @@ mod tests {
             output_file: None,
             config: None,
             headers: vec![],
+            publish_url: None,
         }
     }
 
@@ -608,7 +674,10 @@ mod tests {
 
         let result = RunArgsResolved::try_from(make_run_args(Some(f.path().to_path_buf())));
         assert!(result.is_ok());
-        assert!(matches!(result.unwrap().execution, ExecutionMode::Curve(_)));
+        assert!(matches!(
+            result.unwrap().execution,
+            ExecutionMode::Curve { .. }
+        ));
     }
 
     #[test]
@@ -668,7 +737,13 @@ mod tests {
 
         let result = RunArgsResolved::try_from(args);
         assert!(result.is_ok(), "expected ok, got error");
-        assert_eq!(result.unwrap().request.host, "http://from-config:8080");
+        // RequestSpec::Single — extract host for assertion
+        let spec = result.unwrap().request;
+        let host = match spec {
+            RequestSpec::Single { host, .. } => host,
+            _ => panic!("expected Single variant"),
+        };
+        assert_eq!(host, "http://from-config:8080");
     }
 
     #[test]
@@ -684,7 +759,12 @@ mod tests {
 
         let result = RunArgsResolved::try_from(args);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap().request.host, "http://from-cli:9090");
+        let spec = result.unwrap().request;
+        let host = match spec {
+            RequestSpec::Single { host, .. } => host,
+            _ => panic!("expected Single variant"),
+        };
+        assert_eq!(host, "http://from-cli:9090");
     }
 
     // ── new tests for config merging ──────────────────────────────────────────
@@ -702,8 +782,13 @@ mod tests {
         args.config = Some(f.path().to_path_buf());
 
         let result = RunArgsResolved::try_from(args).expect("should succeed");
+        let spec = result.request;
+        let method = match spec {
+            RequestSpec::Single { method, .. } => method,
+            _ => panic!("expected Single variant"),
+        };
         assert!(
-            matches!(result.request.method, lmn_core::command::HttpMethod::Post),
+            matches!(method, lmn_core::command::HttpMethod::Post),
             "expected Post from config"
         );
     }
@@ -759,7 +844,7 @@ mod tests {
 
         let result = RunArgsResolved::try_from(args).expect("should succeed");
         assert!(
-            matches!(result.execution, ExecutionMode::Curve(_)),
+            matches!(result.execution, ExecutionMode::Curve { .. }),
             "expected Curve execution mode from config stages"
         );
     }
@@ -829,9 +914,11 @@ mod tests {
         args.headers = vec!["Authorization: Bearer cli-token".to_string()];
 
         let result = RunArgsResolved::try_from(args).expect("should succeed");
-        let auth = result
-            .request
-            .headers
+        let headers = match result.request {
+            RequestSpec::Single { headers, .. } => headers,
+            _ => panic!("expected Single variant"),
+        };
+        let auth = headers
             .iter()
             .find(|(k, _)| k.eq_ignore_ascii_case("Authorization"))
             .map(|(_, v)| v.as_str());
@@ -841,9 +928,7 @@ mod tests {
             "CLI header should override config header"
         );
         // must be exactly one Authorization entry (no duplicates)
-        let count = result
-            .request
-            .headers
+        let count = headers
             .iter()
             .filter(|(k, _)| k.eq_ignore_ascii_case("Authorization"))
             .count();
@@ -868,9 +953,11 @@ mod tests {
         // args.headers is already vec![] from make_run_args
 
         let result = RunArgsResolved::try_from(args).expect("should succeed");
-        let custom = result
-            .request
-            .headers
+        let headers = match result.request {
+            RequestSpec::Single { headers, .. } => headers,
+            _ => panic!("expected Single variant"),
+        };
+        let custom = headers
             .iter()
             .find(|(k, _)| k.eq_ignore_ascii_case("X-Custom"))
             .map(|(_, v)| v.as_str());
@@ -894,9 +981,11 @@ mod tests {
         args.config = Some(f.path().to_path_buf());
 
         let result = RunArgsResolved::try_from(args).expect("should succeed");
-        let token = result
-            .request
-            .headers
+        let headers = match result.request {
+            RequestSpec::Single { headers, .. } => headers,
+            _ => panic!("expected Single variant"),
+        };
+        let token = headers
             .iter()
             .find(|(k, _)| k.eq_ignore_ascii_case("X-Token"))
             .map(|(_, v)| v.as_str());
@@ -927,6 +1016,344 @@ mod tests {
         assert!(
             msg.contains("64"),
             "error should mention the limit, got: {msg}"
+        );
+    }
+
+    // ── scenario resolution tests ─────────────────────────────────────────────
+
+    #[test]
+    fn scenarios_config_resolves_to_scenarios_spec() {
+        use std::io::Write;
+        let yaml = b"
+scenarios:
+  - name: browse
+    steps:
+      - name: list_products
+        host: https://api.example.com/products
+execution:
+  request_count: 50
+  concurrency: 5
+";
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(yaml).unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+
+        let result = RunArgsResolved::try_from(args).expect("should succeed");
+        assert!(
+            matches!(result.request, RequestSpec::Scenarios(_)),
+            "expected Scenarios variant from config with scenarios"
+        );
+    }
+
+    #[test]
+    fn scenarios_global_headers_propagate_to_steps() {
+        use std::io::Write;
+        let yaml = b"
+run:
+  headers:
+    Authorization: Bearer global-token
+scenarios:
+  - name: browse
+    steps:
+      - name: list_products
+        host: https://api.example.com/products
+";
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(yaml).unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+
+        let result = RunArgsResolved::try_from(args).expect("should succeed");
+        let scenarios = match result.request {
+            RequestSpec::Scenarios(s) => s,
+            _ => panic!("expected Scenarios variant"),
+        };
+        assert_eq!(scenarios.len(), 1);
+        let step = &scenarios[0].steps[0];
+        let auth = step
+            .plain_headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("Authorization"))
+            .map(|(_, v)| v.as_str());
+        assert_eq!(
+            auth,
+            Some("Bearer global-token"),
+            "global header should propagate to step"
+        );
+    }
+
+    #[test]
+    fn scenarios_step_header_overrides_scenario_header() {
+        use std::io::Write;
+        let yaml = b"
+scenarios:
+  - name: checkout
+    headers:
+      X-Session: scenario-session
+    steps:
+      - name: add_to_cart
+        host: https://api.example.com/cart
+        method: post
+        headers:
+          X-Session: step-session
+";
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(yaml).unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+
+        let result = RunArgsResolved::try_from(args).expect("should succeed");
+        let scenarios = match result.request {
+            RequestSpec::Scenarios(s) => s,
+            _ => panic!("expected Scenarios variant"),
+        };
+        let step = &scenarios[0].steps[0];
+        let session = step
+            .plain_headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("X-Session"))
+            .map(|(_, v)| v.as_str());
+        assert_eq!(
+            session,
+            Some("step-session"),
+            "step header should override scenario header"
+        );
+        let count = step
+            .plain_headers
+            .iter()
+            .filter(|(k, _)| k.eq_ignore_ascii_case("X-Session"))
+            .count();
+        assert_eq!(count, 1, "should not have duplicate X-Session headers");
+    }
+
+    #[test]
+    fn scenarios_weight_and_on_step_failure_resolved() {
+        use std::io::Write;
+        let yaml = b"
+scenarios:
+  - name: checkout
+    weight: 3
+    on_step_failure: abort_iteration
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+        method: post
+  - name: browse
+    weight: 1
+    steps:
+      - name: list
+        host: https://api.example.com/products
+";
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(yaml).unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+
+        let result = RunArgsResolved::try_from(args).expect("should succeed");
+        let scenarios = match result.request {
+            RequestSpec::Scenarios(s) => s,
+            _ => panic!("expected Scenarios variant"),
+        };
+        assert_eq!(scenarios[0].weight, 3);
+        assert!(matches!(
+            scenarios[0].on_step_failure,
+            OnStepFailure::AbortIteration
+        ));
+        assert_eq!(scenarios[1].weight, 1);
+        assert!(matches!(
+            scenarios[1].on_step_failure,
+            OnStepFailure::Continue
+        ));
+    }
+
+    #[test]
+    fn merge_headers_into_overrides_existing() {
+        use std::collections::HashMap;
+
+        let mut base = vec![
+            ("Authorization".to_string(), "old-token".to_string()),
+            ("X-Custom".to_string(), "keep".to_string()),
+        ];
+        let mut incoming = HashMap::new();
+        incoming.insert("authorization".to_string(), "new-token".to_string());
+
+        merge_headers_into(&mut base, &incoming);
+
+        assert_eq!(base.len(), 2);
+        let auth = base
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("Authorization"))
+            .map(|(_, v)| v.as_str());
+        assert_eq!(auth, Some("new-token"));
+        let custom = base
+            .iter()
+            .find(|(k, _)| k == "X-Custom")
+            .map(|(_, v)| v.as_str());
+        assert_eq!(custom, Some("keep"));
+    }
+
+    // ── publish_config merge tests ───────────────────────────────────────────
+
+    #[test]
+    fn publish_config_none_when_no_flag_and_no_yaml() {
+        let resolved = RunArgsResolved::try_from(make_run_args(None)).unwrap();
+        assert!(
+            resolved.publish_config.is_none(),
+            "expected None when neither CLI flag nor YAML publish section is set"
+        );
+    }
+
+    #[test]
+    fn publish_config_from_cli_flag_enables_and_sets_url() {
+        let mut args = make_run_args(None);
+        args.publish_url = Some("https://custom.example.com".into());
+
+        let resolved = RunArgsResolved::try_from(args).unwrap();
+        let pc = resolved
+            .publish_config
+            .expect("expected Some when --publish-url is set");
+        assert_eq!(pc.enabled, Some(true));
+        assert_eq!(pc.url.as_deref(), Some("https://custom.example.com"));
+    }
+
+    #[test]
+    fn publish_config_from_yaml_preserves_yaml_fields() {
+        use std::io::Write;
+        let _env_lock = lock_lumen_api_url();
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\npublish:\n  enabled: true\n  url: https://yaml.example.com\n")
+            .unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+
+        let resolved = RunArgsResolved::try_from(args).unwrap();
+        let pc = resolved.publish_config.expect("expected Some from YAML");
+        assert_eq!(pc.enabled, Some(true));
+        assert_eq!(pc.url.as_deref(), Some("https://yaml.example.com"));
+    }
+
+    #[test]
+    fn publish_config_cli_flag_overrides_yaml() {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\npublish:\n  enabled: false\n  url: https://yaml.example.com\n")
+            .unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+        args.publish_url = Some("https://cli.example.com".into());
+
+        let resolved = RunArgsResolved::try_from(args).unwrap();
+        let pc = resolved
+            .publish_config
+            .expect("expected Some when CLI flag is set");
+        assert_eq!(
+            pc.enabled,
+            Some(true),
+            "CLI flag should force enabled=true even when YAML says false"
+        );
+        assert_eq!(
+            pc.url.as_deref(),
+            Some("https://cli.example.com"),
+            "CLI flag URL should override YAML URL"
+        );
+    }
+
+    /// RAII guard that sets an env var on creation and removes it on drop,
+    /// ensuring cleanup even if the test panics.
+    struct EnvGuard(&'static str);
+    impl EnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            unsafe { std::env::set_var(key, value) };
+            Self(key)
+        }
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            unsafe { std::env::remove_var(self.0) };
+        }
+    }
+
+    /// Serializes tests that read or write `LUMEN_API_URL`. Rust runs unit
+    /// tests in parallel within one process, and the env var is process-global,
+    /// so without this lock a test that sets `LUMEN_API_URL` can race with a
+    /// test that asserts the YAML url is used.
+    static LUMEN_API_URL_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn lock_lumen_api_url() -> std::sync::MutexGuard<'static, ()> {
+        LUMEN_API_URL_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[test]
+    fn publish_config_env_url_wins_over_yaml_url() {
+        use std::io::Write;
+        let _env_lock = lock_lumen_api_url();
+        let _guard = EnvGuard::set("LUMEN_API_URL", "https://env.example.com");
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\npublish:\n  enabled: true\n  url: https://yaml.example.com\n")
+            .unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+
+        let resolved = RunArgsResolved::try_from(args).unwrap();
+        let pc = resolved.publish_config.expect("expected Some");
+        assert_eq!(
+            pc.url.as_deref(),
+            Some("https://env.example.com"),
+            "LUMEN_API_URL env should override YAML url"
+        );
+    }
+
+    #[test]
+    fn publish_config_cli_flag_wins_over_env_url() {
+        let _env_lock = lock_lumen_api_url();
+        let _guard = EnvGuard::set("LUMEN_API_URL", "https://env.example.com");
+
+        let mut args = make_run_args(None);
+        args.publish_url = Some("https://cli.example.com".into());
+
+        let resolved = RunArgsResolved::try_from(args).unwrap();
+        let pc = resolved.publish_config.expect("expected Some");
+        assert_eq!(
+            pc.url.as_deref(),
+            Some("https://cli.example.com"),
+            "--publish-url flag should override LUMEN_API_URL env"
+        );
+    }
+
+    #[test]
+    fn publish_config_yaml_disabled_without_flag_stays_disabled() {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(b"run:\n  host: http://localhost:3000\npublish:\n  enabled: false\n")
+            .unwrap();
+
+        let mut args = make_run_args(None);
+        args.host = None;
+        args.config = Some(f.path().to_path_buf());
+
+        let resolved = RunArgsResolved::try_from(args).unwrap();
+        let pc = resolved
+            .publish_config
+            .expect("expected Some from YAML section");
+        assert_eq!(
+            pc.enabled,
+            Some(false),
+            "YAML enabled=false should be preserved when no CLI flag"
         );
     }
 }

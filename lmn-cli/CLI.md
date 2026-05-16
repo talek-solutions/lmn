@@ -25,6 +25,7 @@ lmn run [OPTIONS] -H <HOST>
 | `-H` | `--host` | required | Target host URL |
 | `-R` | `--request-count` | `100` | Total number of requests to send |
 | `-C` | `--concurrency` | `10` | Max in-flight requests at any time |
+| — | `--rps` | — | Cap aggregate requests-per-second across all VUs (works in both fixed and curve modes). Unset means no rate limit. |
 | `-M` | `--method` | `get` | HTTP method (`get`, `post`, `put`, `patch`, `delete`) |
 | `-B` | `--body` | — | Inline JSON request body |
 | `-T` | `--request-template` | — | Path to a request template file |
@@ -36,6 +37,7 @@ lmn run [OPTIONS] -H <HOST>
 | — | `--output-file` | — | Write JSON result to `<path>` (always JSON regardless of `--output`) |
 | `-f` | `--config` | — | Path to a YAML config file. CLI flags take precedence over config values. |
 | — | `--header` | — | Custom HTTP header in `'Name: Value'` format (repeatable) |
+| — | `--publish-url` | — | Publish run results to a custom endpoint (e.g. `https://api.example.com/v1/runs`) |
 
 ### Conflicts
 
@@ -111,6 +113,7 @@ Run parameters are nested under a `run:` section. Execution strategy is configur
 |-------|------|---------------|-------------|
 | `request_count` | number | `-R` / `--request-count` | Total requests to send (fixed mode) |
 | `concurrency` | number | `-C` / `--concurrency` | Max in-flight requests (fixed mode) |
+| `rps` | number | `--rps` | Optional aggregate requests-per-second cap. Smooths VU output via a shared token bucket. Applies in both fixed and curve modes. |
 | `stages` | list | `-L` / `--load-curve` | Load curve stages (curve mode — cannot be combined with `request_count`/`concurrency`) |
 
 When `execution.stages` is present, lmn runs in curve mode. Otherwise it runs in fixed mode using `execution.request_count` and `execution.concurrency`.
@@ -202,6 +205,9 @@ lmn run -H http://localhost:3000/api -A my-alias -E my-response
 
 # Full example
 lmn run -H http://localhost:3000/api -M post -R 1000 -C 50 -A my-alias -E my-response
+
+# Cap throughput at 200 req/s while keeping the fixed-count workload
+lmn run -H http://localhost:3000/api -R 2000 -C 50 --rps 200
 
 # Load curve (time-based VU scaling)
 lmn run -H http://localhost:3000/api -M post -L ./my-curve.json

@@ -26,6 +26,8 @@ pub struct RunReport {
     pub response_stats: Option<ResponseStatsReport>,
     /// Present only when `mode == "curve"`. `null` in fixed mode.
     pub curve_stages: Option<Vec<StageReport>>,
+    /// Present only when scenario/step-attributed request telemetry is available.
+    pub scenarios: Option<Vec<ScenarioReport>>,
     /// Present when thresholds were evaluated after the run. `null` otherwise.
     pub thresholds: Option<ThresholdReport>,
 }
@@ -54,10 +56,18 @@ pub struct RequestSummary {
     pub total: usize,
     pub ok: usize,
     pub failed: usize,
+    /// Number of requests skipped (step not executed due to capture dependency
+    /// failure or iteration abort). `0` in non-scenario runs.
+    #[serde(skip_serializing_if = "is_zero_usize")]
+    pub skipped: usize,
     /// Fraction of failed requests: `failed / total`. `0.0` when `total == 0`.
     pub error_rate: f64,
     /// Requests per second: `total / elapsed_seconds`. `0.0` when elapsed is zero.
     pub throughput_rps: f64,
+}
+
+fn is_zero_usize(v: &usize) -> bool {
+    *v == 0
 }
 
 // ── LatencyStats ──────────────────────────────────────────────────────────────
@@ -131,4 +141,25 @@ pub struct StageReport {
     /// Requests per second within this stage's duration window.
     pub throughput_rps: f64,
     pub latency: LatencyStats,
+}
+
+// ── ScenarioReport ────────────────────────────────────────────────────────────
+
+/// Per-scenario request metrics.
+#[derive(Serialize, Debug)]
+pub struct ScenarioReport {
+    pub name: String,
+    pub requests: RequestSummary,
+    pub latency: LatencyStats,
+    pub status_codes: BTreeMap<String, u64>,
+    pub steps: Vec<ScenarioStepReport>,
+}
+
+/// Per-step request metrics nested under one scenario.
+#[derive(Serialize, Debug)]
+pub struct ScenarioStepReport {
+    pub name: String,
+    pub requests: RequestSummary,
+    pub latency: LatencyStats,
+    pub status_codes: BTreeMap<String, u64>,
 }

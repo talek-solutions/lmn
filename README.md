@@ -5,7 +5,7 @@
 <h1 align="center">Lumen</h1>
 
 <p align="center">
-  Fast HTTP load testing CLI — dynamic templates, threshold-gated CI, and load curves.
+  Fast HTTP load testing CLI — multi-step scenarios, dynamic templates, threshold-gated CI, and load curves.
 </p>
 
 <p align="center">
@@ -96,6 +96,7 @@ See the [Quickstart guide](https://lmn.talek.cloud/getting-started/quickstart/) 
 - **[Threshold-gated CI](https://lmn.talek.cloud/guides/thresholds-ci/)** — exit code `2` on p99/error-rate/throughput failures; wires into any pipeline
 - **[Load curves](https://lmn.talek.cloud/guides/load-curves/)** — staged virtual user ramp-up with linear or step profiles
 - **[Auth & headers](https://lmn.talek.cloud/guides/headers-auth/)** — `${ENV_VAR}` secret injection, `.env` auto-load, repeatable headers
+- **[Multi-step scenarios](https://lmn.talek.cloud/guides/scenarios/)** — define weighted user flows (login → browse → checkout) with per-step endpoints, headers, and templates
 - **[Response tracking](https://lmn.talek.cloud/recipes/response-template/)** — extract and aggregate fields from response bodies (e.g. API error codes)
 - **[JSON output](https://lmn.talek.cloud/reference/json-output/)** — machine-readable report for dashboards and CI artifacts
 - **Config files** — full YAML config with CLI flag precedence

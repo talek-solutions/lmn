@@ -7,8 +7,8 @@ use crate::command::Command;
 use crate::execution::curve::{CurveExecutor, CurveExecutorParams};
 use crate::execution::fixed::{FixedExecutor, FixedExecutorParams};
 use crate::execution::{
-    CurveStats, ExecutionMode, RequestSpec, RunMode, RunStats, build_request_config,
-    resolve_tracked_fields,
+    CurveStats, ExecutionMode, RequestSpec, ResolvedScenario, RunMode, RunStats,
+    build_request_config, resolve_tracked_fields,
 };
 use crate::load_curve::LoadCurve;
 use crate::request_template::Template;
@@ -26,8 +26,9 @@ impl Command for RunCommand {
             ExecutionMode::Fixed {
                 request_count,
                 concurrency,
-            } => execute_fixed(self.request, request_count, concurrency).await,
-            ExecutionMode::Curve(curve) => execute_curve(self.request, curve).await,
+                rps,
+            } => execute_fixed(self.request, request_count, concurrency, rps).await,
+            ExecutionMode::Curve { curve, rps } => execute_curve(self.request, curve, rps).await,
         }
     }
 }
@@ -39,25 +40,95 @@ async fn execute_fixed(
     request_spec: RequestSpec,
     total: usize,
     concurrency: usize,
+    rps: Option<usize>,
 ) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
-    let RequestSpec {
-        host,
-        method,
-        body,
-        template_path,
-        response_template_path,
-        headers,
-    } = request_spec;
+    match request_spec {
+        RequestSpec::Single {
+            host,
+            method,
+            body,
+            template_path,
+            response_template_path,
+            headers,
+        } => {
+            // Parse template for on-demand body generation (no pre-generation).
+            let template: Option<Arc<Template>> = template_path
+                .map(|path| Template::parse(&path).map(Arc::new))
+                .transpose()
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
 
-    // Parse template for on-demand body generation (no pre-generation).
-    let template: Option<Arc<Template>> = template_path
-        .map(|path| Template::parse(&path).map(Arc::new))
-        .transpose()
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+            let tracked_fields = resolve_tracked_fields(response_template_path)?;
+            let request_config =
+                build_request_config(host, method, body, tracked_fields, headers, concurrency)?;
 
-    let tracked_fields = resolve_tracked_fields(response_template_path)?;
-    let request_config =
-        build_request_config(host, method, body, tracked_fields, headers, concurrency)?;
+            let cancellation_token = CancellationToken::new();
+            let cancel = cancellation_token.clone();
+            tokio::spawn(async move {
+                match tokio::signal::ctrl_c().await {
+                    Ok(()) => {
+                        eprintln!(
+                            "\nShutdown signal received — waiting for in-flight requests to finish..."
+                        );
+                        cancel.cancel();
+                    }
+                    Err(e) => eprintln!("warning: failed to listen for ctrl_c: {e}"),
+                }
+            });
+
+            let started_at = Instant::now();
+
+            let result = FixedExecutor::new(FixedExecutorParams {
+                request_config: Arc::clone(&request_config),
+                template,
+                total,
+                concurrency,
+                rps,
+                cancellation_token,
+                scenarios: None,
+            })
+            .execute()
+            .await?;
+
+            Ok(Some(RunStats {
+                elapsed: started_at.elapsed(),
+                mode: RunMode::Fixed,
+                latency: result.latency,
+                status_codes: result.status_codes,
+                total_requests: result.total_requests,
+                total_failures: result.total_failures,
+                total_skipped: result.total_skipped,
+                template_stats: None,
+                response_stats: result.response_stats,
+                curve_stats: None,
+                scenario_stats: result.scenario_stats,
+            }))
+        }
+        RequestSpec::Scenarios(scenarios) => {
+            execute_fixed_scenarios(scenarios, total, concurrency, rps).await
+        }
+    }
+}
+
+/// Fixed-count execution path for scenario-based runs.
+async fn execute_fixed_scenarios(
+    scenarios: Vec<ResolvedScenario>,
+    total: usize,
+    concurrency: usize,
+    rps: Option<usize>,
+) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
+    use crate::command::HttpMethod;
+
+    // Build a placeholder RequestConfig — scenarios use per-step configs stored
+    // in ResolvedScenario.steps. The FixedExecutor routes to ScenarioVu when
+    // scenarios is Some, ignoring this placeholder.
+    let placeholder_config = build_request_config(
+        String::new(),
+        HttpMethod::Get,
+        None,
+        None,
+        vec![],
+        concurrency,
+    )?;
 
     let cancellation_token = CancellationToken::new();
     let cancel = cancellation_token.clone();
@@ -76,11 +147,13 @@ async fn execute_fixed(
     let started_at = Instant::now();
 
     let result = FixedExecutor::new(FixedExecutorParams {
-        request_config: Arc::clone(&request_config),
-        template,
+        request_config: placeholder_config,
+        template: None,
         total,
         concurrency,
+        rps,
         cancellation_token,
+        scenarios: Some(scenarios),
     })
     .execute()
     .await?;
@@ -92,9 +165,11 @@ async fn execute_fixed(
         status_codes: result.status_codes,
         total_requests: result.total_requests,
         total_failures: result.total_failures,
+        total_skipped: result.total_skipped,
         template_stats: None,
         response_stats: result.response_stats,
         curve_stats: None,
+        scenario_stats: result.scenario_stats,
     }))
 }
 
@@ -104,33 +179,105 @@ async fn execute_fixed(
 async fn execute_curve(
     request_spec: RequestSpec,
     curve: LoadCurve,
+    rps: Option<usize>,
 ) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
-    let RequestSpec {
-        host,
-        method,
-        body,
-        template_path,
-        response_template_path,
-        headers,
-    } = request_spec;
+    match request_spec {
+        RequestSpec::Single {
+            host,
+            method,
+            body,
+            template_path,
+            response_template_path,
+            headers,
+        } => {
+            let curve_duration = curve.total_duration();
+            let curve_stages = curve.stages.clone();
+
+            // Parse template for on-demand body generation (no pre-generation in curve mode)
+            let template: Option<Arc<Template>> = template_path
+                .map(|path| Template::parse(&path).map(Arc::new))
+                .transpose()
+                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+
+            let tracked_fields = resolve_tracked_fields(response_template_path)?;
+            let peak_vus = curve
+                .stages
+                .iter()
+                .map(|s| s.target_vus as usize)
+                .max()
+                .unwrap_or(1);
+            let request_config =
+                build_request_config(host, method, body, tracked_fields, headers, peak_vus)?;
+
+            let cancellation_token = CancellationToken::new();
+            let cancel = cancellation_token.clone();
+            tokio::spawn(async move {
+                match tokio::signal::ctrl_c().await {
+                    Ok(()) => {
+                        eprintln!("\nShutdown signal received — cancelling curve execution...");
+                        cancel.cancel();
+                    }
+                    Err(e) => eprintln!("warning: failed to listen for ctrl_c: {e}"),
+                }
+            });
+
+            let started_at = Instant::now();
+
+            let executor = CurveExecutor::new(CurveExecutorParams {
+                curve,
+                request_config: Arc::clone(&request_config),
+                template,
+                cancellation_token,
+                rps,
+                scenarios: None,
+            });
+
+            let curve_result = executor.execute().await?;
+
+            Ok(Some(RunStats {
+                elapsed: started_at.elapsed(),
+                mode: RunMode::Curve,
+                latency: curve_result.latency,
+                status_codes: curve_result.status_codes,
+                total_requests: curve_result.total_requests,
+                total_failures: curve_result.total_failures,
+                total_skipped: curve_result.total_skipped,
+                template_stats: None,
+                response_stats: curve_result.response_stats,
+                curve_stats: Some(CurveStats {
+                    duration: curve_duration,
+                    stages: curve_stages,
+                    stage_stats: curve_result.stage_stats,
+                }),
+                scenario_stats: curve_result.scenario_stats,
+            }))
+        }
+        RequestSpec::Scenarios(scenarios) => execute_curve_scenarios(scenarios, curve, rps).await,
+    }
+}
+
+/// Curve-based execution path for scenario-based runs.
+async fn execute_curve_scenarios(
+    scenarios: Vec<ResolvedScenario>,
+    curve: LoadCurve,
+    rps: Option<usize>,
+) -> Result<Option<RunStats>, Box<dyn std::error::Error>> {
+    use crate::command::HttpMethod;
+
     let curve_duration = curve.total_duration();
     let curve_stages = curve.stages.clone();
 
-    // Parse template for on-demand body generation (no pre-generation in curve mode)
-    let template: Option<Arc<Template>> = template_path
-        .map(|path| Template::parse(&path).map(Arc::new))
-        .transpose()
-        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-
-    let tracked_fields = resolve_tracked_fields(response_template_path)?;
     let peak_vus = curve
         .stages
         .iter()
         .map(|s| s.target_vus as usize)
         .max()
         .unwrap_or(1);
-    let request_config =
-        build_request_config(host, method, body, tracked_fields, headers, peak_vus)?;
+
+    // Build a placeholder RequestConfig — CurveExecutor routes to ScenarioVu when
+    // scenarios is Some, ignoring this placeholder.
+    let placeholder_config =
+        build_request_config(String::new(), HttpMethod::Get, None, None, vec![], peak_vus)?;
 
     let cancellation_token = CancellationToken::new();
     let cancel = cancellation_token.clone();
@@ -148,9 +295,11 @@ async fn execute_curve(
 
     let executor = CurveExecutor::new(CurveExecutorParams {
         curve,
-        request_config: Arc::clone(&request_config),
-        template,
+        request_config: placeholder_config,
+        template: None,
         cancellation_token,
+        rps,
+        scenarios: Some(scenarios),
     });
 
     let curve_result = executor.execute().await?;
@@ -162,6 +311,7 @@ async fn execute_curve(
         status_codes: curve_result.status_codes,
         total_requests: curve_result.total_requests,
         total_failures: curve_result.total_failures,
+        total_skipped: curve_result.total_skipped,
         template_stats: None,
         response_stats: curve_result.response_stats,
         curve_stats: Some(CurveStats {
@@ -169,6 +319,7 @@ async fn execute_curve(
             stages: curve_stages,
             stage_stats: curve_result.stage_stats,
         }),
+        scenario_stats: curve_result.scenario_stats,
     }))
 }
 
@@ -190,9 +341,11 @@ mod tests {
             status_codes: StatusCodeHistogram::new(),
             total_requests: 10,
             total_failures: 0,
+            total_skipped: 0,
             template_stats: None,
             response_stats: None,
             curve_stats: None,
+            scenario_stats: None,
         }
     }
 
@@ -206,6 +359,7 @@ mod tests {
             status_codes: StatusCodeHistogram::new(),
             total_requests: 100,
             total_failures: 2,
+            total_skipped: 0,
             template_stats: None,
             response_stats: None,
             curve_stats: Some(CurveStats {
@@ -220,6 +374,7 @@ mod tests {
                     })
                     .collect(),
             }),
+            scenario_stats: None,
         }
     }
 

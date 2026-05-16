@@ -8,6 +8,7 @@ A **virtual user** is a concurrent worker that sends requests in a loop. If you 
 
 - More VUs = more concurrency = more pressure on the server
 - VU count is fixed in **fixed mode** and varies over time in **curve mode**
+- In **scenario mode**, each VU executes a multi-step sequence instead of a single request
 
 ## Fixed Mode vs. Curve Mode
 
@@ -35,6 +36,54 @@ execution:
 ```
 
 You cannot mix `stages` with `request_count`/`concurrency` — pick one mode per run.
+
+## RPS cap (`rps`)
+
+`concurrency` controls how many requests can be **in flight**; it does not directly cap throughput. If responses come back in 10 ms, 50 VUs will produce ~5,000 req/s. To pin throughput regardless of server speed, set an aggregate **requests-per-second** cap:
+
+```yaml
+execution:
+  request_count: 5000
+  concurrency: 50
+  rps: 200            # ≤ 200 req/s across all VUs, smoothed
+```
+
+- Works in both fixed and curve mode
+- Implemented as a shared token bucket — output is paced, not bursted at the boundary of each second
+- Omit (or set `null`) for no rate limit; VUs run at full throttle
+- In scenario mode the cap applies **per HTTP request**, not per iteration: a 5-step scenario at `rps: 50` produces ~10 iterations/sec
+
+## Scenarios
+
+A **scenario** is a named sequence of HTTP steps that a VU executes in order. Instead of every VU hitting the same endpoint, you can model realistic user flows — login, browse, checkout — each with its own host, method, headers, and templates.
+
+```yaml
+scenarios:
+  - name: checkout
+    weight: 3
+    steps:
+      - name: login
+        host: https://api.example.com/auth
+        method: post
+      - name: pay
+        host: https://api.example.com/checkout
+        method: post
+  - name: browse
+    weight: 1
+    steps:
+      - name: list
+        host: https://api.example.com/products
+```
+
+Key concepts:
+
+- **Weight** controls VU distribution. With weights `[3, 1]` and 4 VUs: 3 run "checkout", 1 runs "browse"
+- **Budget** counts scenario iterations, not individual requests. `request_count: 100` means 100 full loops through all steps
+- **`on_step_failure`** controls what happens when a step fails: `continue` (default) finishes all steps, `abort_iteration` skips the rest and starts over
+- Scenarios work with both **fixed** and **curve** modes
+- Scenarios are **mutually exclusive** with `run.host` / `run.method` — each step defines its own target
+
+See [Config File Reference](../reference/config.md#scenarios) for the full schema.
 
 ## Thresholds
 
