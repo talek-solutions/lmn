@@ -37,6 +37,22 @@ execution:
 
 You cannot mix `stages` with `request_count`/`concurrency` — pick one mode per run.
 
+## RPS cap (`rps`)
+
+`concurrency` controls how many requests can be **in flight**; it does not directly cap throughput. If responses come back in 10 ms, 50 VUs will produce ~5,000 req/s. To pin throughput regardless of server speed, set an aggregate **requests-per-second** cap:
+
+```yaml
+execution:
+  request_count: 5000
+  concurrency: 50
+  rps: 200            # ≤ 200 req/s across all VUs, smoothed
+```
+
+- Works in both fixed and curve mode
+- Implemented as a shared token bucket — output is paced, not bursted at the boundary of each second
+- Omit (or set `null`) for no rate limit; VUs run at full throttle
+- In scenario mode the cap applies **per HTTP request**, not per iteration: a 5-step scenario at `rps: 50` produces ~10 iterations/sec
+
 ## Scenarios
 
 A **scenario** is a named sequence of HTTP steps that a VU executes in order. Instead of every VU hitting the same endpoint, you can model realistic user flows — login, browse, checkout — each with its own host, method, headers, and templates.

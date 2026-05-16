@@ -225,6 +225,18 @@ execution:
   concurrency: 2
 EOF
 
+# YAML config — fixed mode with rps cap
+cat > "$TMPDIR/config-rps.yaml" << 'EOF'
+run:
+  host: https://httpbin.org/get
+  method: get
+
+execution:
+  request_count: 20
+  concurrency: 10
+  rps: 5
+EOF
+
 # YAML config — scenarios with JSON output
 cat > "$TMPDIR/config-scenarios-json.yaml" << 'EOF'
 scenarios:
@@ -363,6 +375,38 @@ check_scenarios_steps() {
 }
 run_test_with_check "scenarios per-step stats" 0 check_scenarios_steps \
     run --config "$TMPDIR/config-scenarios-fixed.yaml"
+
+# 17. --rps CLI flag — caps aggregate throughput.
+# 20 requests at rps=5 must take ≥ ~3s (first batch of 5 is the bucket prefill,
+# then ~5 req/s thereafter → 4 more seconds of refill needed). Use a generous
+# lower bound to keep CI non-flaky.
+check_rps_cli() {
+    local file="$1"
+    local elapsed_secs="$2"
+    # Run succeeded with the expected request count AND took at least 3 seconds.
+    jq -e '.requests.total == 20' "$file" > /dev/null 2>&1 \
+        && [[ "$elapsed_secs" -ge 3 ]]
+}
+echo "  ...  rps CLI cap (timed)"
+start_ts=$(date +%s)
+actual_exit=0
+"$BIN" run --host https://httpbin.org/get \
+    --request-count 20 --concurrency 10 --rps 5 \
+    --output json > "$TMPDIR/rps-cli.json" 2> "$TMPDIR/rps-cli.stderr" || actual_exit=$?
+end_ts=$(date +%s)
+elapsed=$((end_ts - start_ts))
+if [[ "$actual_exit" -eq 0 ]] && check_rps_cli "$TMPDIR/rps-cli.json" "$elapsed"; then
+    echo "  PASS  rps CLI cap (elapsed ${elapsed}s, expected ≥ 3s)"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL  rps CLI cap (exit $actual_exit, elapsed ${elapsed}s)"
+    echo "        stderr: $(head -5 "$TMPDIR/rps-cli.stderr")"
+    FAIL=$((FAIL + 1))
+fi
+
+# 18. --rps via YAML config
+run_test "rps yaml config" 0 \
+    run --config "$TMPDIR/config-rps.yaml"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 

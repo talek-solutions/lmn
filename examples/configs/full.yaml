@@ -15,6 +15,9 @@ run:
 execution:
   request_count: 200
   concurrency: 20
+  # Optional aggregate requests-per-second cap (token-bucket smoothed).
+  # Omit or set null to run at full throttle.
+  # rps: 50
 
 # Threshold rules — evaluated after the run completes.
 # Exit code 2 is returned when any threshold is not satisfied.

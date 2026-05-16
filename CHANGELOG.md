@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`--rps` flag and `execution.rps` config field** — cap aggregate requests-per-second across all VUs. Implemented as a shared token-bucket limiter (via `governor`), so output is smoothed rather than bursted at the boundary of each second. Works in both fixed and curve modes; in scenario mode the cap applies per HTTP request, not per iteration. Omit for no rate limit (full-throttle behaviour unchanged).
+- Functional test coverage for `--rps` (CLI flag with timed-elapsed assertion + YAML config form).
+
 ## [0.3.0]
 
 ### Added
