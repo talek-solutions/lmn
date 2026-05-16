@@ -62,6 +62,7 @@ async fn main() {
         execution: ExecutionMode::Fixed {
             request_count: 1000,
             concurrency: 50,
+            rps: None,
         },
     };
 
@@ -88,7 +89,7 @@ let curve: LoadCurve = r#"{
     ]
 }"#.parse().unwrap();
 
-let execution = ExecutionMode::Curve(curve);
+let execution = ExecutionMode::Curve { curve, rps: None };
 ```
 
 Stage `ramp` defaults to `"linear"` if omitted. Use `"step"` for an immediate jump.
